@@ -1,10 +1,11 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import * as XLSX from "xlsx";
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 interface MemorySheet {
   name: string;
@@ -17,6 +18,187 @@ let dropdowns: { batches: string[]; names: string[] } = { batches: [], names: []
 let lastLoaded: string | null = null;
 let isLoading = false;
 let loadError: string | null = null;
+
+/* ============================================================
+   ROLE-BASED ACCESS, AUDIT LOG, NOTIFICATIONS & SYNC TRACKING
+   ============================================================ */
+
+type Role = "admin" | "editor" | "viewer";
+
+interface AppUser {
+  email: string;
+  name?: string;
+  role: Role;
+  addedAt: string;
+  addedBy?: string;
+  lastLogin?: string;
+}
+
+interface ActivityEntry {
+  id: string;
+  ts: string;
+  email: string;
+  action: string;
+  detail?: string;
+}
+
+interface AppNotification {
+  id: string;
+  ts: string;
+  type: "info" | "success" | "warning" | "error";
+  title: string;
+  message: string;
+  read: boolean;
+}
+
+interface SheetSyncInfo {
+  name: string;
+  rows: number;
+  lastSync: string;
+}
+
+interface AppState {
+  users: Record<string, AppUser>;
+  activityLog: ActivityEntry[];
+  notifications: AppNotification[];
+  sheetSync: Record<string, SheetSyncInfo>;
+}
+
+const DATA_DIR = path.join(process.cwd(), "data");
+const STATE_FILE = path.join(DATA_DIR, "app-state.json");
+const MAX_LOG_ENTRIES = 2000;
+const MAX_NOTIFICATIONS = 500;
+
+// Emails that are always treated as admin (comma separated env var)
+const ENV_ADMIN_EMAILS = (process.env.ADMIN_EMAILS || "")
+  .split(",")
+  .map((e) => e.trim().toLowerCase())
+  .filter(Boolean);
+
+let appState: AppState = {
+  users: {},
+  activityLog: [],
+  notifications: [],
+  sheetSync: {},
+};
+
+function loadAppState() {
+  try {
+    if (fs.existsSync(STATE_FILE)) {
+      const raw = fs.readFileSync(STATE_FILE, "utf-8");
+      const parsed = JSON.parse(raw);
+      appState = {
+        users: parsed.users || {},
+        activityLog: parsed.activityLog || [],
+        notifications: parsed.notifications || [],
+        sheetSync: parsed.sheetSync || {},
+      };
+      console.log(`Loaded app-state: ${Object.keys(appState.users).length} users, ${appState.activityLog.length} log entries.`);
+    }
+  } catch (err) {
+    console.error("Failed to load app-state.json, starting fresh:", err);
+  }
+}
+
+let saveTimer: NodeJS.Timeout | null = null;
+function saveAppState() {
+  // Debounced write to avoid hammering disk
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    try {
+      if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+      fs.writeFileSync(STATE_FILE, JSON.stringify(appState, null, 2), "utf-8");
+    } catch (err) {
+      console.error("Failed to persist app-state.json:", err);
+    }
+  }, 250);
+}
+
+function genId(): string {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+function logActivity(email: string, action: string, detail?: string) {
+  appState.activityLog.unshift({
+    id: genId(),
+    ts: new Date().toISOString(),
+    email: email || "unknown",
+    action,
+    detail,
+  });
+  if (appState.activityLog.length > MAX_LOG_ENTRIES) {
+    appState.activityLog = appState.activityLog.slice(0, MAX_LOG_ENTRIES);
+  }
+  saveAppState();
+}
+
+function pushNotification(type: AppNotification["type"], title: string, message: string) {
+  appState.notifications.unshift({
+    id: genId(),
+    ts: new Date().toISOString(),
+    type,
+    title,
+    message,
+    read: false,
+  });
+  if (appState.notifications.length > MAX_NOTIFICATIONS) {
+    appState.notifications = appState.notifications.slice(0, MAX_NOTIFICATIONS);
+  }
+  saveAppState();
+}
+
+function getRoleForEmail(email: string): Role {
+  const e = (email || "").trim().toLowerCase();
+  if (!e) return "viewer";
+  if (ENV_ADMIN_EMAILS.includes(e)) return "admin";
+  const user = appState.users[e];
+  return user ? user.role : "viewer";
+}
+
+// Ensure a user exists. The very first user to ever sign in becomes the super-admin.
+function ensureUser(email: string, name?: string): AppUser {
+  const e = (email || "").trim().toLowerCase();
+  let user = appState.users[e];
+  if (!user) {
+    const isFirstEver = Object.keys(appState.users).length === 0;
+    const role: Role = ENV_ADMIN_EMAILS.includes(e) || isFirstEver ? "admin" : "viewer";
+    user = {
+      email: e,
+      name: name || "",
+      role,
+      addedAt: new Date().toISOString(),
+      addedBy: isFirstEver ? "system (first login)" : "self-signup",
+    };
+    appState.users[e] = user;
+    saveAppState();
+  } else if (name && !user.name) {
+    user.name = name;
+    saveAppState();
+  }
+  // Env admins are always elevated
+  if (ENV_ADMIN_EMAILS.includes(e) && user.role !== "admin") {
+    user.role = "admin";
+    saveAppState();
+  }
+  return user;
+}
+
+// Express middleware-style guard: returns the requesting admin user or null (and sends 403)
+function requireAdmin(req: express.Request, res: express.Response): AppUser | null {
+  const email = String(req.header("x-user-email") || "").trim().toLowerCase();
+  if (!email) {
+    res.status(401).json({ error: "Authentication required (missing user identity)." });
+    return null;
+  }
+  const role = getRoleForEmail(email);
+  if (role !== "admin") {
+    res.status(403).json({ error: "Access denied. Admin privileges required." });
+    return null;
+  }
+  return appState.users[email] || { email, role: "admin", addedAt: new Date().toISOString() };
+}
+
+loadAppState();
 
 // Normalization functions mirroring Google Apps Script
 function normalizeHeader(h: any): string {
@@ -278,8 +460,27 @@ function findHeaderRow(data: any[][]): { index: number; headers: string[] } | nu
   return null;
 }
 
+// Count valid student rows within a single in-memory sheet
+function countSheetRows(sheet: MemorySheet): number {
+  const data = sheet.data;
+  const headerInfo = findHeaderRow(data);
+  if (headerInfo) {
+    const rIdx = headerInfo.index;
+    const idxReg = findColumnIndex(headerInfo.headers, ["reg no", "roll no"]);
+    if (idxReg !== -1) {
+      return data.slice(rIdx + 1).filter((row) => {
+        if (!row) return false;
+        const val = String(row[idxReg] || "").trim();
+        return val !== "" && val.toLowerCase() !== "reg no" && val.toLowerCase() !== "roll no" && !/^\d+th\s+june/i.test(val);
+      }).length;
+    }
+    return Math.max(0, data.length - (rIdx + 1));
+  }
+  return Math.max(0, data.length - 1);
+}
+
 // Background loading function
-async function loadSpreadsheetData() {
+async function loadSpreadsheetData(opts: { notifySuccess?: boolean } = {}) {
   if (isLoading) return;
   isLoading = true;
   loadError = null;
@@ -330,6 +531,11 @@ async function loadSpreadsheetData() {
     console.error("All spreadsheet fetch attempts failed: ", errorDetails);
     loadError = "Failed to load database spreadsheet. Details: " + errorsList[0];
     isLoading = false;
+    pushNotification(
+      "error",
+      "Database sync failed",
+      "Could not load the Google Sheet. " + (errorsList[0] || "Unknown connection error.")
+    );
     return;
   }
 
@@ -400,6 +606,42 @@ async function loadSpreadsheetData() {
 
     lastLoaded = new Date().toISOString();
     console.log(`Spreadsheet successfully parsed. Sheets: ${memorySheets.length}. Batches: ${dropdowns.batches.length}. Names: ${dropdowns.names.length}.`);
+
+    // Track per-sheet sync timestamps + detect newly added / removed sheets for notifications
+    const syncTs = lastLoaded;
+    const previousSheetNames = new Set(Object.keys(appState.sheetSync));
+    const currentSheetNames = new Set(memorySheets.map((s) => s.name));
+    const newSheetSync: Record<string, SheetSyncInfo> = {};
+
+    memorySheets.forEach((s) => {
+      newSheetSync[s.name] = {
+        name: s.name,
+        rows: countSheetRows(s),
+        lastSync: syncTs,
+      };
+    });
+
+    // Notify about brand-new sheets (skip noise on the very first ever load)
+    if (previousSheetNames.size > 0) {
+      const added = [...currentSheetNames].filter((n) => !previousSheetNames.has(n));
+      added.forEach((name) => {
+        pushNotification(
+          "success",
+          "New assessment sheet added",
+          `"${name}" (${newSheetSync[name].rows} students) was detected during sync.`
+        );
+      });
+    }
+
+    appState.sheetSync = newSheetSync;
+    if (opts.notifySuccess) {
+      pushNotification(
+        "info",
+        "Database synced",
+        `${memorySheets.length} sheets loaded successfully.`
+      );
+    }
+    saveAppState();
   } catch (err: any) {
     console.error("Error loading spreadsheet: ", err);
     loadError = err.message || String(err);
@@ -757,13 +999,16 @@ app.get("/api/dropdowns", async (req, res) => {
 
 // API: Manual refresh endpoint
 app.post("/api/refresh", async (req, res) => {
+  const requester = String(req.header("x-user-email") || "").trim().toLowerCase();
   if (isLoading) {
     return res.json({ message: "Refresh already in progress...", isLoading: true });
   }
-  await loadSpreadsheetData();
+  await loadSpreadsheetData({ notifySuccess: true });
   if (loadError) {
+    if (requester) logActivity(requester, "sync_failed", loadError);
     return res.status(500).json({ error: loadError });
   }
+  if (requester) logActivity(requester, "sync", `${memorySheets.length} sheets reloaded`);
   res.json({ success: true, lastLoaded, batchesCount: dropdowns.batches.length });
 });
 
@@ -779,6 +1024,11 @@ app.get("/api/student", (req, res) => {
   const searchInput = String(queryParam).trim().toLowerCase();
   if (!searchInput) {
     return res.status(400).json({ error: "Query cannot be empty." });
+  }
+
+  const searcher = String(req.header("x-user-email") || "").trim().toLowerCase();
+  if (searcher && searchInput !== "all") {
+    logActivity(searcher, "search", `Query: "${String(queryParam).trim()}"`);
   }
 
   if (memorySheets.length === 0) {
@@ -1095,6 +1345,244 @@ app.get("/api/student", (req, res) => {
   } catch (err: any) {
     res.status(500).json({ error: "Internal Core Engine Error: " + err.toString() });
   }
+});
+
+// ============================================================
+//  SESSION + ROLE + ADMIN PANEL ENDPOINTS
+// ============================================================
+
+const VALID_ROLES: Role[] = ["admin", "editor", "viewer"];
+
+// Register/refresh a login session. First ever user becomes super-admin.
+app.post("/api/auth/session", (req, res) => {
+  const email = String(req.body?.email || "").trim().toLowerCase();
+  const name = req.body?.name ? String(req.body.name) : undefined;
+  const event = req.body?.event === "resume" ? "resume" : "login";
+  if (!email) {
+    return res.status(400).json({ error: "Email is required." });
+  }
+  const user = ensureUser(email, name);
+  user.lastLogin = new Date().toISOString();
+  saveAppState();
+  logActivity(email, event === "resume" ? "session_resume" : "login", name ? `as ${name}` : undefined);
+  res.json({ email: user.email, name: user.name, role: user.role });
+});
+
+// Lightweight role lookup (no logging)
+app.get("/api/me", (req, res) => {
+  const email = String(req.query.email || "").trim().toLowerCase();
+  if (!email) return res.status(400).json({ error: "Email required." });
+  res.json({ email, role: getRoleForEmail(email) });
+});
+
+// --- Admin: list users ---
+app.get("/api/admin/users", (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  const users = Object.values(appState.users).sort((a, b) => a.email.localeCompare(b.email));
+  res.json({ users });
+});
+
+// --- Admin: set a single user's role ---
+app.post("/api/admin/users/role", (req, res) => {
+  const admin = requireAdmin(req, res);
+  if (!admin) return;
+  const email = String(req.body?.email || "").trim().toLowerCase();
+  const role = String(req.body?.role || "").trim().toLowerCase() as Role;
+  if (!email || !VALID_ROLES.includes(role)) {
+    return res.status(400).json({ error: "Valid email and role (admin/editor/viewer) required." });
+  }
+  const existing = appState.users[email];
+  // Prevent demoting the last remaining admin
+  if (existing && existing.role === "admin" && role !== "admin") {
+    const adminCount = Object.values(appState.users).filter((u) => u.role === "admin").length;
+    if (adminCount <= 1) {
+      return res.status(400).json({ error: "Cannot demote the last admin. Promote someone else first." });
+    }
+  }
+  if (existing) {
+    existing.role = role;
+  } else {
+    appState.users[email] = {
+      email,
+      role,
+      addedAt: new Date().toISOString(),
+      addedBy: admin.email,
+    };
+  }
+  saveAppState();
+  logActivity(admin.email, "role_change", `${email} → ${role}`);
+  res.json({ success: true, user: appState.users[email] });
+});
+
+// --- Admin: bulk add emails with a role ---
+app.post("/api/admin/users/bulk", (req, res) => {
+  const admin = requireAdmin(req, res);
+  if (!admin) return;
+  const raw = String(req.body?.emails || "");
+  const role = String(req.body?.role || "viewer").trim().toLowerCase() as Role;
+  if (!VALID_ROLES.includes(role)) {
+    return res.status(400).json({ error: "Invalid role." });
+  }
+  // Split on commas, semicolons, whitespace or newlines
+  const candidates = raw
+    .split(/[\s,;]+/)
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const added: string[] = [];
+  const updated: string[] = [];
+  const invalid: string[] = [];
+
+  candidates.forEach((email) => {
+    if (!emailRegex.test(email)) {
+      invalid.push(email);
+      return;
+    }
+    if (appState.users[email]) {
+      appState.users[email].role = role;
+      updated.push(email);
+    } else {
+      appState.users[email] = {
+        email,
+        role,
+        addedAt: new Date().toISOString(),
+        addedBy: admin.email,
+      };
+      added.push(email);
+    }
+  });
+
+  saveAppState();
+  logActivity(admin.email, "bulk_import", `${added.length} added, ${updated.length} updated as ${role}`);
+  res.json({ success: true, added, updated, invalid });
+});
+
+// --- Admin: remove a user ---
+app.delete("/api/admin/users", (req, res) => {
+  const admin = requireAdmin(req, res);
+  if (!admin) return;
+  const email = String(req.body?.email || req.query.email || "").trim().toLowerCase();
+  if (!email || !appState.users[email]) {
+    return res.status(404).json({ error: "User not found." });
+  }
+  if (appState.users[email].role === "admin") {
+    const adminCount = Object.values(appState.users).filter((u) => u.role === "admin").length;
+    if (adminCount <= 1) {
+      return res.status(400).json({ error: "Cannot remove the last admin." });
+    }
+  }
+  delete appState.users[email];
+  saveAppState();
+  logActivity(admin.email, "user_removed", email);
+  res.json({ success: true });
+});
+
+// --- Admin: activity log ---
+app.get("/api/admin/activity", (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  const limit = Math.min(parseInt(String(req.query.limit || "300"), 10) || 300, MAX_LOG_ENTRIES);
+  res.json({ activity: appState.activityLog.slice(0, limit), total: appState.activityLog.length });
+});
+
+// --- Admin: notifications ---
+app.get("/api/admin/notifications", (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  const unread = appState.notifications.filter((n) => !n.read).length;
+  res.json({ notifications: appState.notifications.slice(0, 200), unread });
+});
+
+app.post("/api/admin/notifications/read", (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  const id = req.body?.id ? String(req.body.id) : null;
+  if (id) {
+    const n = appState.notifications.find((x) => x.id === id);
+    if (n) n.read = true;
+  } else {
+    appState.notifications.forEach((n) => (n.read = true));
+  }
+  saveAppState();
+  res.json({ success: true, unread: appState.notifications.filter((n) => !n.read).length });
+});
+
+app.post("/api/admin/notifications/clear", (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  appState.notifications = [];
+  saveAppState();
+  res.json({ success: true });
+});
+
+// --- Admin: last sync per sheet/center ---
+app.get("/api/admin/sync-status", (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  const sheets = sortSheetNamesDescending(memorySheets.map((s) => s.name)).map((name) => {
+    const info = appState.sheetSync[name];
+    return {
+      name,
+      rows: info ? info.rows : countSheetRows(memorySheets.find((s) => s.name === name)!),
+      lastSync: info ? info.lastSync : lastLoaded,
+    };
+  });
+  res.json({
+    lastLoaded,
+    isLoading,
+    loadError,
+    sheetCount: memorySheets.length,
+    sheets,
+  });
+});
+
+// --- Admin: export cache data (CSV or Excel) ---
+app.get("/api/admin/export-cache", (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  const format = String(req.query.format || "xlsx").toLowerCase();
+  const stamp = new Date().toISOString().slice(0, 10);
+
+  if (memorySheets.length === 0) {
+    return res.status(503).json({ error: "Cache is empty. Sync the database first." });
+  }
+
+  if (format === "csv") {
+    // Flatten every sheet's rows into one CSV with a "Sheet" column
+    const lines: string[] = [];
+    const esc = (v: any) => {
+      const s = v === undefined || v === null ? "" : String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    memorySheets.forEach((sheet) => {
+      sheet.data.forEach((row) => {
+        if (!row) return;
+        lines.push([esc(sheet.name), ...row.map(esc)].join(","));
+      });
+    });
+    const csv = "Sheet,Data...\n" + lines.join("\n");
+    const adminCsv = String(req.header("x-user-email") || "").trim().toLowerCase();
+    if (adminCsv) logActivity(adminCsv, "export_cache", `format=csv, ${memorySheets.length} sheets`);
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="vp-cache-${stamp}.csv"`);
+    return res.send(csv);
+  }
+
+  // Default: build a multi-sheet XLSX workbook from the cache
+  const wb = XLSX.utils.book_new();
+  memorySheets.forEach((sheet, i) => {
+    const ws = XLSX.utils.aoa_to_sheet(sheet.data);
+    // Excel sheet names max 31 chars and must be unique
+    let safeName = (sheet.name || `Sheet${i + 1}`).replace(/[\\/?*\[\]:]/g, " ").slice(0, 28);
+    if (!safeName.trim()) safeName = `Sheet${i + 1}`;
+    let finalName = safeName;
+    let dup = 1;
+    while (wb.SheetNames.includes(finalName)) {
+      finalName = `${safeName.slice(0, 25)}_${dup++}`;
+    }
+    XLSX.utils.book_append_sheet(wb, ws, finalName);
+  });
+  const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+  const admin = String(req.header("x-user-email") || "").trim().toLowerCase();
+  if (admin) logActivity(admin, "export_cache", `format=xlsx, ${memorySheets.length} sheets`);
+  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.setHeader("Content-Disposition", `attachment; filename="vp-cache-${stamp}.xlsx"`);
+  res.send(buffer);
 });
 
 // Configure Vite integration or static file server
