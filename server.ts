@@ -69,11 +69,20 @@ const STATE_FILE = path.join(DATA_DIR, "app-state.json");
 const MAX_LOG_ENTRIES = 2000;
 const MAX_NOTIFICATIONS = 500;
 
-// Emails that are always treated as admin (comma separated env var)
-const ENV_ADMIN_EMAILS = (process.env.ADMIN_EMAILS || "")
-  .split(",")
-  .map((e) => e.trim().toLowerCase())
-  .filter(Boolean);
+// Emails that are always treated as admin (comma separated env var + built-in defaults).
+// Built-in defaults guarantee the owner stays admin even on ephemeral hosting
+// (e.g. Cloud Run) where the persisted state file resets between deploys.
+const DEFAULT_ADMIN_EMAILS = ["aniket.mishra2@pw.live"];
+const ENV_ADMIN_EMAILS = Array.from(
+  new Set(
+    [
+      ...DEFAULT_ADMIN_EMAILS,
+      ...(process.env.ADMIN_EMAILS || "").split(","),
+    ]
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean)
+  )
+);
 
 let appState: AppState = {
   users: {},
