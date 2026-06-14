@@ -1128,6 +1128,51 @@ function flushUsersToSheet() {
   }, 400);
 }
 
+// Mirror Staff Access Control (ACL) entries into the user roster.
+// Each ACL key may hold several comma-separated emails; each becomes a "staff"
+// user whose `center` reflects the allowed centers ("" = full access via "*").
+// We never downgrade an existing admin/teacher — only fill in missing users
+// or refresh the center on someone who is already staff.
+function syncStaffAccessToRoster(staffAccess: Record<string, string[]>, addedBy: string) {
+  let changed = false;
+
+  for (const [key, centersRaw] of Object.entries(staffAccess)) {
+    const centers = Array.isArray(centersRaw) ? centersRaw.map((c) => String(c).trim()).filter(Boolean) : [];
+    const isFullAccess = centers.length === 0 || centers.some((c) => c === "*" || c.toLowerCase() === "all");
+    const centerLabel = isFullAccess ? "" : centers.join(", ");
+
+    const emails = key
+      .split(",")
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean);
+
+    for (const email of emails) {
+      const existing = appState.users[email];
+      if (existing) {
+        // Don't touch admins/teachers; just keep staff centers in sync.
+        if (existing.role === "staff" && existing.center !== centerLabel) {
+          existing.center = centerLabel;
+          changed = true;
+        }
+      } else {
+        appState.users[email] = {
+          email,
+          role: "staff",
+          center: centerLabel,
+          addedAt: new Date().toISOString(),
+          addedBy,
+        };
+        changed = true;
+      }
+    }
+  }
+
+  if (changed) {
+    saveAppState();
+    flushUsersToSheet();
+  }
+}
+
 // Debounced flush of the activity log to its own sheet tab (best-effort, capped).
 let logFlushTimer: NodeJS.Timeout | null = null;
 function flushLogsToSheet() {
@@ -1599,6 +1644,14 @@ app.post("/api/config", verifyRequest, superAdminOnly, async (req, res) => {
     }
 
     fs.writeFileSync(CONFIG_PATH, JSON.stringify(newConfig, null, 2), "utf-8");
+
+    // Mirror the Staff Access Controls (ACL) into the user roster so the staff
+    // also show up in the settings spreadsheet (Staff tab). Without this, ACL
+    // entries lived only in the local config and never reached the "excel".
+    if (STAFF_ACCESS && typeof STAFF_ACCESS === "object") {
+      const adminEmail = String(req.headers["x-user-email"] || "").trim().toLowerCase() || "settings-acl";
+      syncStaffAccessToRoster(STAFF_ACCESS as Record<string, string[]>, adminEmail);
+    }
 
     // Hot-reload spreadsheet data in background
     console.log("Configuration updated, reloading cache in background...");
