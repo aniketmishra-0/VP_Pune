@@ -1884,7 +1884,7 @@ export default function App() {
         <div ref={mainCanvasRef} className={`flex-1 flex flex-col min-w-0 ${
           exportMode 
             ? "p-0 bg-white text-black h-auto overflow-visible" 
-            : "p-2.5 sm:p-4 md:p-5 pb-24 md:pb-5 bg-[#f4f7fc] dark:bg-[#090d16] overflow-y-auto custom-scrollbar"
+            : "p-2.5 sm:p-4 md:p-5 pb-[calc(6rem+env(safe-area-inset-bottom,0px))] md:pb-5 bg-[#f4f7fc] dark:bg-[#090d16] overflow-y-auto custom-scrollbar"
         } relative z-10`}>
           
           {/* Top general status notification banner */}
@@ -3991,71 +3991,71 @@ export default function App() {
 
       {/* MOBILE SPECIAL BOTTOM BAR */}
       {!exportMode && loggedInUser && (
-        <nav className="md:hidden flex fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-[#111827] h-[calc(4rem+env(safe-area-inset-bottom,0px))] pb-[env(safe-area-inset-bottom,0px)] border-t border-slate-200/50 dark:border-gray-800/40 items-center justify-around px-2 shadow-[0_-8px_30px_rgb(0,0,0,0.04)] select-none no-print">
+        <nav className="md:hidden flex fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-[#111827] min-h-[4.5rem] pt-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom,0px))] border-t border-slate-200/50 dark:border-gray-800/40 items-stretch justify-around px-2 shadow-[0_-8px_30px_rgb(0,0,0,0.04)] select-none no-print">
           {/* Home Tab */}
           <button
             onClick={() => { setActiveView("home"); setErrorMessage(null); }}
-            className={`flex flex-col items-center justify-center w-14 h-12 rounded-xl transition-all cursor-pointer outline-none ${
+            className={`flex flex-col items-center justify-center gap-1 w-14 py-1 rounded-xl transition-all cursor-pointer outline-none ${
               activeView === "home"
                 ? "text-[#5277f7] dark:text-blue-400"
                 : "text-slate-400 hover:text-slate-800 dark:hover:text-white"
             }`}
           >
-            <LayoutGrid className="w-5 h-5 mb-0.5" />
-            <span className="text-[9px] font-semibold tracking-tight font-sans">Home</span>
+            <LayoutGrid className="w-5 h-5 shrink-0" />
+            <span className="text-[10px] font-semibold tracking-tight font-sans leading-tight">Home</span>
           </button>
 
           {/* Search Tab */}
           <button
             onClick={() => { setSearchType("reg"); setActiveView("input"); setErrorMessage(null); }}
-            className={`flex flex-col items-center justify-center w-14 h-12 rounded-xl transition-all cursor-pointer outline-none ${
+            className={`flex flex-col items-center justify-center gap-1 w-14 py-1 rounded-xl transition-all cursor-pointer outline-none ${
               activeView === "input"
                 ? "text-[#5277f7] dark:text-blue-400"
                 : "text-slate-400 hover:text-slate-800 dark:hover:text-white"
             }`}
           >
-            <Search className="w-5 h-5 mb-0.5" />
-            <span className="text-[9px] font-semibold tracking-tight font-sans">Search</span>
+            <Search className="w-5 h-5 shrink-0" />
+            <span className="text-[10px] font-semibold tracking-tight font-sans leading-tight">Search</span>
           </button>
 
           {/* Directory Tab */}
           <button
             onClick={handleLoadAllStudents}
-            className={`flex flex-col items-center justify-center w-14 h-12 rounded-xl transition-all cursor-pointer outline-none ${
+            className={`flex flex-col items-center justify-center gap-1 w-14 py-1 rounded-xl transition-all cursor-pointer outline-none ${
               activeView === "batchList"
                 ? "text-[#5277f7] dark:text-blue-400"
                 : "text-slate-400 hover:text-slate-800 dark:hover:text-white"
             }`}
           >
-            <GraduationCap className="w-5 h-5 mb-0.5" />
-            <span className="text-[9px] font-semibold tracking-tight font-sans">Directory</span>
+            <GraduationCap className="w-5 h-5 shrink-0" />
+            <span className="text-[10px] font-semibold tracking-tight font-sans leading-tight">Directory</span>
           </button>
 
           {/* Sheets Directory Tab */}
           <button
             onClick={() => { setActiveView("sheetsList"); setErrorMessage(null); }}
-            className={`flex flex-col items-center justify-center w-14 h-12 rounded-xl transition-all cursor-pointer outline-none ${
+            className={`flex flex-col items-center justify-center gap-1 w-14 py-1 rounded-xl transition-all cursor-pointer outline-none ${
               activeView === "sheetsList"
                 ? "text-[#5277f7] dark:text-blue-400"
                 : "text-slate-400 hover:text-slate-800 dark:hover:text-white"
             }`}
           >
-            <BookOpen className="w-5 h-5 mb-0.5" />
-            <span className="text-[9px] font-semibold tracking-tight font-sans">Sheets</span>
+            <BookOpen className="w-5 h-5 shrink-0" />
+            <span className="text-[10px] font-semibold tracking-tight font-sans leading-tight">Sheets</span>
           </button>
 
           {/* Config Settings Tab — super-admin only */}
           {isSuperAdmin && (
           <button
             onClick={() => { setActiveView("admin"); setErrorMessage(null); }}
-            className={`flex flex-col items-center justify-center w-14 h-12 rounded-xl transition-all cursor-pointer outline-none ${
+            className={`flex flex-col items-center justify-center gap-1 w-14 py-1 rounded-xl transition-all cursor-pointer outline-none ${
               activeView === "admin"
                 ? "text-[#5277f7] dark:text-blue-400"
                 : "text-slate-400 hover:text-slate-800 dark:hover:text-white"
             }`}
           >
-            <Settings className="w-5 h-5 mb-0.5" />
-            <span className="text-[9px] font-semibold tracking-tight font-sans">Settings</span>
+            <Settings className="w-5 h-5 shrink-0" />
+            <span className="text-[10px] font-semibold tracking-tight font-sans leading-tight">Settings</span>
           </button>
           )}
         </nav>
@@ -4066,7 +4066,7 @@ export default function App() {
       {isAdmin && loggedInUser && !showAdminPanel && (
         <button
           onClick={() => { setShowAdminPanel(true); refreshUnread(); }}
-          className="fixed bottom-24 md:bottom-6 right-4 z-[60] flex items-center gap-2 bg-[#5277f7] hover:bg-[#4062dd] text-white font-bold text-xs px-4 py-3 rounded-2xl shadow-xl shadow-[#5277f7]/30 no-print cursor-pointer"
+          className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))] md:bottom-6 right-4 z-[60] flex items-center gap-2 bg-[#5277f7] hover:bg-[#4062dd] text-white font-bold text-xs px-4 py-3 rounded-2xl shadow-xl shadow-[#5277f7]/30 no-print cursor-pointer"
           title="Admin Roles & Settings"
         >
           <Shield className="w-4 h-4" />

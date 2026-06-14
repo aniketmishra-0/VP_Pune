@@ -59,7 +59,7 @@ export default function InstallPrompt() {
   if (!show) return null;
 
   return (
-    <div className="fixed bottom-20 md:bottom-6 left-4 right-4 md:left-auto md:right-6 md:max-w-sm z-[65] no-print">
+    <div className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom,0px))] md:bottom-6 left-4 right-4 md:left-auto md:right-6 md:max-w-sm z-[65] no-print">
       <div className="bg-white dark:bg-[#111827] border border-slate-200 dark:border-gray-800 rounded-2xl p-3 shadow-2xl flex items-center gap-3">
         <div className="w-10 h-10 rounded-xl bg-[#5277f7]/10 text-[#5277f7] flex items-center justify-center shrink-0">
           <Download className="w-5 h-5" />
