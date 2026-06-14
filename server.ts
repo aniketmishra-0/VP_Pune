@@ -122,23 +122,69 @@ function getStaffAccess(): Record<string, string[]> {
   return { ...envAccess, ...configAccess };
 }
 
+function splitCenters(raw: string): string[] {
+  return String(raw || "")
+    .split(",")
+    .map((c) => c.trim())
+    .filter(Boolean);
+}
+
+function isAllAccess(centers: string[]): boolean {
+  return centers.some((c) => c === "*" || c.toLowerCase() === "all");
+}
+
+// Returns the list of centers a user is restricted to, or null for "no restriction"
+// (i.e. full access — admins, or staff explicitly granted "*"/"all").
+//
+// Resolution order:
+//   1. Admins (env/role) always get full access.
+//   2. An explicit STAFF_ACCESS mapping in config.json (legacy / power override).
+//   3. The center assigned to the user in the roster (Staff/Teacher tab of the
+//      settings spreadsheet). This is what makes a staff member added via the
+//      Staff tab see ONLY their assigned center.
+//   4. No assigned center -> full access (nothing to scope by).
 function getUserAllowedCenters(email: string | undefined): string[] | null {
   if (!email) return null;
-  const staffAccess = getStaffAccess();
   const cleanEmail = email.trim().toLowerCase();
-  
+
+  // 1. Admins are never restricted.
+  if (getRoleForEmail(cleanEmail) === "admin") return null;
+
+  // 2. Explicit STAFF_ACCESS override (config.json / env).
+  const staffAccess = getStaffAccess();
   const matchedKey = Object.keys(staffAccess).find((key) => {
-    const emails = key.split(",").map(e => e.trim().toLowerCase());
+    const emails = key.split(",").map((e) => e.trim().toLowerCase());
     return emails.includes(cleanEmail);
   });
-  if (!matchedKey) return null;
-  
-  const centers = staffAccess[matchedKey];
-  if (!Array.isArray(centers)) return null;
-  
-  if (centers.some(c => c === "*" || c.toLowerCase() === "all")) return null;
-  
-  return centers.map(c => c.trim());
+  if (matchedKey) {
+    const centers = staffAccess[matchedKey];
+    if (Array.isArray(centers)) {
+      if (isAllAccess(centers)) return null;
+      const list = centers.map((c) => c.trim()).filter(Boolean);
+      if (list.length > 0) return list;
+    }
+  }
+
+  // 3. Fall back to the center assigned in the roster (Staff/Teacher tab).
+  const rosterCenters = splitCenters(getCenterForEmail(cleanEmail));
+  if (rosterCenters.length > 0 && !isAllAccess(rosterCenters)) {
+    return rosterCenters;
+  }
+
+  // 4. No scoping information available -> full access.
+  return null;
+}
+
+// Case-insensitive check + filter so roster center labels (e.g. "Pimple Saudagar
+// Tuition Center") line up with the centers resolved for each sheet even if the
+// casing/spacing differs slightly.
+function filterSheetsByCenters<T extends { center: string }>(
+  sheets: T[],
+  allowedCenters: string[] | null
+): T[] {
+  if (!allowedCenters) return sheets;
+  const allowedSet = new Set(allowedCenters.map((c) => c.trim().toLowerCase()));
+  return sheets.filter((s) => allowedSet.has(String(s.center || "").trim().toLowerCase()));
 }
 
 function verifyRequest(req: any, res: any, next: any) {
@@ -1590,9 +1636,7 @@ app.get("/api/config", verifyRequest, superAdminOnly, (req, res) => {
   const config = getAppConfig();
   const userEmail = req.headers["x-user-email"] as string;
   const allowedCenters = getUserAllowedCenters(userEmail);
-  const userSheets = allowedCenters 
-    ? memorySheets.filter(s => allowedCenters.includes(s.center))
-    : memorySheets;
+  const userSheets = filterSheetsByCenters(memorySheets, allowedCenters);
 
   res.json({
     env: {
@@ -1686,9 +1730,7 @@ app.get("/api/dropdowns", verifyRequest, async (req, res) => {
 
   const userEmail = req.headers["x-user-email"] as string;
   const allowedCenters = getUserAllowedCenters(userEmail);
-  const userSheets = allowedCenters 
-    ? memorySheets.filter(s => allowedCenters.includes(s.center))
-    : memorySheets;
+  const userSheets = filterSheetsByCenters(memorySheets, allowedCenters);
 
   // Calculate student/row stats dynamically for each sheet
   const sheetStats: Record<string, number> = {};
@@ -1823,9 +1865,7 @@ app.get("/api/student", verifyRequest, (req, res) => {
   try {
     const userEmail = req.headers["x-user-email"] as string;
     const allowedCenters = getUserAllowedCenters(userEmail);
-    const userSheets = allowedCenters 
-      ? memorySheets.filter(s => allowedCenters.includes(s.center))
-      : memorySheets;
+    const userSheets = filterSheetsByCenters(memorySheets, allowedCenters);
 
     const targetRegNos = new Set<string>();
     const profilesMap: Record<string, any> = {};
