@@ -2238,8 +2238,8 @@ export default function App() {
       )}
     </div>
 
-      {/* FOOTER */}
-      <footer className="w-full text-center py-6 border-t border-slate-200/60 dark:border-gray-800/60 mt-auto no-print">
+      {/* FOOTER (desktop only — hidden on mobile to avoid clashing with bottom nav) */}
+      <footer className="hidden md:block w-full text-center py-6 border-t border-slate-200/60 dark:border-gray-800/60 mt-auto no-print">
         <p className="text-slate-400 dark:text-gray-500 text-xs font-mono">
           For technical issues contact with:{" "}
           <a
