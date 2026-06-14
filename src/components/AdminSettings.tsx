@@ -315,16 +315,16 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({
       initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -15 }}
-      className="max-w-4xl mx-auto w-full space-y-5"
+      className="max-w-4xl mx-auto w-full space-y-3 sm:space-y-5"
     >
       <button
         onClick={onClose}
-        className="flex items-center gap-1.5 text-slate-400 hover:text-slate-800 dark:hover:text-white transition-colors text-xs font-bold font-display cursor-pointer"
+        className="flex items-center gap-1.5 text-slate-300 hover:text-white transition-colors text-xs font-bold font-display cursor-pointer"
       >
         <ArrowLeft className="w-3.5 h-3.5" /> Back to Dashboard
       </button>
 
-      <div className="bg-white dark:bg-[#111827] border border-slate-200/50 dark:border-gray-800/40 rounded-3xl p-5 md:p-6 shadow-sm">
+      <div className="bg-white dark:bg-[#111827] border border-slate-200/50 dark:border-gray-800/40 rounded-3xl p-4 md:p-6 shadow-sm">
         {/* Header */}
         <div className="flex items-center gap-3 pb-4 border-b border-slate-100 dark:border-gray-800">
           <div className="w-11 h-11 rounded-2xl bg-[#5277f7]/10 text-[#5277f7] flex items-center justify-center shrink-0">
@@ -334,17 +334,24 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({
             <span className="text-[9px] font-mono font-bold tracking-widest text-[#5277f7] uppercase block">
               Admin Control Center
             </span>
-            <h2 className="text-base font-extrabold text-slate-900 dark:text-white font-display leading-tight">
+            <h2 className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white font-display leading-tight">
               Settings &amp; Access Management
             </h2>
           </div>
-          <span className={`ml-auto text-[9px] font-mono font-bold px-2.5 py-1 rounded-full border inline-flex items-center gap-1 ${roleStyles[currentUser.role]}`}>
+          <span className={`ml-auto shrink-0 text-[9px] font-mono font-bold px-2.5 py-1 rounded-full border inline-flex items-center gap-1 ${roleStyles[currentUser.role]}`}>
             <RoleIcon role={currentUser.role} /> {currentUser.role.toUpperCase()}
           </span>
+          <button
+            onClick={onClose}
+            className="shrink-0 w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-gray-800/60 transition-all cursor-pointer"
+            title="Close"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
 
-        {/* Tabs */}
-        <div className="flex gap-1.5 overflow-x-auto custom-scrollbar py-3 -mx-1 px-1">
+        {/* Tabs — wrap on mobile so all are visible (no hidden horizontal scroll) */}
+        <div className="flex flex-wrap gap-1.5 py-3">
           {TABS.map((t) => {
             const Icon = t.icon;
             const active = tab === t.id;
@@ -352,7 +359,7 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({
               <button
                 key={t.id}
                 onClick={() => setTab(t.id)}
-                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[11px] font-bold whitespace-nowrap transition-all cursor-pointer font-display ${
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-[11px] font-bold whitespace-nowrap transition-all cursor-pointer font-display ${
                   active
                     ? "bg-[#5277f7] text-white shadow-md shadow-[#5277f7]/20"
                     : "text-slate-500 dark:text-gray-400 hover:bg-slate-100 dark:hover:bg-gray-800/60"

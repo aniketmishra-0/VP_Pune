@@ -4256,8 +4256,8 @@ export default function App() {
         </button>
       )}
       {isAdmin && loggedInUser && showAdminPanel && (
-        <div className="fixed inset-0 z-[70] bg-black/40 backdrop-blur-sm overflow-y-auto p-3 sm:p-6 no-print">
-          <div className="min-h-full flex items-start justify-center py-4">
+        <div className="fixed inset-0 z-[70] bg-black/50 backdrop-blur-sm overflow-y-auto p-2 sm:p-6 no-print">
+          <div className="min-h-full flex items-start justify-center py-2 sm:py-4">
             <AdminSettings
               currentUser={{ email: loggedInUser.email, name: loggedInUser.name, role: userRole, center: userCenter } as SessionUser}
               onClose={() => setShowAdminPanel(false)}
