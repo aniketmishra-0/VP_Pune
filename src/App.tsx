@@ -1435,7 +1435,7 @@ export default function App() {
 
   if (!loggedInUser && !isPublicReport) {
     return (
-      <div className={`min-h-screen font-sans flex flex-col justify-center items-center transition-all bg-[#4e74e6] dark:bg-[#0c0e17] p-4 text-slate-800 dark:text-slate-100 relative overflow-hidden ${theme === "dark" ? "dark" : ""}`}>
+      <div className={`min-h-screen font-sans flex flex-col md:justify-center items-center pt-10 md:pt-4 pb-10 transition-all bg-[#4e74e6] dark:bg-[#0c0e17] p-4 text-slate-800 dark:text-slate-100 relative overflow-hidden ${theme === "dark" ? "dark" : ""}`}>
         <FloatingEducationBg />
         <InstallPrompt />
         <div className="w-full max-w-md bg-white dark:bg-[#111827] rounded-[32px] shadow-2xl border border-slate-200/50 dark:border-gray-800 p-6 sm:p-8 flex flex-col items-center relative overflow-hidden z-10">
@@ -1525,12 +1525,9 @@ export default function App() {
     <div className={`w-screen font-sans flex flex-col transition-all text-slate-800 dark:text-slate-100 ${
       exportMode 
         ? "export-mode bg-white p-0 text-black min-h-screen h-auto overflow-visible" 
-        : "h-[100dvh] overflow-hidden justify-center items-center bg-[#4e74e6] dark:bg-[#0c0e17] p-0 sm:p-4 md:p-6"
+        : "h-[100dvh] overflow-hidden md:justify-center md:items-center bg-[#4e74e6] dark:bg-[#0c0e17] p-0 sm:p-4 md:p-6"
     } ${theme === "dark" && !exportMode ? "dark" : ""}`}>
       
-      {/* PWA install pill — only for staff/admins, never on print/PDF export */}
-      {!exportMode && loggedInUser && <InstallPrompt />}
-
       {/* INITIAL BLUR SPINNER IF SYSTEM DROP DOWNS PRE-LOAD */}
       {dropdowns.isLoading && activeView === "home" && (
         <div id="initialSplash" className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white dark:bg-[#0b0f19]">
@@ -1916,7 +1913,7 @@ export default function App() {
                 initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -15 }}
-                className="space-y-4 sm:space-y-8 py-2 sm:py-8 my-auto"
+                className="space-y-4 sm:space-y-8 py-2 sm:py-8 mt-2 sm:my-auto"
               >
                 {/* Brand Promos */}
                 <div className="text-center space-y-1.5 sm:space-y-4 max-w-2xl mx-auto py-1">
@@ -2051,7 +2048,7 @@ export default function App() {
                 initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -15 }}
-                className="max-w-md mx-auto w-full space-y-6 my-auto"
+                className="max-w-md mx-auto w-full space-y-4 sm:space-y-6 mt-2 sm:my-auto"
               >
                 {/* Back Link */}
                 <button
@@ -2100,7 +2097,7 @@ export default function App() {
                               placeholder="Search division..."
                               value={classSelectSearchQuery}
                               onChange={(e) => setClassSelectSearchQuery(e.target.value)}
-                              className="w-full bg-slate-50 dark:bg-gray-850/60 border border-slate-200/40 dark:border-gray-800/60 rounded-xl pl-8 pr-3 py-2 text-xs text-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-[#5277f7]"
+                              className="w-full bg-slate-50 dark:bg-gray-800 border border-slate-200/40 dark:border-gray-700/60 rounded-xl pl-8 pr-3 py-2 text-xs text-slate-800 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-[#5277f7]"
                               autoFocus
                             />
                             <Search className="w-4 h-4 text-slate-450 dark:text-gray-500 absolute left-2.5 top-1/2 -translate-y-1/2" />

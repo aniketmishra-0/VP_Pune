@@ -16,23 +16,18 @@ export default function StudentQR({
   name?: string;
   regNo?: string;
 }) {
-  const [dataUrl, setDataUrl] = useState<string>("");
   const [bigUrl, setBigUrl] = useState<string>("");
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  // Generate the big QR only when the modal actually opens — avoids
+  // re-encoding on every dashboard render (was causing visible flicker).
   useEffect(() => {
-    if (!url) {
-      setDataUrl("");
-      return;
-    }
-    QRCode.toDataURL(url, { width: 120, margin: 1, color: { dark: "#0f172a", light: "#ffffff" } })
-      .then(setDataUrl)
-      .catch(() => setDataUrl(""));
+    if (!open || !url || bigUrl) return;
     QRCode.toDataURL(url, { width: 640, margin: 2, color: { dark: "#0f172a", light: "#ffffff" } })
       .then(setBigUrl)
       .catch(() => setBigUrl(""));
-  }, [url]);
+  }, [open, url, bigUrl]);
 
   if (!url) return null;
 
@@ -55,27 +50,13 @@ export default function StudentQR({
 
   return (
     <>
-      {/* Sleek QR pill — clearly clickable, looks intentional */}
+      {/* Compact icon button — opens scannable QR modal */}
       <button
         onClick={() => setOpen(true)}
         title="Show QR — student scans to view their report"
-        className="group shrink-0 flex items-center gap-2 bg-white dark:bg-white rounded-2xl pl-1.5 pr-3 py-1.5 border border-white/30 shadow-lg hover:shadow-xl hover:scale-[1.03] transition-all cursor-pointer no-print"
+        className="shrink-0 w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 dark:bg-white/10 dark:hover:bg-white/20 border border-white/20 hover:border-white/40 text-white flex items-center justify-center transition-all hover:scale-105 cursor-pointer no-print"
       >
-        {dataUrl ? (
-          <img src={dataUrl} alt="Report QR" className="w-12 h-12 rounded-lg" />
-        ) : (
-          <div className="w-12 h-12 flex items-center justify-center text-slate-400 bg-slate-100 rounded-lg">
-            <QrCode className="w-6 h-6" />
-          </div>
-        )}
-        <div className="text-left leading-tight hidden sm:block">
-          <span className="block text-[8px] font-mono font-black tracking-widest text-[#5277f7] uppercase">
-            Scan
-          </span>
-          <span className="block text-[10px] font-extrabold text-slate-700">
-            View result
-          </span>
-        </div>
+        <QrCode className="w-5 h-5" strokeWidth={2.25} />
       </button>
 
       {/* Fullscreen scannable QR modal */}
