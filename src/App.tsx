@@ -259,6 +259,7 @@ export default function App() {
   // ---- Admin roles / settings panel (Google Sheet-backed) ----
   const [userRole, setUserRole] = useState<Role>(() => (localStorage.getItem("pwUserRole") as Role) || "staff");
   const [userCenter, setUserCenter] = useState<string>(() => localStorage.getItem("pwUserCenter") || "");
+  const [isSuperAdmin, setIsSuperAdmin] = useState<boolean>(() => localStorage.getItem("pwIsSuperAdmin") === "1");
   const [notifUnread, setNotifUnread] = useState<number>(0);
   const [showAdminPanel, setShowAdminPanel] = useState<boolean>(false);
   const isAdmin = userRole === "admin";
@@ -297,6 +298,8 @@ export default function App() {
         localStorage.setItem("pwUserRole", role);
         setUserCenter(data.center || "");
         localStorage.setItem("pwUserCenter", data.center || "");
+        setIsSuperAdmin(!!data.isSuperAdmin);
+        localStorage.setItem("pwIsSuperAdmin", data.isSuperAdmin ? "1" : "0");
         if (role === "admin") refreshUnread();
         return role;
       }
@@ -901,9 +904,11 @@ export default function App() {
     localStorage.removeItem("pwStaffToken");
     localStorage.removeItem("pwUserRole");
     localStorage.removeItem("pwUserCenter");
+    localStorage.removeItem("pwIsSuperAdmin");
     setLoggedInUser(null);
     setUserRole("staff");
     setUserCenter("");
+    setIsSuperAdmin(false);
     setNotifUnread(0);
     setShowAdminPanel(false);
     setActiveView("home");
@@ -1948,7 +1953,8 @@ export default function App() {
                 <RefreshCw className={`w-5 h-5 ${isRefreshing ? "animate-spin text-[#5277f7]" : ""}`} />
               </button>
 
-              {/* Configuration Settings Tab */}
+              {/* Configuration Settings Tab — super-admin only */}
+              {isSuperAdmin && (
               <button
                 onClick={() => { setActiveView("admin"); setErrorMessage(null); }}
                 className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all cursor-pointer ${
@@ -1960,6 +1966,7 @@ export default function App() {
               >
                 <Settings className="w-5 h-5" />
               </button>
+              )}
 
               {/* Workspace Color Preferences */}
               <button
@@ -3179,7 +3186,7 @@ export default function App() {
             </motion.div>
           )}
 
-          {activeView === "admin" && (
+          {activeView === "admin" && isSuperAdmin && (
             <motion.div
               key="admin"
               initial={{ opacity: 0, y: 15 }}
@@ -4223,7 +4230,8 @@ export default function App() {
             <span className="text-[9px] font-semibold tracking-tight font-sans">Sheets</span>
           </button>
 
-          {/* Config Settings Tab */}
+          {/* Config Settings Tab — super-admin only */}
+          {isSuperAdmin && (
           <button
             onClick={() => { setActiveView("admin"); setErrorMessage(null); }}
             className={`flex flex-col items-center justify-center w-14 h-12 rounded-xl transition-all cursor-pointer outline-none ${
@@ -4235,6 +4243,7 @@ export default function App() {
             <Settings className="w-5 h-5 mb-0.5" />
             <span className="text-[9px] font-semibold tracking-tight font-sans">Settings</span>
           </button>
+          )}
         </nav>
       )}
     </div>

@@ -989,6 +989,20 @@ function getRoleForEmail(email: string): Role {
   return user ? user.role : "staff";
 }
 
+// Super-admin = built-in/env admins only (code-defined, cannot be granted or removed via the sheet/panel).
+function isSuperAdmin(email: string): boolean {
+  return ENV_ADMIN_EMAILS.includes((email || "").trim().toLowerCase());
+}
+
+// Express middleware: allow only super-admins (use AFTER verifyRequest, which validates the token).
+function superAdminOnly(req: any, res: any, next: any) {
+  const email = String(req.headers["x-user-email"] || "").trim().toLowerCase();
+  if (!isSuperAdmin(email)) {
+    return res.status(403).json({ error: "Super-admin access required." });
+  }
+  next();
+}
+
 function getCenterForEmail(email: string): string {
   const e = (email || "").trim().toLowerCase();
   const user = appState.users[e];
@@ -1458,7 +1472,7 @@ app.get("/api/logo", async (req, res) => {
 });
 
 // API: Get current config mappings
-app.get("/api/config", verifyRequest, (req, res) => {
+app.get("/api/config", verifyRequest, superAdminOnly, (req, res) => {
   const config = getAppConfig();
   const userEmail = req.headers["x-user-email"] as string;
   const allowedCenters = getUserAllowedCenters(userEmail);
@@ -1494,7 +1508,7 @@ app.get("/api/config", verifyRequest, (req, res) => {
 });
 
 // API: Save custom configurations to local config file and trigger load
-app.post("/api/config", verifyRequest, async (req, res) => {
+app.post("/api/config", verifyRequest, superAdminOnly, async (req, res) => {
   try {
     const { SPREADSHEET_URL, SPREADSHEET_CENTERS, SUBSHEET_CENTERS, STAFF_ACCESS } = req.body;
     const newConfig: SavedConfig = {};
@@ -2045,14 +2059,14 @@ app.post("/api/auth/session", verifyRequest, (req, res) => {
   user.lastLogin = new Date().toISOString();
   saveAppState();
   logActivity(email, event === "resume" ? "session_resume" : "login", name ? `as ${name}` : undefined);
-  res.json({ email: user.email, name: user.name, role: user.role, center: user.center || "" });
+  res.json({ email: user.email, name: user.name, role: user.role, center: user.center || "", isSuperAdmin: isSuperAdmin(user.email) });
 });
 
 // Lightweight role lookup (no logging)
 app.get("/api/me", (req, res) => {
   const email = String(req.query.email || "").trim().toLowerCase();
   if (!email) return res.status(400).json({ error: "Email required." });
-  res.json({ email, role: getRoleForEmail(email), center: getCenterForEmail(email) });
+  res.json({ email, role: getRoleForEmail(email), center: getCenterForEmail(email), isSuperAdmin: isSuperAdmin(email) });
 });
 
 // --- Admin: list users ---

@@ -30,8 +30,8 @@
 /* Print Utilities and Bulletproof Media Rules */
 @media print {
   @page {
-    size: auto;
-    margin: 15mm 10mm 15mm 10mm;
+    size: landscape;
+    margin: 12mm 8mm 12mm 8mm;
   }
   
   html, body {
@@ -150,9 +150,72 @@
     border-top: 1px solid #e2e8f0 !important;
   }
 
-  tr, .print-card-shadow, .chart-container {
+  tr, .chart-container {
     page-break-inside: avoid !important;
     break-inside: avoid !important;
+  }
+
+  /* Keep summary/chart cards intact, but let the long data table flow across pages */
+  .print-card-shadow {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+  .print-card-shadow:has(table) {
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+  }
+
+  /* ============================================================
+     FORCE DESKTOP TABLE LAYOUT WHEN PRINTING (even on mobile)
+     On phones the report table normally collapses into tall
+     vertical cards which spill across multiple pages. During
+     print we force the same compact horizontal table the desktop
+     shows, so mobile PDFs match desktop exactly.
+     ============================================================ */
+  .md\:table {
+    display: table !important;
+    width: 100% !important;
+    table-layout: auto !important;
+  }
+  .md\:table-header-group {
+    display: table-header-group !important;
+  }
+  .md\:table-row-group {
+    display: table-row-group !important;
+  }
+  .md\:table-row {
+    display: table-row !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+    background: transparent !important;
+  }
+  .md\:table-cell {
+    display: table-cell !important;
+    vertical-align: middle !important;
+    padding: 3px 5px !important;
+    border: none !important;
+    white-space: normal !important;
+  }
+
+  /* Hide the mobile-only inline field labels (Date:, Class:, etc.) */
+  .md\:hidden {
+    display: none !important;
+  }
+
+  /* Tighten the table so all columns fit on one printed page width */
+  table {
+    width: 100% !important;
+    font-size: 8.5px !important;
+    border-collapse: collapse !important;
+  }
+  table th {
+    padding: 3px 5px !important;
+  }
+  /* Drop the fixed min-widths so columns shrink to fit the page instead of overflowing */
+  table th, table td {
+    min-width: 0 !important;
   }
 }
 
