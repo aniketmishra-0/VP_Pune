@@ -1038,16 +1038,19 @@ function genId(): string {
 }
 
 function logActivity(email: string, action: string, detail?: string) {
-  appState.activityLog.unshift({
+  const entry: ActivityEntry = {
     id: genId(),
     ts: new Date().toISOString(),
     email: email || "unknown",
     action,
     detail,
-  });
+  };
+  appState.activityLog.unshift(entry);
   if (appState.activityLog.length > MAX_LOG_ENTRIES) {
     appState.activityLog = appState.activityLog.slice(0, MAX_LOG_ENTRIES);
   }
+  // Queue for append-only persistence to the settings sheet (permanent footprint).
+  pendingLogRows.push(entry);
   saveAppState();
   flushLogsToSheet();
 }
@@ -1219,16 +1222,29 @@ function syncStaffAccessToRoster(staffAccess: Record<string, string[]>, addedBy:
   }
 }
 
-// Debounced flush of the activity log to its own sheet tab (best-effort, capped).
+// Debounced flush of the activity log to its own sheet tab (APPEND-ONLY).
+// We append only the rows produced during this process's lifetime so the sheet
+// keeps a permanent footprint and is never cleared/overwritten. On failure the
+// rows are requeued for the next attempt.
 let logFlushTimer: NodeJS.Timeout | null = null;
+let pendingLogRows: ActivityEntry[] = [];
 function flushLogsToSheet() {
   if (!settingsStore.isConfigured()) return;
   if (logFlushTimer) clearTimeout(logFlushTimer);
   logFlushTimer = setTimeout(async () => {
+    if (pendingLogRows.length === 0) return;
+    // Append in chronological order (oldest first) — pendingLogRows is already
+    // in the order events occurred.
+    const batch = pendingLogRows.slice();
+    pendingLogRows = [];
     try {
-      await settingsStore.writeActivityLog(appState.activityLog.slice(0, 500));
+      await settingsStore.appendActivityLog(
+        batch.map((e) => ({ ts: e.ts, email: e.email, action: e.action, detail: e.detail }))
+      );
     } catch (err) {
-      console.error("Failed to flush activity log to sheet:", (err as Error).message);
+      // Requeue so nothing is lost; retry on the next flush.
+      pendingLogRows = batch.concat(pendingLogRows);
+      console.error("Failed to append activity log to sheet:", (err as Error).message);
     }
   }, 3000);
 }
@@ -1275,8 +1291,34 @@ async function loadUsersFromSheet() {
   }
 }
 
+// Load the persisted activity log FROM the settings spreadsheet so the full
+// footprint survives container restarts (ephemeral hosting). The sheet is the
+// source of truth here; local in-memory state is just a cache.
+async function loadActivityLogFromSheet() {
+  if (!settingsStore.isConfigured()) return;
+  try {
+    const rows = await settingsStore.readActivityLog(MAX_LOG_ENTRIES);
+    if (rows.length === 0) return;
+    const entries: ActivityEntry[] = rows.map((r) => ({
+      id: genId(),
+      ts: r.ts,
+      email: r.email,
+      action: r.action,
+      detail: r.detail,
+    }));
+    // Newest first for the admin panel; tolerate sheets stored in either order.
+    entries.sort((a, b) => (a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : 0));
+    appState.activityLog = entries.slice(0, MAX_LOG_ENTRIES);
+    saveAppState();
+    console.log(`Loaded ${entries.length} activity-log entries from settings spreadsheet.`);
+  } catch (err) {
+    console.error("Failed to load activity log from settings sheet:", (err as Error).message);
+  }
+}
+
 loadAppState();
 loadUsersFromSheet();
+loadActivityLogFromSheet();
 
 // Count valid student rows within a single in-memory sheet
 function countSheetRows(sheet: MemorySheet): number {

@@ -246,6 +246,68 @@ export async function writeActivityLog(
   await rewriteTab(LOG_TAB, values, "D");
 }
 
+// Make sure the ActivityLog tab has its header row, without clobbering any
+// existing data rows. Only writes the header when the sheet is empty.
+async function ensureLogHeader(): Promise<void> {
+  let data: any;
+  try {
+    data = await apiFetch(`/values/${encodeURIComponent(LOG_TAB)}!A1:D1`);
+  } catch {
+    data = {};
+  }
+  const rows: any[][] = data.values || [];
+  const hasContent = rows.length > 0 && String(rows[0][0] || "").trim() !== "";
+  if (!hasContent) {
+    await apiFetch(`/values/${encodeURIComponent(LOG_TAB)}!A1?valueInputOption=RAW`, {
+      method: "PUT",
+      body: JSON.stringify({ values: [["Time", "Email", "Action", "Detail"]] }),
+    });
+  }
+}
+
+// Append-only write: adds new rows after the last filled row and NEVER clears
+// the tab. This makes the activity log a permanent footprint that survives
+// ephemeral container restarts (e.g. on Hugging Face Spaces).
+export async function appendActivityLog(
+  entries: { ts: string; email: string; action: string; detail?: string }[]
+): Promise<void> {
+  if (entries.length === 0) return;
+  await ensureTab(LOG_TAB);
+  await ensureLogHeader();
+  const values = entries.map((e) => [e.ts, e.email, e.action, e.detail || ""]);
+  await apiFetch(
+    `/values/${encodeURIComponent(LOG_TAB)}!A1:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
+    { method: "POST", body: JSON.stringify({ values }) }
+  );
+}
+
+// Read the persisted activity log back from the sheet (used on startup so the
+// admin panel shows full history even after the in-memory state was reset).
+export async function readActivityLog(
+  limit = 5000
+): Promise<{ ts: string; email: string; action: string; detail?: string }[]> {
+  await ensureTab(LOG_TAB);
+  let data: any;
+  try {
+    data = await apiFetch(`/values/${encodeURIComponent(LOG_TAB)}!A1:D50000`);
+  } catch {
+    return [];
+  }
+  const rows: any[][] = data.values || [];
+  let start = 0;
+  if (rows.length > 0 && /time/i.test(String(rows[0][0] || ""))) start = 1;
+  const out: { ts: string; email: string; action: string; detail?: string }[] = [];
+  for (let i = start; i < rows.length; i++) {
+    const r = rows[i] || [];
+    const ts = String(r[0] || "").trim();
+    const email = String(r[1] || "").trim();
+    if (!ts && !email) continue;
+    out.push({ ts, email, action: String(r[2] || "").trim(), detail: String(r[3] || "").trim() });
+  }
+  // Keep the most recent `limit` entries (rows may be chronological or not).
+  return out.slice(-limit);
+}
+
 export async function writeNotifications(
   notifs: { ts: string; type: string; title: string; message: string; read: boolean }[]
 ): Promise<void> {
