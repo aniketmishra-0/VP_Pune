@@ -1435,7 +1435,7 @@ export default function App() {
 
   if (!loggedInUser && !isPublicReport) {
     return (
-      <div className={`min-h-screen font-sans flex flex-col md:justify-center items-center pt-10 md:pt-4 pb-10 transition-all bg-[#4e74e6] dark:bg-[#0c0e17] p-4 text-slate-800 dark:text-slate-100 relative overflow-hidden ${theme === "dark" ? "dark" : ""}`}>
+      <div className={`min-h-screen font-sans flex flex-col justify-center items-center py-10 transition-all bg-[#4e74e6] dark:bg-[#0c0e17] p-4 text-slate-800 dark:text-slate-100 relative overflow-hidden ${theme === "dark" ? "dark" : ""}`}>
         <FloatingEducationBg />
         <InstallPrompt />
         <div className="w-full max-w-md bg-white dark:bg-[#111827] rounded-[32px] shadow-2xl border border-slate-200/50 dark:border-gray-800 p-6 sm:p-8 flex flex-col items-center relative overflow-hidden z-10">
@@ -3991,7 +3991,7 @@ export default function App() {
 
       {/* MOBILE SPECIAL BOTTOM BAR */}
       {!exportMode && loggedInUser && (
-        <nav className="md:hidden flex fixed bottom-0 left-0 right-0 z-50 bg-white/95 dark:bg-[#111827]/95 backdrop-blur-md h-[calc(4rem+env(safe-area-inset-bottom,0px))] pb-[env(safe-area-inset-bottom,0px)] border-t border-slate-200/50 dark:border-gray-800/40 items-center justify-around px-2 shadow-[0_-8px_30px_rgb(0,0,0,0.04)] select-none no-print">
+        <nav className="md:hidden flex fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-[#111827] h-[calc(4rem+env(safe-area-inset-bottom,0px))] pb-[env(safe-area-inset-bottom,0px)] border-t border-slate-200/50 dark:border-gray-800/40 items-center justify-around px-2 shadow-[0_-8px_30px_rgb(0,0,0,0.04)] select-none no-print">
           {/* Home Tab */}
           <button
             onClick={() => { setActiveView("home"); setErrorMessage(null); }}
