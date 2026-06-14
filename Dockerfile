@@ -1,8 +1,6 @@
 # Hugging Face Spaces (Docker SDK) — Node/Express + Vite SPA
+# The official node image already ships a "node" user at UID 1000 (what HF expects).
 FROM node:20-slim
-
-# Non-root user (Hugging Face runs Spaces as uid 1000)
-RUN useradd -m -u 1000 user
 
 WORKDIR /app
 
@@ -15,13 +13,13 @@ COPY . .
 RUN npm run build
 
 # Make the working dir writable for the runtime user (local JSON cache, etc.)
-RUN chown -R user:user /app
+RUN chown -R node:node /app
 
 ENV NODE_ENV=production \
     PORT=7860 \
-    HOME=/home/user
+    HOME=/home/node
 
-USER user
+USER node
 
 EXPOSE 7860
 
