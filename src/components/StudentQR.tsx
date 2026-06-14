@@ -55,75 +55,87 @@ export default function StudentQR({
 
   return (
     <>
-      {/* Small QR thumbnail (click to enlarge for scanning) */}
+      {/* Sleek QR pill — clearly clickable, looks intentional */}
       <button
         onClick={() => setOpen(true)}
-        title="Show QR — scan to view this report"
-        className="shrink-0 rounded-xl border border-white/20 bg-white p-1 hover:scale-105 transition-transform cursor-pointer no-print"
+        title="Show QR — student scans to view their report"
+        className="group shrink-0 flex items-center gap-2 bg-white dark:bg-white rounded-2xl pl-1.5 pr-3 py-1.5 border border-white/30 shadow-lg hover:shadow-xl hover:scale-[1.03] transition-all cursor-pointer no-print"
       >
         {dataUrl ? (
-          <img src={dataUrl} alt="Report QR" className="w-12 h-12 rounded-md" />
+          <img src={dataUrl} alt="Report QR" className="w-12 h-12 rounded-lg" />
         ) : (
-          <div className="w-12 h-12 flex items-center justify-center text-slate-400">
+          <div className="w-12 h-12 flex items-center justify-center text-slate-400 bg-slate-100 rounded-lg">
             <QrCode className="w-6 h-6" />
           </div>
         )}
+        <div className="text-left leading-tight hidden sm:block">
+          <span className="block text-[8px] font-mono font-black tracking-widest text-[#5277f7] uppercase">
+            Scan
+          </span>
+          <span className="block text-[10px] font-extrabold text-slate-700">
+            View result
+          </span>
+        </div>
       </button>
 
-      {/* Fullscreen modal with large scannable QR */}
+      {/* Fullscreen scannable QR modal */}
       {open && (
         <div
-          className="fixed inset-0 z-[80] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 no-print"
+          className="fixed inset-0 z-[80] bg-black/75 backdrop-blur-md flex items-center justify-center p-4 no-print animate-fade-in"
           onClick={() => setOpen(false)}
         >
           <div
-            className="bg-white dark:bg-[#111827] rounded-3xl p-6 max-w-sm w-full text-center relative shadow-2xl"
+            className="bg-white dark:bg-[#111827] rounded-3xl p-6 sm:p-8 max-w-sm w-full text-center relative shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <button
               onClick={() => setOpen(false)}
-              className="absolute top-4 right-4 w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:bg-slate-100 dark:hover:bg-gray-800 cursor-pointer"
+              className="absolute top-4 right-4 w-9 h-9 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-gray-800 cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
 
-            <div className="flex items-center justify-center gap-2 mb-1">
-              <QrCode className="w-4 h-4 text-[#5277f7]" />
-              <span className="text-[10px] font-mono font-bold tracking-widest text-[#5277f7] uppercase">
-                Scan to view result
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#5277f7]/10 border border-[#5277f7]/20 mb-4">
+              <QrCode className="w-3.5 h-3.5 text-[#5277f7]" />
+              <span className="text-[10px] font-mono font-black tracking-widest text-[#5277f7] uppercase">
+                Private Result QR
               </span>
             </div>
+
             {name && (
-              <h3 className="text-base font-extrabold text-slate-900 dark:text-white font-display mb-4">
+              <h3 className="text-lg font-extrabold text-slate-900 dark:text-white font-display mb-1 leading-tight">
                 {name}
               </h3>
             )}
+            {regNo && (
+              <p className="text-[10px] font-mono text-slate-400 mb-5">Reg No: {regNo}</p>
+            )}
 
-            <div className="bg-white rounded-2xl p-3 inline-block border border-slate-200 shadow-sm">
+            <div className="bg-white rounded-2xl p-4 inline-block border-2 border-slate-100 shadow-inner">
               {bigUrl ? (
-                <img src={bigUrl} alt="Report QR code" className="w-56 h-56" />
+                <img src={bigUrl} alt="Report QR code" className="w-60 h-60" />
               ) : (
-                <div className="w-56 h-56 flex items-center justify-center text-slate-300">
-                  <QrCode className="w-16 h-16" />
+                <div className="w-60 h-60 flex items-center justify-center text-slate-300">
+                  <QrCode className="w-20 h-20" />
                 </div>
               )}
             </div>
 
-            <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-4 leading-relaxed">
-              Student scans this to open <span className="font-bold">only their own</span> report — no login needed.
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-5 leading-relaxed px-2">
+              Bachcha apne phone se ye QR scan karega — sirf <span className="font-bold text-slate-700 dark:text-white">apna result</span> dikhega. Login ki zaroorat nahi.
             </p>
 
-            <div className="flex gap-2 mt-4">
+            <div className="flex gap-2 mt-5">
               <button
                 onClick={copyLink}
-                className="flex-1 flex items-center justify-center gap-1.5 bg-slate-100 dark:bg-gray-800 hover:bg-slate-200 dark:hover:bg-gray-700 text-slate-700 dark:text-gray-200 font-bold py-2.5 rounded-xl text-[11px] uppercase tracking-wider font-display cursor-pointer transition-colors"
+                className="flex-1 flex items-center justify-center gap-1.5 bg-slate-100 dark:bg-gray-800 hover:bg-slate-200 dark:hover:bg-gray-700 text-slate-700 dark:text-gray-200 font-bold py-3 rounded-xl text-[11px] uppercase tracking-wider font-display cursor-pointer transition-colors"
               >
                 {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
                 {copied ? "Copied" : "Copy Link"}
               </button>
               <button
                 onClick={downloadQR}
-                className="flex-1 flex items-center justify-center gap-1.5 bg-[#5277f7] hover:bg-[#4062dd] text-white font-bold py-2.5 rounded-xl text-[11px] uppercase tracking-wider font-display cursor-pointer transition-colors"
+                className="flex-1 flex items-center justify-center gap-1.5 bg-[#5277f7] hover:bg-[#4062dd] text-white font-bold py-3 rounded-xl text-[11px] uppercase tracking-wider font-display cursor-pointer transition-colors shadow-md shadow-[#5277f7]/30"
               >
                 <Download className="w-3.5 h-3.5" /> Download
               </button>

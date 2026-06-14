@@ -899,22 +899,17 @@ export default function App() {
   }, []);
 
   const handleLogout = () => {
-    localStorage.removeItem("pwUserEmail");
-    localStorage.removeItem("pwUserName");
-    localStorage.removeItem("pwUserPicture");
-    localStorage.removeItem("pwStaffToken");
-    localStorage.removeItem("pwUserRole");
-    localStorage.removeItem("pwUserCenter");
-    localStorage.removeItem("pwIsSuperAdmin");
-    setLoggedInUser(null);
-    setUserRole("staff");
-    setUserCenter("");
-    setIsSuperAdmin(false);
-    setNotifUnread(0);
-    setShowAdminPanel(false);
-    setActiveView("home");
-    setStudentsPayload(null);
-    setShowProfileModal(false);
+    try {
+      localStorage.removeItem("pwUserEmail");
+      localStorage.removeItem("pwUserName");
+      localStorage.removeItem("pwUserPicture");
+      localStorage.removeItem("pwStaffToken");
+      localStorage.removeItem("pwUserRole");
+      localStorage.removeItem("pwUserCenter");
+      localStorage.removeItem("pwIsSuperAdmin");
+    } catch (_) {}
+    // Force a clean reload to the root so all state, caches and effects reset.
+    window.location.href = window.location.origin + "/";
   };
 
   // Handle Autocomplete filtering for Student Names
@@ -1076,6 +1071,20 @@ export default function App() {
       setIsRefreshing(false);
     }
   };
+
+  // Auto-refresh student data every 5 minutes silently while a staff/admin is logged in.
+  // No spinner, no error popup — just keeps the cache warm so new students/exams appear automatically.
+  useEffect(() => {
+    if (!loggedInUser) return;
+    const id = setInterval(async () => {
+      try {
+        await securedFetch("/api/refresh", { method: "POST" });
+        await fetchDropdowns();
+      } catch (_) {}
+    }, 5 * 60 * 1000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loggedInUser]);
 
   // Perform search query
   const handlePerformSearch = async (overrideQuery?: string) => {
@@ -1395,9 +1404,27 @@ export default function App() {
     if (isSearching || !studentsPayload) {
       return (
         <div className={`min-h-screen font-sans flex flex-col justify-center items-center bg-slate-50 dark:bg-[#0c0e17] p-4 text-slate-800 dark:text-slate-100 ${theme === "dark" ? "dark" : ""}`}>
-          <div className="text-center space-y-4">
+          <div className="text-center space-y-4 max-w-xs">
             <div className="w-12 h-12 border-4 border-[#5277f7] border-t-transparent rounded-full animate-spin mx-auto"></div>
             <p className="text-sm text-slate-500 dark:text-gray-400 font-medium font-sans animate-pulse">Loading shared report card...</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="text-[11px] text-[#5277f7] font-bold underline cursor-pointer"
+            >
+              Stuck? Tap to retry
+            </button>
+          </div>
+        </div>
+      );
+    }
+    // Public payload loaded but no student matched — show explicit error instead of falling through silently
+    if (!studentsPayload.students || studentsPayload.students.length === 0) {
+      return (
+        <div className={`min-h-screen font-sans flex flex-col justify-center items-center bg-slate-50 dark:bg-[#0c0e17] p-4 text-slate-800 dark:text-slate-100 ${theme === "dark" ? "dark" : ""}`}>
+          <div className="w-full max-w-md bg-white dark:bg-[#111827] rounded-[32px] p-6 shadow-xl border border-slate-200/50 dark:border-gray-800 text-center space-y-4">
+            <div className="w-12 h-12 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-2xl flex items-center justify-center mx-auto text-xl font-bold">!</div>
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white">Report not found</h3>
+            <p className="text-sm text-slate-500 dark:text-gray-400">This report link is invalid or the student record isn't available yet. Ask staff for a fresh QR.</p>
           </div>
         </div>
       );
