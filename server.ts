@@ -572,53 +572,79 @@ function getSheetDirectUrl(sourceUrl: string, sheetName: string, gid?: string): 
     }
     return `${baseUrl}/pubhtml`;
   }
-  
+
   const match = sourceUrl.match(/\/d\/([a-zA-Z0-9-_]+)/);
   if (match) {
     const spreadsheetId = match[1];
+    const editBase = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
     if (gid) {
-      return `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit#gid=${gid}`;
+      return `${editBase}#gid=${gid}`;
     }
-    return `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
+    // Fallback when the GID lookup failed: Google Sheets honours the
+    // ?range='SheetName'!A1 parameter and switches to that tab on load.
+    if (sheetName) {
+      const escaped = sheetName.replace(/'/g, "''");
+      return `${editBase}?range=${encodeURIComponent(`'${escaped}'!A1`)}`;
+    }
+    return editBase;
   }
-  
+
   return sourceUrl;
 }
 
 async function fetchSheetGids(url: string): Promise<Record<string, string>> {
   const gidsMap: Record<string, string> = {};
-  try {
-    let pubhtmlUrl = "";
-    if (url.includes("/d/e/2PACX-")) {
-      pubhtmlUrl = url.split("/pub")[0] + "/pubhtml";
-    } else {
-      const match = url.match(/\/d\/([a-zA-Z0-9-_]+)/);
-      if (match) {
-        pubhtmlUrl = `https://docs.google.com/spreadsheets/d/${match[1]}/pubhtml`;
-      }
+
+  // Both /pubhtml (published-to-web) and /htmlview (anyone-with-link viewable)
+  // pages embed the same `items.push({name: "...", pageUrl: "...", gid: "..."})`
+  // JS pattern, so we can scan either with the same regex.
+  const candidateUrls: string[] = [];
+  if (url.includes("/d/e/2PACX-")) {
+    const baseUrl = url.split("/pub")[0];
+    candidateUrls.push(`${baseUrl}/pubhtml`);
+  } else {
+    const match = url.match(/\/d\/([a-zA-Z0-9-_]+)/);
+    if (match) {
+      const id = match[1];
+      // Try pubhtml first (covers sheets that ARE published to web), then
+      // fall back to htmlview which works for plain "Anyone with link" sheets.
+      candidateUrls.push(`https://docs.google.com/spreadsheets/d/${id}/pubhtml`);
+      candidateUrls.push(`https://docs.google.com/spreadsheets/d/${id}/htmlview`);
     }
-    if (pubhtmlUrl) {
-      console.log(`Fetching pubhtml for GID mapping from: ${pubhtmlUrl}`);
-      const pubhtmlRes = await fetch(pubhtmlUrl);
-      if (pubhtmlRes.ok) {
-        const pubhtmlText = await pubhtmlRes.text();
-        const regex = /name:\s*"((?:[^"\\]|\\.)*)",\s*pageUrl:\s*"[^"]*",\s*gid:\s*"([^"]+)"/g;
-        let match;
-        while ((match = regex.exec(pubhtmlText)) !== null) {
-          const name = match[1].replace(/\\x26/g, '&')
-                               .replace(/\\x27/g, "'")
-                               .replace(/\\x22/g, '"')
-                               .replace(/\\x2f/g, '/')
-                               .replace(/\\x5c/g, '\\')
-                               .replace(/\\u0026/g, '&');
-          gidsMap[name] = match[2];
-        }
-        console.log(`Successfully parsed ${Object.keys(gidsMap).length} GIDs from pubhtml.`);
-      }
-    }
-  } catch (err: any) {
-    console.warn("Failed to fetch/parse GID mapping from pubhtml:", err.message || err);
   }
+
+  const regex = /name:\s*"((?:[^"\\]|\\.)*)",\s*pageUrl:\s*"[^"]*",\s*gid:\s*"([^"]+)"/g;
+
+  for (const candidate of candidateUrls) {
+    try {
+      console.log(`Fetching sheet/GID mapping from: ${candidate}`);
+      const res = await fetch(candidate, { redirect: "follow" });
+      if (!res.ok) {
+        console.warn(`GID source ${candidate} returned HTTP ${res.status}`);
+        continue;
+      }
+      const text = await res.text();
+      let m;
+      while ((m = regex.exec(text)) !== null) {
+        const name = m[1]
+          .replace(/\\x26/g, "&")
+          .replace(/\\x27/g, "'")
+          .replace(/\\x22/g, '"')
+          .replace(/\\x2f/g, "/")
+          .replace(/\\x5c/g, "\\")
+          .replace(/\\u0026/g, "&");
+        gidsMap[name] = m[2];
+      }
+      regex.lastIndex = 0;
+      if (Object.keys(gidsMap).length > 0) {
+        console.log(`Parsed ${Object.keys(gidsMap).length} sheet GIDs from ${candidate}.`);
+        break;
+      }
+    } catch (err: any) {
+      console.warn(`Failed to fetch/parse GID mapping from ${candidate}:`, err.message || err);
+    }
+  }
+
   return gidsMap;
 }
 
