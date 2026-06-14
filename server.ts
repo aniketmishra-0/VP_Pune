@@ -1233,12 +1233,12 @@ function flushLogsToSheet() {
   if (logFlushTimer) clearTimeout(logFlushTimer);
   logFlushTimer = setTimeout(async () => {
     if (pendingLogRows.length === 0) return;
-    // Append in chronological order (oldest first) — pendingLogRows is already
-    // in the order events occurred.
+    // pendingLogRows is in the order events occurred (oldest -> newest);
+    // prependActivityLog inserts them below the header newest-first.
     const batch = pendingLogRows.slice();
     pendingLogRows = [];
     try {
-      await settingsStore.appendActivityLog(
+      await settingsStore.prependActivityLog(
         batch.map((e) => ({ ts: e.ts, email: e.email, action: e.action, detail: e.detail }))
       );
     } catch (err) {

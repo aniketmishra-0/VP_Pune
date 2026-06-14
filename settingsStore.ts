@@ -265,20 +265,57 @@ async function ensureLogHeader(): Promise<void> {
   }
 }
 
-// Append-only write: adds new rows after the last filled row and NEVER clears
-// the tab. This makes the activity log a permanent footprint that survives
-// ephemeral container restarts (e.g. on Hugging Face Spaces).
-export async function appendActivityLog(
+// Look up the numeric sheetId (gid) for a tab title — needed for row-insert ops.
+async function getSheetId(title: string): Promise<number | null> {
+  const meta = await apiFetch("");
+  const sheet = (meta.sheets || []).find((s: any) => s.properties.title === title);
+  return sheet ? sheet.properties.sheetId : null;
+}
+
+// Prepend new rows directly below the header so the NEWEST entry is always on
+// top and older ones shift down. The tab is never cleared, so the full footprint
+// survives ephemeral container restarts (e.g. on Hugging Face Spaces).
+export async function prependActivityLog(
   entries: { ts: string; email: string; action: string; detail?: string }[]
 ): Promise<void> {
   if (entries.length === 0) return;
   await ensureTab(LOG_TAB);
   await ensureLogHeader();
-  const values = entries.map((e) => [e.ts, e.email, e.action, e.detail || ""]);
-  await apiFetch(
-    `/values/${encodeURIComponent(LOG_TAB)}!A1:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
-    { method: "POST", body: JSON.stringify({ values }) }
-  );
+
+  // Within this batch, write newest first (caller passes oldest -> newest).
+  const ordered = [...entries].reverse();
+  const values = ordered.map((e) => [e.ts, e.email, e.action, e.detail || ""]);
+
+  const sheetId = await getSheetId(LOG_TAB);
+  if (sheetId == null) {
+    // Fallback: append to the bottom if we can't resolve the sheetId.
+    await apiFetch(
+      `/values/${encodeURIComponent(LOG_TAB)}!A1:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
+      { method: "POST", body: JSON.stringify({ values }) }
+    );
+    return;
+  }
+
+  // Insert N blank rows right after the header row (0-based index 1), shifting
+  // existing data down, then fill the new rows.
+  await apiFetch(":batchUpdate", {
+    method: "POST",
+    body: JSON.stringify({
+      requests: [
+        {
+          insertDimension: {
+            range: { sheetId, dimension: "ROWS", startIndex: 1, endIndex: 1 + values.length },
+            inheritFromBefore: false,
+          },
+        },
+      ],
+    }),
+  });
+
+  await apiFetch(`/values/${encodeURIComponent(LOG_TAB)}!A2?valueInputOption=RAW`, {
+    method: "PUT",
+    body: JSON.stringify({ values }),
+  });
 }
 
 // Read the persisted activity log back from the sheet (used on startup so the
