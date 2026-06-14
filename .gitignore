@@ -6,3 +6,5 @@ coverage/
 *.log
 .env*
 !.env.example
+# Persisted runtime state (users, roles, audit log, notifications)
+data/

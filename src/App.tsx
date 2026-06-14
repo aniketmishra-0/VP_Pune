@@ -21,9 +21,11 @@ import {
   Check,
   GraduationCap,
   Share2,
+  Settings,
   X,
 } from "lucide-react";
 import { Student, Dropdowns, TestRecord, Profile } from "./types";
+import AdminSettings, { Role, SessionUser } from "./components/AdminSettings";
 
 function PWLogo({ size = "h-10 w-10", textSize = "text-sm", className = "" }: { size?: string, textSize?: string, className?: string }) {
   const [hasError, setHasError] = React.useState(false);
@@ -110,7 +112,7 @@ export default function App() {
   const [theme, setTheme] = useState<"light" | "dark">(
     () => (localStorage.getItem("theme") as "light" | "dark") || "light"
   );
-  const [activeView, setActiveView] = useState<"home" | "input" | "batchList" | "dashboard" | "sheetsList">("home");
+  const [activeView, setActiveView] = useState<"home" | "input" | "batchList" | "dashboard" | "sheetsList" | "settings">("home");
   const [searchType, setSearchType] = useState<"batch" | "name" | "reg" | null>(null);
   const [sheetFilterQuery, setSheetFilterQuery] = useState<string>("");
   
@@ -124,6 +126,46 @@ export default function App() {
   const [loginError, setLoginError] = useState<string | null>(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+
+  // Role-based access control + admin notifications
+  const [userRole, setUserRole] = useState<Role>(() => (localStorage.getItem("pwUserRole") as Role) || "staff");
+  const [userCenter, setUserCenter] = useState<string>(() => localStorage.getItem("pwUserCenter") || "");
+  const [notifUnread, setNotifUnread] = useState<number>(0);
+  const isAdmin = userRole === "admin";
+
+  // Establish a session with the backend: records audit log + returns the user's role
+  const establishSession = async (email: string, name: string | undefined, event: "login" | "resume") => {
+    try {
+      const res = await fetch("/api/auth/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, name, event }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const role: Role = data.role || "staff";
+        setUserRole(role);
+        localStorage.setItem("pwUserRole", role);
+        setUserCenter(data.center || "");
+        localStorage.setItem("pwUserCenter", data.center || "");
+        return role;
+      }
+    } catch (err) {
+      console.error("Session establish failed:", err);
+    }
+    return "staff" as Role;
+  };
+
+  // Poll unread notification count for admins
+  const refreshUnread = async (email: string) => {
+    try {
+      const res = await fetch("/api/admin/notifications", { headers: { "x-user-email": email } });
+      if (res.ok) {
+        const data = await res.json();
+        setNotifUnread(data.unread || 0);
+      }
+    } catch (_) {}
+  };
 
   // Input fields
   const [selectedBatch, setSelectedBatch] = useState<string>("");
@@ -199,6 +241,13 @@ export default function App() {
 
   useEffect(() => {
     fetchDropdowns();
+
+    // Resume an existing session (records audit + refreshes role) when already logged in
+    if (loggedInUser?.email) {
+      establishSession(loggedInUser.email, loggedInUser.name, "resume").then((role) => {
+        if (role === "admin") refreshUnread(loggedInUser.email);
+      });
+    }
 
     // Support sharing deep-linking via query parameters on mount
     const params = new URLSearchParams(window.location.search);
@@ -310,6 +359,10 @@ export default function App() {
         setActiveView("home");
         setIsLoggingIn(false);
         setLoginError(null);
+        // Register the session: writes audit log entry + resolves role
+        establishSession(email, name, "login").then((role) => {
+          if (role === "admin") refreshUnread(email);
+        });
       } else if (event.data?.type === "GOOGLE_AUTH_FAILURE") {
         setLoginError(event.data.error || "Google authentication rejected.");
         setIsLoggingIn(false);
@@ -324,7 +377,12 @@ export default function App() {
     localStorage.removeItem("pwUserEmail");
     localStorage.removeItem("pwUserName");
     localStorage.removeItem("pwUserPicture");
+    localStorage.removeItem("pwUserRole");
+    localStorage.removeItem("pwUserCenter");
     setLoggedInUser(null);
+    setUserRole("staff");
+    setUserCenter("");
+    setNotifUnread(0);
     setActiveView("home");
     setStudentsPayload(null);
     setShowProfileModal(false);
@@ -379,7 +437,10 @@ export default function App() {
     setIsRefreshing(true);
     setErrorMessage(null);
     try {
-      const response = await fetch("/api/refresh", { method: "POST" });
+      const response = await fetch("/api/refresh", {
+        method: "POST",
+        headers: loggedInUser?.email ? { "x-user-email": loggedInUser.email } : undefined,
+      });
       if (!response.ok) {
         let errMsg = "Sync failed. Check network link.";
         try {
@@ -392,6 +453,7 @@ export default function App() {
       
       // Pull fresh data
       await fetchDropdowns();
+      if (isAdmin && loggedInUser?.email) refreshUnread(loggedInUser.email);
       setIsRefreshing(false);
     } catch (err: any) {
       setErrorMessage(err.message || "Manual database synchronization failed.");
@@ -423,7 +485,9 @@ export default function App() {
 
     try {
       const encodeQuery = encodeURIComponent(finalQuery.trim());
-      const res = await fetch(`/api/student?query=${encodeQuery}`);
+      const res = await fetch(`/api/student?query=${encodeQuery}`, {
+        headers: loggedInUser?.email ? { "x-user-email": loggedInUser.email } : undefined,
+      });
       if (!res.ok) {
         const errorData = await res.json();
         throw new Error(errorData.error || "No students found matching your criteria.");
@@ -832,6 +896,25 @@ export default function App() {
                 {theme === "light" ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4 text-amber-400" />}
               </button>
 
+              {isAdmin && (
+                <button
+                  onClick={() => {
+                    setActiveView("settings");
+                    setErrorMessage(null);
+                    if (loggedInUser?.email) refreshUnread(loggedInUser.email);
+                  }}
+                  className="relative w-9 h-9 rounded-xl flex items-center justify-center text-slate-400 hover:text-[#5277f7] hover:bg-slate-50 dark:hover:bg-gray-800/50 transition-all cursor-pointer"
+                  title="Admin Settings"
+                >
+                  <Settings className="w-4 h-4" />
+                  {notifUnread > 0 && (
+                    <span className="absolute top-0.5 right-0.5 min-w-[14px] h-[14px] px-1 rounded-full bg-rose-500 text-white text-[7px] font-black flex items-center justify-center leading-none">
+                      {notifUnread > 9 ? "9+" : notifUnread}
+                    </span>
+                  )}
+                </button>
+              )}
+
               <div className="relative">
                 <button
                   onClick={() => setShowProfileModal(!showProfileModal)}
@@ -1008,6 +1091,30 @@ export default function App() {
               >
                 {theme === "light" ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5 text-amber-400" />}
               </button>
+
+              {/* Admin-only Settings (with unread notification badge) */}
+              {isAdmin && (
+                <button
+                  onClick={() => {
+                    setActiveView("settings");
+                    setErrorMessage(null);
+                    if (loggedInUser?.email) refreshUnread(loggedInUser.email);
+                  }}
+                  className={`relative w-12 h-12 rounded-2xl flex items-center justify-center transition-all cursor-pointer ${
+                    activeView === "settings"
+                      ? "bg-[#5277f7] text-white shadow-lg shadow-[#5277f7]/20"
+                      : "text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-gray-800/60"
+                  }`}
+                  title="Admin Settings"
+                >
+                  <Settings className="w-5 h-5" />
+                  {notifUnread > 0 && (
+                    <span className="absolute top-1.5 right-1.5 min-w-[16px] h-[16px] px-1 rounded-full bg-rose-500 text-white text-[8px] font-black flex items-center justify-center leading-none">
+                      {notifUnread > 9 ? "9+" : notifUnread}
+                    </span>
+                  )}
+                </button>
+              )}
             </nav>
 
             {/* Bottom Active Staff Profile Popover Toggle */}
@@ -1128,7 +1235,17 @@ export default function App() {
           )}
 
           <AnimatePresence mode="wait">
-            
+
+            {/* ADMIN SETTINGS VIEW (admins only) */}
+            {activeView === "settings" && isAdmin && loggedInUser && (
+              <AdminSettings
+                key="settings"
+                currentUser={{ email: loggedInUser.email, name: loggedInUser.name, role: userRole, center: userCenter } as SessionUser}
+                onClose={() => setActiveView("home")}
+                onUnreadChange={(n) => setNotifUnread(n)}
+              />
+            )}
+
             {/* HOME VIEW: Dribbble Aesthetic layout */}
             {activeView === "home" && (
               <motion.div
