@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { motion } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 import {
   Users,
   Shield,
@@ -15,6 +15,8 @@ import {
   RefreshCw,
   ArrowLeft,
   AlertCircle,
+  AlertTriangle,
+  ChevronDown,
   Eye,
   Pencil,
   ShieldCheck,
@@ -135,6 +137,17 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({
   const [bulkCenter, setBulkCenter] = useState("");
   const [bulkResult, setBulkResult] = useState<{ added: string[]; updated: string[]; invalid: string[] } | null>(null);
 
+  // Per-row expand/collapse state for the User Roles list
+  const [expandedEmail, setExpandedEmail] = useState<string | null>(null);
+  // User pending deletion (drives the confirmation dialog)
+  const [pendingDelete, setPendingDelete] = useState<AppUser | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const toggleExpand = useCallback(
+    (email: string) => setExpandedEmail((cur) => (cur === email ? null : email)),
+    []
+  );
+
   const authHeaders = useCallback(
     (extra: Record<string, string> = {}) => ({
       "x-user-email": currentUser.email,
@@ -214,6 +227,16 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({
     else if (tab === "notifications") loadNotifications();
     else if (tab === "sync") loadSync();
   }, [tab, loadUsers, loadActivity, loadNotifications, loadSync]);
+
+  // ESC closes the delete confirmation dialog
+  useEffect(() => {
+    if (!pendingDelete) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPendingDelete(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [pendingDelete]);
 
   const changeRole = async (email: string, role: Role, center?: string) => {
     setError(null);
@@ -404,66 +427,168 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({
             {users.length === 0 && !loading && (
               <p className="text-xs text-slate-400 py-6 text-center">No users yet.</p>
             )}
-            {users.map((u) => (
-              <div
-                key={u.email}
-                className="flex flex-col gap-2.5 p-3.5 rounded-2xl bg-slate-50 dark:bg-gray-800/40 border border-slate-100 dark:border-gray-800"
-              >
-                <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-xs text-slate-800 dark:text-white truncate">
-                        {u.name || u.email.split("@")[0]}
-                      </span>
-                      {u.email === currentUser.email && (
-                        <span className="text-[8px] font-mono font-bold px-1.5 py-0.5 rounded bg-[#5277f7]/10 text-[#5277f7]">YOU</span>
-                      )}
+            {users.map((u) => {
+              const isExpanded = expandedEmail === u.email;
+              const isSelf = u.email === currentUser.email;
+              const initial = (u.name || u.email).trim().charAt(0).toUpperCase() || "?";
+              return (
+                <div
+                  key={u.email}
+                  className={`rounded-2xl border overflow-hidden transition-colors ${
+                    isExpanded
+                      ? "bg-white dark:bg-gray-900/40 border-[#5277f7]/30 dark:border-[#5277f7]/30 shadow-sm"
+                      : "bg-slate-50 dark:bg-gray-800/40 border-slate-100 dark:border-gray-800"
+                  }`}
+                >
+                  {/* ─── Collapsed/header row (always visible, click to toggle) ─── */}
+                  <button
+                    type="button"
+                    onClick={() => toggleExpand(u.email)}
+                    aria-expanded={isExpanded}
+                    aria-controls={`user-row-${u.email}`}
+                    className="w-full flex items-center gap-3 p-3 text-left cursor-pointer hover:bg-slate-100/60 dark:hover:bg-gray-800/60 transition-colors"
+                  >
+                    {/* Avatar */}
+                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#5277f7] to-[#3a56c5] text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-sm">
+                      {initial}
                     </div>
-                    <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono truncate block">{u.email}</span>
-                    <span className="text-[9px] text-slate-300 dark:text-slate-600 font-mono">
-                      {u.lastLogin ? `Last login ${relTime(u.lastLogin)}` : `Added ${fmtTime(u.addedAt)}`}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
-                    {(["admin", "teacher", "staff"] as Role[]).map((r) => (
-                      <button
-                        key={r}
-                        onClick={() => u.role !== r && changeRole(u.email, r)}
-                        className={`text-[9px] font-mono font-bold px-2.5 py-1.5 rounded-lg border inline-flex items-center gap-1 transition-all cursor-pointer ${
-                          u.role === r
-                            ? roleStyles[r]
-                            : "border-transparent text-slate-400 hover:bg-slate-100 dark:hover:bg-gray-800"
-                        }`}
-                        title={`Set as ${r}`}
-                      >
-                        <RoleIcon role={r} /> {r}
-                      </button>
-                    ))}
-                    <button
-                      onClick={() => removeUser(u.email)}
-                      className="p-1.5 rounded-lg text-slate-300 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-all cursor-pointer"
-                      title="Remove user"
+
+                    {/* Name + email */}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-xs text-slate-800 dark:text-white truncate">
+                          {u.name || u.email.split("@")[0]}
+                        </span>
+                        {isSelf && (
+                          <span className="text-[8px] font-mono font-bold px-1.5 py-0.5 rounded bg-[#5277f7]/10 text-[#5277f7] shrink-0">
+                            YOU
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono truncate block">
+                        {u.email}
+                      </span>
+                    </div>
+
+                    {/* Role chip */}
+                    <span
+                      className={`shrink-0 text-[9px] font-mono font-bold px-2 py-1 rounded-md border inline-flex items-center gap-1 ${roleStyles[u.role]}`}
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+                      <RoleIcon role={u.role} /> {u.role}
+                    </span>
+
+                    {/* Center pill (only when set, hidden on small screens to save room) */}
+                    {u.center && (
+                      <span
+                        className="hidden md:inline-flex shrink-0 max-w-[140px] truncate text-[9px] font-mono px-2 py-1 rounded-md bg-slate-200/60 dark:bg-gray-700/60 text-slate-500 dark:text-slate-300"
+                        title={u.center}
+                      >
+                        {u.center}
+                      </span>
+                    )}
+
+                    {/* Delete (hidden for self) — uses span+role to avoid nested <button> */}
+                    {!isSelf && (
+                      <span
+                        role="button"
+                        aria-label={`Remove ${u.email}`}
+                        tabIndex={0}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPendingDelete(u);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setPendingDelete(u);
+                          }
+                        }}
+                        className="shrink-0 p-1.5 rounded-lg text-slate-300 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-all cursor-pointer"
+                        title="Remove user"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </span>
+                    )}
+
+                    {/* Chevron */}
+                    <ChevronDown
+                      className={`w-4 h-4 text-slate-400 shrink-0 transition-transform duration-200 ${
+                        isExpanded ? "rotate-180" : ""
+                      }`}
+                    />
+                  </button>
+
+                  {/* ─── Expanded body ─── */}
+                  <AnimatePresence initial={false}>
+                    {isExpanded && (
+                      <motion.div
+                        id={`user-row-${u.email}`}
+                        key="body"
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                        className="overflow-hidden"
+                      >
+                        <div className="px-3 pb-3 pt-2.5 space-y-2.5 border-t border-slate-100 dark:border-gray-800">
+                          {/* Role buttons */}
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-[9px] font-mono font-bold text-slate-400 uppercase shrink-0">
+                              Role:
+                            </span>
+                            {(["admin", "teacher", "staff"] as Role[]).map((r) => (
+                              <button
+                                key={r}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (u.role !== r) changeRole(u.email, r);
+                                }}
+                                className={`text-[9px] font-mono font-bold px-2.5 py-1.5 rounded-lg border inline-flex items-center gap-1 transition-all cursor-pointer ${
+                                  u.role === r
+                                    ? roleStyles[r]
+                                    : "border-slate-200 dark:border-gray-700 text-slate-400 hover:bg-slate-100 dark:hover:bg-gray-800"
+                                }`}
+                                title={`Set as ${r}`}
+                              >
+                                <RoleIcon role={r} /> {r}
+                              </button>
+                            ))}
+                          </div>
+
+                          {/* Center input */}
+                          <div className="flex items-center gap-2">
+                            <span className="text-[9px] font-mono font-bold text-slate-400 uppercase shrink-0">
+                              Center:
+                            </span>
+                            <input
+                              type="text"
+                              defaultValue={u.center || ""}
+                              placeholder="e.g. Vidyapeeth Pune (blank = all)"
+                              onClick={(e) => e.stopPropagation()}
+                              onBlur={(e) => {
+                                const v = e.target.value.trim();
+                                if (v !== (u.center || "")) changeRole(u.email, u.role, v);
+                              }}
+                              className="flex-1 bg-white dark:bg-gray-900/60 border border-slate-200/60 dark:border-gray-700/60 rounded-lg px-3 py-1.5 text-[11px] text-slate-700 dark:text-gray-200 font-medium focus:outline-none focus:border-[#5277f7]"
+                            />
+                          </div>
+
+                          {/* Meta line */}
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[9px] text-slate-400 dark:text-slate-500 font-mono pt-1">
+                            <span className="inline-flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              {u.lastLogin ? `Last login ${relTime(u.lastLogin)}` : `Added ${fmtTime(u.addedAt)}`}
+                            </span>
+                            {u.addedBy && <span>· invited by {u.addedBy}</span>}
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
-                {/* Per-user center assignment (drives center-based access) */}
-                <div className="flex items-center gap-2">
-                  <span className="text-[9px] font-mono font-bold text-slate-400 uppercase shrink-0">Center:</span>
-                  <input
-                    type="text"
-                    defaultValue={u.center || ""}
-                    placeholder="e.g. Vidyapeeth Pune (blank = all)"
-                    onBlur={(e) => {
-                      const v = e.target.value.trim();
-                      if (v !== (u.center || "")) changeRole(u.email, u.role, v);
-                    }}
-                    className="flex-1 bg-white dark:bg-gray-900/60 border border-slate-200/60 dark:border-gray-700/60 rounded-lg px-3 py-1.5 text-[11px] text-slate-700 dark:text-gray-200 font-medium focus:outline-none focus:border-[#5277f7]"
-                  />
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
@@ -633,6 +758,118 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({
           </div>
         )}
       </div>
+
+      {/* ─── Delete confirmation dialog ─── */}
+      <AnimatePresence>
+        {pendingDelete && (
+          <motion.div
+            key="delete-confirm-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4"
+            onClick={() => !deleting && setPendingDelete(null)}
+          >
+            <motion.div
+              key="delete-confirm-dialog"
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="delete-confirm-title"
+              initial={{ opacity: 0, scale: 0.95, y: 12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 12 }}
+              transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white dark:bg-[#111827] rounded-3xl shadow-2xl border border-slate-200/50 dark:border-gray-800 p-5 sm:p-6 max-w-md w-full"
+            >
+              <div className="flex items-start gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-rose-50 dark:bg-rose-950/30 text-rose-500 flex items-center justify-center shrink-0">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <span className="text-[9px] font-mono font-bold tracking-widest text-rose-500 uppercase block">
+                    Confirm Removal
+                  </span>
+                  <h3
+                    id="delete-confirm-title"
+                    className="text-sm font-extrabold text-slate-900 dark:text-white font-display leading-tight"
+                  >
+                    Remove user access?
+                  </h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-1.5 leading-relaxed">
+                    <span className="font-bold text-slate-700 dark:text-slate-200">
+                      {pendingDelete.name || pendingDelete.email.split("@")[0]}
+                    </span>{" "}
+                    will lose access immediately. They'll need to be re-invited to log in again.
+                  </p>
+
+                  <div className="mt-3 p-2.5 rounded-xl bg-slate-50 dark:bg-gray-800/40 border border-slate-100 dark:border-gray-800 space-y-1.5">
+                    <div>
+                      <span className="text-[9px] font-mono font-bold text-slate-400 uppercase">Email</span>
+                      <p className="text-[11px] font-mono text-slate-700 dark:text-slate-200 truncate">
+                        {pendingDelete.email}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-[9px] font-mono font-bold text-slate-400 uppercase">Current role</span>
+                      <span
+                        className={`mt-0.5 inline-flex text-[9px] font-mono font-bold px-2 py-0.5 rounded-md border items-center gap-1 ${roleStyles[pendingDelete.role]}`}
+                      >
+                        <RoleIcon role={pendingDelete.role} /> {pendingDelete.role}
+                      </span>
+                    </div>
+                    {pendingDelete.center && (
+                      <div>
+                        <span className="text-[9px] font-mono font-bold text-slate-400 uppercase">Center</span>
+                        <p className="text-[11px] font-mono text-slate-700 dark:text-slate-200 truncate">
+                          {pendingDelete.center}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 mt-5">
+                <button
+                  onClick={() => setPendingDelete(null)}
+                  disabled={deleting}
+                  className="px-4 py-2 rounded-xl text-[11px] font-bold font-display text-slate-500 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-gray-800 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!pendingDelete || deleting) return;
+                    const target = pendingDelete;
+                    setDeleting(true);
+                    try {
+                      await removeUser(target.email);
+                      if (expandedEmail === target.email) setExpandedEmail(null);
+                      setPendingDelete(null);
+                    } finally {
+                      setDeleting(false);
+                    }
+                  }}
+                  disabled={deleting}
+                  className="px-4 py-2 rounded-xl text-[11px] font-extrabold font-display text-white bg-rose-500 hover:bg-rose-600 inline-flex items-center gap-1.5 transition-all cursor-pointer shadow-md shadow-rose-500/20 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {deleting ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Removing...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-3.5 h-3.5" /> Yes, remove
+                    </>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 };
