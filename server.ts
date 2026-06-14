@@ -1,18 +1,177 @@
 import express from "express";
 import path from "path";
-import fs from "fs";
-import "dotenv/config";
 import { createServer as createViteServer } from "vite";
 import * as XLSX from "xlsx";
-import * as settingsStore from "./settingsStore";
-import type { Role } from "./settingsStore";
+import crypto from "crypto";
+import fs from "fs";
 
 const app = express();
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+
+// Security variables and token generation ciphers
+const SHARE_SECRET = process.env.SHARE_SECRET || "pune_pcmc_academic_salt_2026_super_secret_key";
+
+function generateShareToken(regNo: string): string {
+  return crypto.createHmac("sha256", SHARE_SECRET).update(regNo).digest("hex").slice(0, 16);
+}
+
+function generateStaffToken(email: string): string {
+  return crypto.createHmac("sha256", SHARE_SECRET).update(email).digest("hex");
+}
+
+const CONFIG_PATH = path.join(process.cwd(), "config.json");
+
+interface SavedConfig {
+  SPREADSHEET_URL?: string;
+  SPREADSHEET_CENTERS?: Record<string, string>;
+  SUBSHEET_CENTERS?: Record<string, string[]>;
+  STAFF_ACCESS?: Record<string, string[]>;
+}
+
+function getAppConfig(): SavedConfig {
+  let fileConfig: SavedConfig = {};
+  try {
+    if (fs.existsSync(CONFIG_PATH)) {
+      fileConfig = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf-8"));
+    }
+  } catch (e) {
+    console.error("Failed to parse config.json:", e);
+  }
+  return fileConfig;
+}
+
+function normalizeSpreadsheetUrl(url: string): string {
+  let cleanUrl = url.trim();
+  if (!cleanUrl) return "";
+  
+  // Case 1: Published pubhtml link
+  if (cleanUrl.includes("docs.google.com/spreadsheets/d/e/")) {
+    if (cleanUrl.endsWith("/pubhtml")) {
+      return cleanUrl.replace(/\/pubhtml$/, "/pub?output=xlsx");
+    }
+    if (cleanUrl.includes("/pubhtml?")) {
+      return cleanUrl.split("/pubhtml?")[0] + "/pub?output=xlsx";
+    }
+    if (cleanUrl.includes("/pub") && !cleanUrl.includes("output=xlsx")) {
+      const baseUrl = cleanUrl.split("/pub")[0] + "/pub";
+      return `${baseUrl}?output=xlsx`;
+    }
+    return cleanUrl;
+  }
+  
+  // Case 2: Regular edit link
+  const editMatch = cleanUrl.match(/docs\.google\.com\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  if (editMatch) {
+    const spreadsheetId = editMatch[1];
+    return `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=xlsx`;
+  }
+  
+  return cleanUrl;
+}
+
+function getSpreadsheetUrls(): string[] {
+  const config = getAppConfig();
+  const envUrl = process.env.SPREADSHEET_URL || "";
+  const configUrl = config.SPREADSHEET_URL || "";
+  
+  const combined = [
+    ...envUrl.split(",").map(u => u.trim()),
+    ...configUrl.split(",").map(u => u.trim())
+  ].filter(Boolean);
+  
+  const normalized = combined.map(u => normalizeSpreadsheetUrl(u)).filter(Boolean);
+  return Array.from(new Set(normalized));
+}
+
+function getSpreadsheetCenters(): Record<string, string> {
+  const config = getAppConfig();
+  let envCenters: Record<string, string> = {};
+  if (process.env.SPREADSHEET_CENTERS) {
+    try {
+      envCenters = JSON.parse(process.env.SPREADSHEET_CENTERS);
+    } catch (_) {}
+  }
+  const configCenters = config.SPREADSHEET_CENTERS || {};
+  return { ...envCenters, ...configCenters };
+}
+
+function getSubsheetCenters(): Record<string, string[]> {
+  const config = getAppConfig();
+  let envSubsheets: Record<string, string[]> = {};
+  if (process.env.SUBSHEET_CENTERS) {
+    try {
+      envSubsheets = JSON.parse(process.env.SUBSHEET_CENTERS);
+    } catch (_) {}
+  }
+  const configSubsheets = config.SUBSHEET_CENTERS || {};
+  return { ...envSubsheets, ...configSubsheets };
+}
+
+function getStaffAccess(): Record<string, string[]> {
+  const config = getAppConfig();
+  let envAccess: Record<string, string[]> = {};
+  if (process.env.STAFF_ACCESS) {
+    try {
+      envAccess = JSON.parse(process.env.STAFF_ACCESS);
+    } catch (_) {}
+  }
+  const configAccess = config.STAFF_ACCESS || {};
+  return { ...envAccess, ...configAccess };
+}
+
+function getUserAllowedCenters(email: string | undefined): string[] | null {
+  if (!email) return null;
+  const staffAccess = getStaffAccess();
+  const cleanEmail = email.trim().toLowerCase();
+  
+  const matchedKey = Object.keys(staffAccess).find((key) => {
+    const emails = key.split(",").map(e => e.trim().toLowerCase());
+    return emails.includes(cleanEmail);
+  });
+  if (!matchedKey) return null;
+  
+  const centers = staffAccess[matchedKey];
+  if (!Array.isArray(centers)) return null;
+  
+  if (centers.some(c => c === "*" || c.toLowerCase() === "all")) return null;
+  
+  return centers.map(c => c.trim());
+}
+
+function verifyRequest(req: any, res: any, next: any) {
+  const staffToken = req.headers["x-staff-token"];
+  const userEmail = req.headers["x-user-email"];
+
+  if (staffToken && userEmail) {
+    const emailStr = String(userEmail).trim().toLowerCase();
+    if (emailStr.endsWith("@pw.live") || emailStr.endsWith("@physicswallah.org")) {
+      const expectedToken = generateStaffToken(emailStr);
+      if (staffToken === expectedToken) {
+        return next();
+      }
+    }
+  }
+  
+  // If not staff, check if it's a student query with a valid share token
+  if (req.path === "/api/student") {
+    const regNo = req.query.query;
+    const token = req.query.token;
+    if (regNo && token) {
+      const expectedToken = generateShareToken(String(regNo).trim());
+      if (token === expectedToken) {
+        return next();
+      }
+    }
+  }
+
+  return res.status(403).json({ error: "Access Denied: Invalid session or unauthorized link." });
+}
 
 interface MemorySheet {
   name: string;
   data: any[][];
+  sourceUrl: string;
+  center: string;
 }
 
 // Global cached variables
@@ -21,258 +180,7 @@ let dropdowns: { batches: string[]; names: string[] } = { batches: [], names: []
 let lastLoaded: string | null = null;
 let isLoading = false;
 let loadError: string | null = null;
-
-/* ============================================================
-   ROLE-BASED ACCESS, AUDIT LOG, NOTIFICATIONS & SYNC TRACKING
-   ============================================================ */
-
-interface AppUser {
-  email: string;
-  name?: string;
-  role: Role;
-  center?: string;
-  addedAt: string;
-  addedBy?: string;
-  lastLogin?: string;
-}
-
-interface ActivityEntry {
-  id: string;
-  ts: string;
-  email: string;
-  action: string;
-  detail?: string;
-}
-
-interface AppNotification {
-  id: string;
-  ts: string;
-  type: "info" | "success" | "warning" | "error";
-  title: string;
-  message: string;
-  read: boolean;
-}
-
-interface SheetSyncInfo {
-  name: string;
-  rows: number;
-  lastSync: string;
-}
-
-interface AppState {
-  users: Record<string, AppUser>;
-  activityLog: ActivityEntry[];
-  notifications: AppNotification[];
-  sheetSync: Record<string, SheetSyncInfo>;
-}
-
-const DATA_DIR = path.join(process.cwd(), "data");
-const STATE_FILE = path.join(DATA_DIR, "app-state.json");
-const MAX_LOG_ENTRIES = 2000;
-const MAX_NOTIFICATIONS = 500;
-
-// Emails that are always treated as admin (comma separated env var + built-in defaults).
-// Built-in defaults guarantee the owner stays admin even on ephemeral hosting
-// (e.g. Cloud Run) where the persisted state file resets between deploys.
-const DEFAULT_ADMIN_EMAILS = ["aniket.mishra2@pw.live"];
-const ENV_ADMIN_EMAILS = Array.from(
-  new Set(
-    [
-      ...DEFAULT_ADMIN_EMAILS,
-      ...(process.env.ADMIN_EMAILS || "").split(","),
-    ]
-      .map((e) => e.trim().toLowerCase())
-      .filter(Boolean)
-  )
-);
-
-let appState: AppState = {
-  users: {},
-  activityLog: [],
-  notifications: [],
-  sheetSync: {},
-};
-
-function loadAppState() {
-  try {
-    if (fs.existsSync(STATE_FILE)) {
-      const raw = fs.readFileSync(STATE_FILE, "utf-8");
-      const parsed = JSON.parse(raw);
-      appState = {
-        users: parsed.users || {},
-        activityLog: parsed.activityLog || [],
-        notifications: parsed.notifications || [],
-        sheetSync: parsed.sheetSync || {},
-      };
-      console.log(`Loaded app-state: ${Object.keys(appState.users).length} users, ${appState.activityLog.length} log entries.`);
-    }
-  } catch (err) {
-    console.error("Failed to load app-state.json, starting fresh:", err);
-  }
-}
-
-let saveTimer: NodeJS.Timeout | null = null;
-function saveAppState() {
-  // Debounced write to avoid hammering disk
-  if (saveTimer) clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    try {
-      if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-      fs.writeFileSync(STATE_FILE, JSON.stringify(appState, null, 2), "utf-8");
-    } catch (err) {
-      console.error("Failed to persist app-state.json:", err);
-    }
-  }, 250);
-}
-
-function genId(): string {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-}
-
-function logActivity(email: string, action: string, detail?: string) {
-  appState.activityLog.unshift({
-    id: genId(),
-    ts: new Date().toISOString(),
-    email: email || "unknown",
-    action,
-    detail,
-  });
-  if (appState.activityLog.length > MAX_LOG_ENTRIES) {
-    appState.activityLog = appState.activityLog.slice(0, MAX_LOG_ENTRIES);
-  }
-  saveAppState();
-}
-
-function pushNotification(type: AppNotification["type"], title: string, message: string) {
-  appState.notifications.unshift({
-    id: genId(),
-    ts: new Date().toISOString(),
-    type,
-    title,
-    message,
-    read: false,
-  });
-  if (appState.notifications.length > MAX_NOTIFICATIONS) {
-    appState.notifications = appState.notifications.slice(0, MAX_NOTIFICATIONS);
-  }
-  saveAppState();
-}
-
-function getRoleForEmail(email: string): Role {
-  const e = (email || "").trim().toLowerCase();
-  if (!e) return "staff";
-  if (ENV_ADMIN_EMAILS.includes(e)) return "admin";
-  const user = appState.users[e];
-  return user ? user.role : "staff";
-}
-
-function getCenterForEmail(email: string): string {
-  const e = (email || "").trim().toLowerCase();
-  const user = appState.users[e];
-  return user?.center || "";
-}
-
-// Ensure a user exists. The very first user to ever sign in becomes the super-admin.
-function ensureUser(email: string, name?: string): AppUser {
-  const e = (email || "").trim().toLowerCase();
-  let user = appState.users[e];
-  if (!user) {
-    const isFirstEver = Object.keys(appState.users).length === 0;
-    const role: Role = ENV_ADMIN_EMAILS.includes(e) || isFirstEver ? "admin" : "staff";
-    user = {
-      email: e,
-      name: name || "",
-      role,
-      center: "",
-      addedAt: new Date().toISOString(),
-      addedBy: isFirstEver ? "system (first login)" : "self-signup",
-    };
-    appState.users[e] = user;
-    saveAppState();
-    flushUsersToSheet();
-  } else if (name && !user.name) {
-    user.name = name;
-    saveAppState();
-    flushUsersToSheet();
-  }
-  // Env admins are always elevated
-  if (ENV_ADMIN_EMAILS.includes(e) && user.role !== "admin") {
-    user.role = "admin";
-    saveAppState();
-    flushUsersToSheet();
-  }
-  return user;
-}
-
-// Express middleware-style guard: returns the requesting admin user or null (and sends 403)
-function requireAdmin(req: express.Request, res: express.Response): AppUser | null {
-  const email = String(req.header("x-user-email") || "").trim().toLowerCase();
-  if (!email) {
-    res.status(401).json({ error: "Authentication required (missing user identity)." });
-    return null;
-  }
-  const role = getRoleForEmail(email);
-  if (role !== "admin") {
-    res.status(403).json({ error: "Access denied. Admin privileges required." });
-    return null;
-  }
-  return appState.users[email] || { email, role: "admin", addedAt: new Date().toISOString() };
-}
-
-/* ---- Google Sheets settings store integration (separate from student data) ---- */
-
-let flushTimer: NodeJS.Timeout | null = null;
-
-// Push the current user roster to the settings spreadsheet (debounced, best-effort).
-function flushUsersToSheet() {
-  if (!settingsStore.isConfigured()) return;
-  if (flushTimer) clearTimeout(flushTimer);
-  flushTimer = setTimeout(async () => {
-    try {
-      const users = Object.values(appState.users).map((u) => ({
-        email: u.email,
-        name: u.name || "",
-        center: u.center || "",
-        role: u.role,
-      }));
-      await settingsStore.writeUsers(users);
-    } catch (err) {
-      console.error("Failed to flush users to settings sheet:", (err as Error).message);
-      pushNotification("warning", "Settings sheet write failed", (err as Error).message);
-    }
-  }, 400);
-}
-
-// Load the user roster FROM the settings spreadsheet (sheet is authoritative for role + center).
-async function loadUsersFromSheet() {
-  if (!settingsStore.isConfigured()) {
-    console.log("Settings sheet not configured — using local JSON persistence for roles.");
-    return;
-  }
-  try {
-    const sheetUsers = await settingsStore.readUsers();
-    sheetUsers.forEach((su) => {
-      const existing = appState.users[su.email];
-      appState.users[su.email] = {
-        email: su.email,
-        name: su.name || existing?.name || "",
-        role: su.role,
-        center: su.center || "",
-        addedAt: existing?.addedAt || new Date().toISOString(),
-        addedBy: existing?.addedBy || "settings-sheet",
-        lastLogin: existing?.lastLogin,
-      };
-    });
-    saveAppState();
-    console.log(`Loaded ${sheetUsers.length} users from settings spreadsheet.`);
-  } catch (err) {
-    console.error("Failed to load users from settings sheet:", (err as Error).message);
-    pushNotification("error", "Settings sheet read failed", (err as Error).message);
-  }
-}
-
-loadAppState();
-loadUsersFromSheet();
+let sheetUrlsMap: Record<string, string> = {};
 
 // Normalization functions mirroring Google Apps Script
 function normalizeHeader(h: any): string {
@@ -284,6 +192,166 @@ function normalizeHeader(h: any): string {
     .replace(/\./g, "")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function isTestSheet(sheetName: string): boolean {
+  const name = sheetName.trim().toLowerCase();
+  // Exclude default sheet names (e.g. Sheet21, Sheet 1)
+  if (/^sheet\s*\d+$/i.test(name)) {
+    return false;
+  }
+  // Exclude metadata/admin sheets (e.g. BWS UPDATED, BWS TC)
+  if (name.includes("bws") || name.startsWith("bws ")) {
+    return false;
+  }
+  return true;
+}
+
+function resolveCenter(sheetName: string, sourceUrl: string): string {
+  if (!sheetName) return "Pimpri PW Vidyapeeth";
+  
+  const cleanSheetName = sheetName.trim().toLowerCase();
+  const cleanSourceUrl = String(sourceUrl || "").trim().toLowerCase();
+
+  // Pre-baked GID to Sheet Name mapping for the default Pimpri spreadsheet
+  const defaultGidToNameMap: Record<string, string> = {
+    "1428738790": "03 may 11th jee city test tc",
+    "1245937975": "10 may 11th jee milestone tc",
+    "1827348726": "24 may 11th jee city test 2 ",
+    "301379419": "31th may 11th jee milestone",
+    "1616104245": "10 may 12th jee city test tc",
+    "931820364": "17 may 12th jee milestone",
+    "1336851460": "31 may 12th jee city test tc",
+    "1773466001": "07th june 12th jee milestone",
+    "794331982": "10 may 12th neet city test tc",
+    "1901367772": "17 may 12th neet milestone",
+    "1377849588": "31 may 12th neet city test 2",
+    "1150357588": "07 june 12th neet phase 1 milestone"
+  };
+
+  // Helper to extract gid from any URL string
+  const getGidFromUrl = (urlStr: string): string | null => {
+    try {
+      const match = urlStr.match(/[?&]gid=(\d+)/i);
+      return match ? match[1] : null;
+    } catch (_) {
+      return null;
+    }
+  };
+
+  // 1. Check SUBSHEET_CENTERS first (tab-level overrides)
+  const subsheetMappings = getSubsheetCenters();
+  if (Object.keys(subsheetMappings).length > 0) {
+    try {
+      for (const [centerName, patterns] of Object.entries(subsheetMappings)) {
+        if (Array.isArray(patterns)) {
+          for (const pat of patterns) {
+            const cleanPat = String(pat).trim().toLowerCase();
+            if (!cleanPat) continue;
+
+            // Match by GID URL
+            const patGid = getGidFromUrl(cleanPat);
+            if (patGid && defaultGidToNameMap[patGid]) {
+              if (cleanSheetName === defaultGidToNameMap[patGid]) {
+                return centerName;
+              }
+            }
+
+            // Match by Subsheet Name directly
+            if (cleanSheetName === cleanPat || cleanSheetName.includes(cleanPat)) {
+              return centerName;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Error matching SUBSHEET_CENTERS mappings:", e);
+    }
+  }
+
+  // 2. Default fallback for the 12 default subsheets mapping to Pimple Saudagar
+  // This takes priority over SPREADSHEET_CENTERS when the default workbook is used
+  const isDefaultWorkbook = !cleanSourceUrl || 
+                            cleanSourceUrl.includes("1ztnvtyd4wrcv9bthqi1ek-nh8tsieszw5ifvhxtajpm") || 
+                            cleanSourceUrl.includes("2pacx-1vsvei4kdmjhmimnsclebffoavbwlct9sjf1kaphus7torlfuthc7m7jk3tgx6xclqltylnxxvpfxhei");
+  if (isDefaultWorkbook) {
+    const defaultPimpleSaudagarSheets = Object.values(defaultGidToNameMap);
+    if (defaultPimpleSaudagarSheets.some(s => cleanSheetName === s || cleanSheetName.includes(s))) {
+      return "Pimple Saudagar Tuition Center";
+    }
+  }
+
+  // 3. Check SPREADSHEET_CENTERS (spreadsheet file-level mappings)
+  const spreadsheetMappings = getSpreadsheetCenters();
+  if (Object.keys(spreadsheetMappings).length > 0) {
+    try {
+      for (const [urlPattern, centerName] of Object.entries(spreadsheetMappings)) {
+        const cleanPat = String(urlPattern).trim().toLowerCase();
+        if (cleanPat && cleanSourceUrl.includes(cleanPat)) {
+          return String(centerName);
+        }
+      }
+    } catch (e) {
+      console.error("Error matching SPREADSHEET_CENTERS mappings:", e);
+    }
+  }
+
+  // 4. Fallback to check legacy CENTER_MAPPINGS env variable
+  if (process.env.CENTER_MAPPINGS) {
+    try {
+      const mappings = JSON.parse(process.env.CENTER_MAPPINGS);
+      for (const [centerName, patterns] of Object.entries(mappings)) {
+        if (Array.isArray(patterns)) {
+          for (const pat of patterns) {
+            const cleanPat = String(pat).trim().toLowerCase();
+            if (!cleanPat) continue;
+
+            const patGid = getGidFromUrl(cleanPat);
+            if (patGid && defaultGidToNameMap[patGid]) {
+              if (cleanSheetName === defaultGidToNameMap[patGid]) {
+                return centerName;
+              }
+            }
+
+            if (cleanSourceUrl.includes(cleanPat)) {
+              return centerName;
+            }
+
+            if (cleanSheetName === cleanPat || cleanSheetName.includes(cleanPat)) {
+              return centerName;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Error parsing CENTER_MAPPINGS env var:", e);
+    }
+  }
+
+  // 5. Check if PIMPLE_SAUDAGAR_SHEETS env variable exists
+  if (process.env.PIMPLE_SAUDAGAR_SHEETS) {
+    const sheets = process.env.PIMPLE_SAUDAGAR_SHEETS.split(",").map(s => s.trim().toLowerCase());
+    for (const s of sheets) {
+      if (!s) continue;
+      const sGid = getGidFromUrl(s);
+      if (sGid && defaultGidToNameMap[sGid]) {
+        if (cleanSheetName === defaultGidToNameMap[sGid]) {
+          return "Pimple Saudagar Tuition Center";
+        }
+      }
+      if (cleanSheetName === s || cleanSheetName.includes(s)) {
+        return "Pimple Saudagar Tuition Center";
+      }
+    }
+  }
+
+  // 6. Global default fallback for default subsheets (even if sourceUrl check didn't catch it)
+  const defaultPimpleSaudagarSheets = Object.values(defaultGidToNameMap);
+  if (defaultPimpleSaudagarSheets.some(s => cleanSheetName === s || cleanSheetName.includes(s))) {
+    return "Pimple Saudagar Tuition Center";
+  }
+
+  return "Pimpri PW Vidyapeeth";
 }
 
 function expandTestName(name: string): string {
@@ -391,7 +459,7 @@ function detectStreamAndClass(batch: string, subjects: string[] = []): { stream:
   const lowerSubs = subjects.map((s) => s.toLowerCase().trim());
   const hasBotanyOrZoology = lowerSubs.some(s => s.includes("botany") || s.includes("zoology"));
   const hasMaths = lowerSubs.some(s => s.includes("math") || s.includes("mathematics"));
-  const hasFoundation = lowerSubs.some(s => s.includes("science") || s.includes("sst") || s.includes("mat") || s.includes("english") || s.includes("hindi"));
+  const hasFoundation = lowerSubs.some(s => s.includes("science") || s.includes("sst") || s.includes("social studies") || s.includes("mat") || s.includes("mental ability") || s.includes("english"));
 
   if (hasBotanyOrZoology) {
     let className = "NEET";
@@ -493,6 +561,64 @@ function sortSheetNamesDescending(names: string[]): string[] {
   });
 }
 
+function getSheetDirectUrl(sourceUrl: string, sheetName: string, gid?: string): string {
+  if (sourceUrl.includes("/d/e/2PACX-")) {
+    const baseUrl = sourceUrl.split("/pub")[0];
+    if (gid) {
+      return `${baseUrl}/pubhtml?gid=${gid}`;
+    }
+    return `${baseUrl}/pubhtml`;
+  }
+  
+  const match = sourceUrl.match(/\/d\/([a-zA-Z0-9-_]+)/);
+  if (match) {
+    const spreadsheetId = match[1];
+    if (gid) {
+      return `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit#gid=${gid}`;
+    }
+    return `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
+  }
+  
+  return sourceUrl;
+}
+
+async function fetchSheetGids(url: string): Promise<Record<string, string>> {
+  const gidsMap: Record<string, string> = {};
+  try {
+    let pubhtmlUrl = "";
+    if (url.includes("/d/e/2PACX-")) {
+      pubhtmlUrl = url.split("/pub")[0] + "/pubhtml";
+    } else {
+      const match = url.match(/\/d\/([a-zA-Z0-9-_]+)/);
+      if (match) {
+        pubhtmlUrl = `https://docs.google.com/spreadsheets/d/${match[1]}/pubhtml`;
+      }
+    }
+    if (pubhtmlUrl) {
+      console.log(`Fetching pubhtml for GID mapping from: ${pubhtmlUrl}`);
+      const pubhtmlRes = await fetch(pubhtmlUrl);
+      if (pubhtmlRes.ok) {
+        const pubhtmlText = await pubhtmlRes.text();
+        const regex = /name:\s*"((?:[^"\\]|\\.)*)",\s*pageUrl:\s*"[^"]*",\s*gid:\s*"([^"]+)"/g;
+        let match;
+        while ((match = regex.exec(pubhtmlText)) !== null) {
+          const name = match[1].replace(/\\x26/g, '&')
+                               .replace(/\\x27/g, "'")
+                               .replace(/\\x22/g, '"')
+                               .replace(/\\x2f/g, '/')
+                               .replace(/\\x5c/g, '\\')
+                               .replace(/\\u0026/g, '&');
+          gidsMap[name] = match[2];
+        }
+        console.log(`Successfully parsed ${Object.keys(gidsMap).length} GIDs from pubhtml.`);
+      }
+    }
+  } catch (err: any) {
+    console.warn("Failed to fetch/parse GID mapping from pubhtml:", err.message || err);
+  }
+  return gidsMap;
+}
+
 const nonSubjectKeywords = new Set([
   "roll no", "reg no", "student name", "name", "batch",
   "feedback", "total marks", "score", "marks", "out of", "max marks",
@@ -534,44 +660,30 @@ function findHeaderRow(data: any[][]): { index: number; headers: string[] } | nu
   return null;
 }
 
-// Count valid student rows within a single in-memory sheet
-function countSheetRows(sheet: MemorySheet): number {
-  const data = sheet.data;
-  const headerInfo = findHeaderRow(data);
-  if (headerInfo) {
-    const rIdx = headerInfo.index;
-    const idxReg = findColumnIndex(headerInfo.headers, ["reg no", "roll no"]);
-    if (idxReg !== -1) {
-      return data.slice(rIdx + 1).filter((row) => {
-        if (!row) return false;
-        const val = String(row[idxReg] || "").trim();
-        return val !== "" && val.toLowerCase() !== "reg no" && val.toLowerCase() !== "roll no" && !/^\d+th\s+june/i.test(val);
-      }).length;
-    }
-    return Math.max(0, data.length - (rIdx + 1));
-  }
-  return Math.max(0, data.length - 1);
-}
-
 // Background loading function
-async function loadSpreadsheetData(opts: { notifySuccess?: boolean } = {}) {
+async function loadSpreadsheetData() {
   if (isLoading) return;
   isLoading = true;
   loadError = null;
   console.log("Starting spreadsheet download and load...");
   
-  const urlsToTry = [
-    process.env.SPREADSHEET_URL,
-    "https://docs.google.com/spreadsheets/d/1TCHsheXDqTyox79_0f5wRWAc5imtQtU-PVBJPzKeW_k/export?format=xlsx",
-    "https://docs.google.com/spreadsheets/d/e/2PACX-1vSVsEi4kDMjHmImNSClEBffOAvbWLCT9sjf1kapHus7torLFuthC7M7jk3Tgx6XCqLTylnXXVPFxHEI/pub?output=xlsx",
-    "https://docs.google.com/spreadsheets/d/1zTnVTYD4WRcV9bThQi1Ek-nh8TsIEsZW5IFvHXTajpM/export?format=xlsx"
-  ].filter(Boolean) as string[];
+  let urlsToLoad: string[] = getSpreadsheetUrls();
+  let isUsingDefaultFallback = false;
 
-  let workbook: XLSX.WorkBook | null = null;
-  let successfulUrl = "";
-  let errorsList: string[] = [];
+  // If no custom URLs are provided, use the default published spreadsheet
+  if (urlsToLoad.length === 0) {
+    urlsToLoad = [
+      "https://docs.google.com/spreadsheets/d/e/2PACX-1vSVsEi4kDMjHmImNSClEBffOAvbWLCT9sjf1kapHus7torLFuthC7M7jk3Tgx6XCqLTylnXXVPFxHEI/pub?output=xlsx"
+    ];
+    isUsingDefaultFallback = true;
+  }
 
-  for (const url of urlsToTry) {
+  const loadedSheets: MemorySheet[] = [];
+  const errorsList: string[] = [];
+  let loadedCount = 0;
+  const tempSheetUrlsMap: Record<string, string> = {};
+
+  for (const url of urlsToLoad) {
     try {
       console.log(`Attempting to fetch from: ${url}`);
       const res = await fetch(url);
@@ -585,45 +697,80 @@ async function loadSpreadsheetData(opts: { notifySuccess?: boolean } = {}) {
       }
 
       const buffer = await res.arrayBuffer();
-      // Try to read and parse the XLSX file
       const wb = XLSX.read(new Uint8Array(buffer), { type: "array" });
       if (wb && wb.SheetNames && wb.SheetNames.length > 0) {
-        workbook = wb;
-        successfulUrl = url;
-        break; // Parse succeeded! Exit loop.
+        const gidsMap = await fetchSheetGids(url);
+        wb.SheetNames.forEach((sheetName) => {
+          const worksheet = wb.Sheets[sheetName];
+          const data = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1 });
+          if (data.length >= 2) {
+            loadedSheets.push({
+              name: sheetName,
+              data,
+              sourceUrl: url,
+              center: resolveCenter(sheetName, url)
+            });
+            const gid = gidsMap[sheetName];
+            tempSheetUrlsMap[sheetName] = getSheetDirectUrl(url, sheetName, gid);
+          }
+        });
+        loadedCount++;
+        console.log(`Successfully loaded workbook from: ${url}. Added ${wb.SheetNames.length} sheets.`);
       } else {
         throw new Error("Parsed workbook is empty or has no sheets.");
       }
     } catch (err: any) {
       console.error(`Attempt failed for URL: ${url}. Error:`, err.message || err);
       errorsList.push(`${url}: ${err.message || String(err)}`);
+
+      // If we are using the default fallback list, and the published link failed, we try the private link fallback
+      if (isUsingDefaultFallback && url === urlsToLoad[0]) {
+        const privateFallbackUrl = "https://docs.google.com/spreadsheets/d/1zTnVTYD4WRcV9bThQi1Ek-nh8TsIEsZW5IFvHXTajpM/export?format=xlsx";
+        console.log(`Trying default private fallback URL: ${privateFallbackUrl}`);
+        try {
+          const fallbackRes = await fetch(privateFallbackUrl);
+          if (fallbackRes.ok) {
+            const fallbackBuffer = await fallbackRes.arrayBuffer();
+            const fallbackWb = XLSX.read(new Uint8Array(fallbackBuffer), { type: "array" });
+            const gidsMap = await fetchSheetGids(privateFallbackUrl);
+            fallbackWb.SheetNames.forEach((sheetName) => {
+              const worksheet = fallbackWb.Sheets[sheetName];
+              const data = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1 });
+              if (data.length >= 2) {
+                loadedSheets.push({
+                  name: sheetName,
+                  data,
+                  sourceUrl: privateFallbackUrl,
+                  center: resolveCenter(sheetName, privateFallbackUrl)
+                });
+                const gid = gidsMap[sheetName];
+                tempSheetUrlsMap[sheetName] = getSheetDirectUrl(privateFallbackUrl, sheetName, gid);
+              }
+            });
+            loadedCount++;
+            console.log("Successfully loaded workbook from default private fallback URL.");
+          } else {
+            errorsList.push(`${privateFallbackUrl}: HTTP Status ${fallbackRes.status}`);
+          }
+        } catch (fallbackErr: any) {
+          console.error(`Default private fallback failed:`, fallbackErr.message || fallbackErr);
+          errorsList.push(`${privateFallbackUrl}: ${fallbackErr.message || String(fallbackErr)}`);
+        }
+      }
     }
   }
 
-  if (!workbook) {
+  if (loadedCount === 0) {
     const errorDetails = errorsList.join(" | ");
     console.error("All spreadsheet fetch attempts failed: ", errorDetails);
-    loadError = "Failed to load database spreadsheet. Details: " + errorsList[0];
+    loadError = "Failed to load database spreadsheet. Details: " + (errorsList[0] || "Unknown");
     isLoading = false;
-    pushNotification(
-      "error",
-      "Database sync failed",
-      "Could not load the Google Sheet. " + (errorsList[0] || "Unknown connection error.")
-    );
     return;
   }
 
   try {
-    const loadedSheets: MemorySheet[] = [];
-    workbook.SheetNames.forEach((sheetName) => {
-      const worksheet = workbook!.Sheets[sheetName];
-      const data = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1 });
-      if (data.length >= 2) {
-        loadedSheets.push({ name: sheetName, data });
-      }
-    });
-
     memorySheets = loadedSheets;
+    sheetUrlsMap = tempSheetUrlsMap;
 
     const validRegNos = new Set<string>();
     const batches = new Set<string>();
@@ -631,6 +778,8 @@ async function loadSpreadsheetData(opts: { notifySuccess?: boolean } = {}) {
 
     memorySheets.forEach((sheetObj) => {
       const data = sheetObj.data;
+      const sheetName = sheetObj.name;
+      if (!isTestSheet(sheetName)) return;
       const headerInfo = findHeaderRow(data);
       if (!headerInfo) return;
 
@@ -680,42 +829,6 @@ async function loadSpreadsheetData(opts: { notifySuccess?: boolean } = {}) {
 
     lastLoaded = new Date().toISOString();
     console.log(`Spreadsheet successfully parsed. Sheets: ${memorySheets.length}. Batches: ${dropdowns.batches.length}. Names: ${dropdowns.names.length}.`);
-
-    // Track per-sheet sync timestamps + detect newly added / removed sheets for notifications
-    const syncTs = lastLoaded;
-    const previousSheetNames = new Set(Object.keys(appState.sheetSync));
-    const currentSheetNames = new Set(memorySheets.map((s) => s.name));
-    const newSheetSync: Record<string, SheetSyncInfo> = {};
-
-    memorySheets.forEach((s) => {
-      newSheetSync[s.name] = {
-        name: s.name,
-        rows: countSheetRows(s),
-        lastSync: syncTs,
-      };
-    });
-
-    // Notify about brand-new sheets (skip noise on the very first ever load)
-    if (previousSheetNames.size > 0) {
-      const added = [...currentSheetNames].filter((n) => !previousSheetNames.has(n));
-      added.forEach((name) => {
-        pushNotification(
-          "success",
-          "New assessment sheet added",
-          `"${name}" (${newSheetSync[name].rows} students) was detected during sync.`
-        );
-      });
-    }
-
-    appState.sheetSync = newSheetSync;
-    if (opts.notifySuccess) {
-      pushNotification(
-        "info",
-        "Database synced",
-        `${memorySheets.length} sheets loaded successfully.`
-      );
-    }
-    saveAppState();
   } catch (err: any) {
     console.error("Error loading spreadsheet: ", err);
     loadError = err.message || String(err);
@@ -754,15 +867,37 @@ app.get("/api/auth/google/url", (req, res) => {
   res.json({ url: authUrl, mode: "real" });
 });
 
+// Secure endpoint for mock token generation (only enabled when standard Google client credentials are not configured)
+app.get("/api/auth/mock-token", (req, res) => {
+  const isConfigured = !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+  if (isConfigured) {
+    return res.status(403).json({ error: "Mock token generation is disabled when GOOGLE_CLIENT_ID is configured." });
+  }
+  const email = String(req.query.email || "").trim().toLowerCase();
+  if (email.endsWith("@pw.live") || email.endsWith("@physicswallah.org")) {
+    const token = generateStaffToken(email);
+    return res.json({ staffToken: token });
+  }
+  return res.status(400).json({ error: "Unauthorized email domain" });
+});
+
 // Mock Google Consent Workspace Sandbox (Perfect for instant developer previews)
 app.get("/auth/google/mock-consent", (req, res) => {
+  const isConfigured = !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+  if (isConfigured) {
+    return res.status(403).send("Mock authentication is disabled when GOOGLE_CLIENT_ID is configured.");
+  }
+
+  const tokenAniket = generateStaffToken("aniket.mishra@pw.live");
+  const tokenCoordinator = generateStaffToken("academic.coordinator@physicswallah.org");
+
   res.send(`
     <!DOCTYPE html>
     <html lang="en">
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Sign in with Google - Vidyapeeth Pune Hub</title>
+      <title>Sign in with Google - Pimpri PW Vidyapeeth Hub</title>
       <script src="https://cdn.tailwindcss.com"></script>
       <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
       <style>
@@ -780,7 +915,7 @@ app.get("/auth/google/mock-consent", (req, res) => {
         </svg>
 
         <h1 class="text-xl font-medium text-[#202124] mb-1">Choose an account</h1>
-        <p class="text-sm text-[#5f6368] mb-6">to continue to <span class="font-bold text-slate-800">Vidyapeeth Pune Hub</span></p>
+        <p class="text-sm text-[#5f6368] mb-6">to continue to <span class="font-bold text-slate-800">Pimpri PW Vidyapeeth Hub</span></p>
 
         <!-- Developer Mode Notification -->
         <div class="w-full mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 space-y-1.5 text-left">
@@ -791,7 +926,7 @@ app.get("/auth/google/mock-consent", (req, res) => {
         <!-- Accounts Stack -->
         <div class="w-full space-y-2.5 mb-6" id="accountsList">
           <!-- Account 1 -->
-          <button onclick="selectEmail('aniket.mishra@pw.live')" class="w-full text-left p-3.5 hover:bg-slate-50 border border-slate-200/90 rounded-xl transition-all flex items-center justify-between outline-none cursor-pointer">
+          <button onclick="selectEmail('aniket.mishra@pw.live', '${tokenAniket}')" class="w-full text-left p-3.5 hover:bg-slate-50 border border-slate-200/90 rounded-xl transition-all flex items-center justify-between outline-none cursor-pointer">
             <div>
               <div class="font-medium text-sm text-[#3c4043]">Aniket Mishra</div>
               <div class="text-[11px] text-[#5f6368] mt-0.5">aniket.mishra@pw.live</div>
@@ -800,7 +935,7 @@ app.get("/auth/google/mock-consent", (req, res) => {
           </button>
 
           <!-- Account 2 -->
-          <button onclick="selectEmail('academic.coordinator@physicswallah.org')" class="w-full text-left p-3.5 hover:bg-slate-50 border border-slate-200/90 rounded-xl transition-all flex items-center justify-between outline-none cursor-pointer">
+          <button onclick="selectEmail('academic.coordinator@physicswallah.org', '${tokenCoordinator}')" class="w-full text-left p-3.5 hover:bg-slate-50 border border-slate-200/90 rounded-xl transition-all flex items-center justify-between outline-none cursor-pointer">
             <div>
               <div class="font-medium text-sm text-[#3c4043]">Academic Coordinator</div>
               <div class="text-[11px] text-[#5f6368] mt-0.5">academic.coordinator@physicswallah.org</div>
@@ -831,16 +966,33 @@ app.get("/auth/google/mock-consent", (req, res) => {
       </div>
 
       <script>
-        function selectEmail(email) {
+        async function selectEmail(email, staffToken) {
           if (window.opener) {
             const prefix = email.split("@")[0];
             const name = prefix.split(/[\._\-]/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
             const picture = "https://ui-avatars.com/api/?name=" + encodeURIComponent(name) + "&background=3b82f6&color=fff&bold=true&size=128";
+            
+            let finalToken = staffToken;
+            if (!finalToken) {
+              try {
+                const res = await fetch("/api/auth/mock-token?email=" + encodeURIComponent(email));
+                if (res.ok) {
+                  const data = await res.json();
+                  finalToken = data.staffToken;
+                } else {
+                  console.error("Failed to generate mock token");
+                }
+              } catch (e) {
+                console.error(e);
+              }
+            }
+
             window.opener.postMessage({ 
               type: "GOOGLE_AUTH_SUCCESS", 
               email: email,
               name: name,
-              picture: picture
+              picture: picture,
+              staffToken: finalToken
             }, "*");
             window.close();
           } else {
@@ -930,7 +1082,7 @@ app.get("/auth/google/callback", async (req, res) => {
               if (window.opener) {
                 window.opener.postMessage({
                   type: "GOOGLE_AUTH_FAILURE",
-                  error: "Access Restricted: Account " + ${JSON.stringify(email)} + " is not permitted. Only official PW staff accounts (@pw.live or @physicswallah.org) can access the portal."
+                  error: "Access Restricted: Account ${email} is not permitted. Only official PW staff accounts (@pw.live or @physicswallah.org) can access the portal."
                 }, "*");
                 window.close();
               } else {
@@ -943,6 +1095,8 @@ app.get("/auth/google/callback", async (req, res) => {
       `);
     }
 
+    const staffToken = generateStaffToken(email);
+
     // Success response posted to original application window
     return res.send(`
       <html>
@@ -951,9 +1105,10 @@ app.get("/auth/google/callback", async (req, res) => {
             if (window.opener) {
               window.opener.postMessage({
                 type: "GOOGLE_AUTH_SUCCESS",
-                email: ${JSON.stringify(email)},
+                email: "${email}",
                 name: ${JSON.stringify(userData.name || "")},
-                picture: ${JSON.stringify(userData.picture || "")}
+                picture: ${JSON.stringify(userData.picture || "")},
+                staffToken: "${staffToken}"
               }, "*");
               window.close();
             } else {
@@ -974,7 +1129,7 @@ app.get("/auth/google/callback", async (req, res) => {
             if (window.opener) {
               window.opener.postMessage({
                 type: "GOOGLE_AUTH_FAILURE",
-                error: "Google Authentication System Failure: " + ${JSON.stringify(err.message || 'Interpersonal handshake error.')}
+                error: "Google Authentication System Failure: ${err.message || 'Interpersonal handshake error.'}"
               }, "*");
               window.close();
             } else {
@@ -1017,8 +1172,78 @@ app.get("/api/logo", async (req, res) => {
   }
 });
 
+// API: Get current config mappings
+app.get("/api/config", verifyRequest, (req, res) => {
+  const config = getAppConfig();
+  const userEmail = req.headers["x-user-email"] as string;
+  const allowedCenters = getUserAllowedCenters(userEmail);
+  const userSheets = allowedCenters 
+    ? memorySheets.filter(s => allowedCenters.includes(s.center))
+    : memorySheets;
+
+  res.json({
+    env: {
+      SPREADSHEET_URL: process.env.SPREADSHEET_URL || "",
+      SPREADSHEET_CENTERS: process.env.SPREADSHEET_CENTERS || "",
+      SUBSHEET_CENTERS: process.env.SUBSHEET_CENTERS || "",
+      STAFF_ACCESS: process.env.STAFF_ACCESS || "",
+    },
+    local: {
+      SPREADSHEET_URL: config.SPREADSHEET_URL || "",
+      SPREADSHEET_CENTERS: config.SPREADSHEET_CENTERS || {},
+      SUBSHEET_CENTERS: config.SUBSHEET_CENTERS || {},
+      STAFF_ACCESS: config.STAFF_ACCESS || {},
+    },
+    combined: {
+      SPREADSHEET_URL: getSpreadsheetUrls().join(", "),
+      SPREADSHEET_CENTERS: getSpreadsheetCenters(),
+      SUBSHEET_CENTERS: getSubsheetCenters(),
+      STAFF_ACCESS: getStaffAccess(),
+    },
+    activeSheets: userSheets.map(s => ({
+      name: s.name,
+      sourceUrl: s.sourceUrl,
+      center: s.center
+    }))
+  });
+});
+
+// API: Save custom configurations to local config file and trigger load
+app.post("/api/config", verifyRequest, async (req, res) => {
+  try {
+    const { SPREADSHEET_URL, SPREADSHEET_CENTERS, SUBSHEET_CENTERS, STAFF_ACCESS } = req.body;
+    const newConfig: SavedConfig = {};
+
+    if (typeof SPREADSHEET_URL === "string") {
+      const urls = SPREADSHEET_URL.split(",")
+        .map(u => normalizeSpreadsheetUrl(u))
+        .filter(Boolean);
+      newConfig.SPREADSHEET_URL = urls.join(", ");
+    }
+    if (SPREADSHEET_CENTERS && typeof SPREADSHEET_CENTERS === "object") {
+      newConfig.SPREADSHEET_CENTERS = SPREADSHEET_CENTERS;
+    }
+    if (SUBSHEET_CENTERS && typeof SUBSHEET_CENTERS === "object") {
+      newConfig.SUBSHEET_CENTERS = SUBSHEET_CENTERS;
+    }
+    if (STAFF_ACCESS && typeof STAFF_ACCESS === "object") {
+      newConfig.STAFF_ACCESS = STAFF_ACCESS;
+    }
+
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(newConfig, null, 2), "utf-8");
+
+    // Hot-reload spreadsheet data in background
+    console.log("Configuration updated, reloading cache in background...");
+    loadSpreadsheetData();
+
+    res.json({ success: true, message: "Configurations successfully saved! Cache is reloading in background." });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to save configuration: " + err.toString() });
+  }
+});
+
 // API: Health status + cache context
-app.get("/api/health", (req, res) => {
+app.get("/api/health", verifyRequest, (req, res) => {
   res.json({
     status: "ok",
     lastLoaded,
@@ -1029,7 +1254,7 @@ app.get("/api/health", (req, res) => {
 });
 
 // API: Get parsed dropdown listings
-app.get("/api/dropdowns", async (req, res) => {
+app.get("/api/dropdowns", verifyRequest, async (req, res) => {
   if (loadError && memorySheets.length === 0) {
     return res.status(500).json({ error: loadError });
   }
@@ -1038,9 +1263,15 @@ app.get("/api/dropdowns", async (req, res) => {
     await loadSpreadsheetData();
   }
 
+  const userEmail = req.headers["x-user-email"] as string;
+  const allowedCenters = getUserAllowedCenters(userEmail);
+  const userSheets = allowedCenters 
+    ? memorySheets.filter(s => allowedCenters.includes(s.center))
+    : memorySheets;
+
   // Calculate student/row stats dynamically for each sheet
   const sheetStats: Record<string, number> = {};
-  memorySheets.forEach((s) => {
+  userSheets.forEach((s) => {
     const data = s.data;
     const headerInfo = findHeaderRow(data);
     if (headerInfo) {
@@ -1061,33 +1292,88 @@ app.get("/api/dropdowns", async (req, res) => {
     }
   });
 
+  // Compile batches and names list restricted by allowed user centers
+  let userBatches = dropdowns.batches;
+  let userNames = dropdowns.names;
+
+  if (allowedCenters) {
+    const batchesSet = new Set<string>();
+    const namesSet = new Set<string>();
+
+    userSheets.forEach((sheetObj) => {
+      const data = sheetObj.data;
+      const sheetName = sheetObj.name;
+      if (!isTestSheet(sheetName)) return;
+      const headerInfo = findHeaderRow(data);
+      if (!headerInfo) return;
+
+      const headers = headerInfo.headers;
+      const rIdx = headerInfo.index;
+
+      const idxReg = findColumnIndex(headers, ["reg no", "roll no"]);
+      const idxName = findColumnIndex(headers, ["student name", "name"]);
+      const idxBatch = findColumnIndex(headers, ["batch"]);
+
+      if (idxReg === -1) return;
+
+      for (let i = rIdx + 1; i < data.length; i++) {
+        const row = data[i];
+        if (!row) continue;
+        const reg = String(row[idxReg] || "").trim();
+        if (reg) {
+          if (idxName !== -1 && row[idxName] !== undefined && row[idxName] !== null) {
+            const nameVal = String(row[idxName]).trim();
+            if (nameVal && nameVal !== "" && nameVal.toLowerCase() !== "student name" && nameVal.toLowerCase() !== "name") {
+              namesSet.add(nameVal);
+            }
+          }
+          if (idxBatch !== -1 && row[idxBatch] !== undefined && row[idxBatch] !== null) {
+            const batchVal = String(row[idxBatch]).trim();
+            if (batchVal && batchVal !== "" && batchVal.toLowerCase() !== "batch") {
+              batchesSet.add(batchVal);
+            }
+          }
+        }
+      }
+    });
+
+    userBatches = Array.from(batchesSet).filter((b) => b !== "N/A" && b !== "").sort();
+    userNames = Array.from(namesSet)
+      .filter((n) => n !== "")
+      .sort((a, b) => {
+        const aIsNA = a.includes("N/A") || a.toLowerCase() === "n/a" || a.startsWith("#");
+        const bIsNA = b.includes("N/A") || b.toLowerCase() === "n/a" || b.startsWith("#");
+        if (aIsNA && !bIsNA) return 1;
+        if (!aIsNA && bIsNA) return -1;
+        return a.localeCompare(b);
+      });
+  }
+
   res.json({
-    batches: dropdowns.batches,
-    names: dropdowns.names,
-    sheets: sortSheetNamesDescending(Array.from(new Set(memorySheets.map(s => s.name)))),
+    batches: userBatches,
+    names: userNames,
+    sheets: sortSheetNamesDescending(Array.from(new Set(userSheets.map(s => s.name)))),
     sheetStats,
+    sheetUrls: sheetUrlsMap,
     lastLoaded,
     isLoading,
   });
 });
 
 // API: Manual refresh endpoint
-app.post("/api/refresh", async (req, res) => {
-  const requester = String(req.header("x-user-email") || "").trim().toLowerCase();
+app.post("/api/refresh", verifyRequest, async (req, res) => {
   if (isLoading) {
     return res.json({ message: "Refresh already in progress...", isLoading: true });
   }
-  await loadSpreadsheetData({ notifySuccess: true });
+  await loadSpreadsheetData();
   if (loadError) {
-    if (requester) logActivity(requester, "sync_failed", loadError);
     return res.status(500).json({ error: loadError });
   }
-  if (requester) logActivity(requester, "sync", `${memorySheets.length} sheets reloaded`);
   res.json({ success: true, lastLoaded, batchesCount: dropdowns.batches.length });
 });
 
 // API: Get student records payload
-app.get("/api/student", (req, res) => {
+app.get("/api/student", verifyRequest, (req, res) => {
   const queryParam = req.query.query;
   if (!queryParam) {
     return res.status(400).json({ error: "Missing query parameter." });
@@ -1100,11 +1386,6 @@ app.get("/api/student", (req, res) => {
     return res.status(400).json({ error: "Query cannot be empty." });
   }
 
-  const searcher = String(req.header("x-user-email") || "").trim().toLowerCase();
-  if (searcher && searchInput !== "all") {
-    logActivity(searcher, "search", `Query: "${String(queryParam).trim()}"`);
-  }
-
   if (memorySheets.length === 0) {
     if (isLoading) {
       return res.status(503).json({ error: "Database cache is currently loading. Please retry in a few seconds." });
@@ -1113,6 +1394,12 @@ app.get("/api/student", (req, res) => {
   }
 
   try {
+    const userEmail = req.headers["x-user-email"] as string;
+    const allowedCenters = getUserAllowedCenters(userEmail);
+    const userSheets = allowedCenters 
+      ? memorySheets.filter(s => allowedCenters.includes(s.center))
+      : memorySheets;
+
     const targetRegNos = new Set<string>();
     const profilesMap: Record<string, any> = {};
     const testsMap: Record<string, any[]> = {};
@@ -1121,7 +1408,7 @@ app.get("/api/student", (req, res) => {
     // Parse and store detailed metadata for each sheet
     const sheetMetaMap = new Map<string, { date: string; testClass: string; cleanName: string; originalSheetName: string }>();
 
-    memorySheets.forEach((sheetObj) => {
+    userSheets.forEach((sheetObj) => {
       const sheetName = sheetObj.name;
       // Match starts with 1-2 digits, optional st/nd/rd/th suffix, spaces, then Month name
       const dateRegex = /^(\d{1,2})(?:st|nd|rd|th)?\s+(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s*(.*)$/i;
@@ -1160,12 +1447,14 @@ app.get("/api/student", (req, res) => {
     });
 
     // STEP 1: Find Students
-    memorySheets.forEach((sheetObj) => {
+    userSheets.forEach((sheetObj) => {
       const data = sheetObj.data;
       const sheetName = sheetObj.name;
 
-      if (exactSheetParam && sheetName !== exactSheetParam) {
-        return;
+      if (exactSheetParam) {
+        if (sheetName !== exactSheetParam) return;
+      } else {
+        if (!isTestSheet(sheetName)) return;
       }
 
       const headerInfo = findHeaderRow(data);
@@ -1207,8 +1496,15 @@ app.get("/api/student", (req, res) => {
               regNo: reg,
               name: name || "N/A",
               batch: batch || "N/A",
-              center: "Vidyapeeth Pune",
+              center: sheetObj.center || "Pimpri PW Vidyapeeth",
             };
+          } else {
+            if (name && name !== "N/A" && name !== "#N/A" && (profilesMap[reg].name === "N/A" || profilesMap[reg].name === "#N/A")) {
+              profilesMap[reg].name = name;
+            }
+            if (batch && batch !== "N/A" && (profilesMap[reg].batch === "N/A" || !profilesMap[reg].batch)) {
+              profilesMap[reg].batch = batch;
+            }
           }
         }
       }
@@ -1223,12 +1519,14 @@ app.get("/api/student", (req, res) => {
     });
 
     // STEP 2: Extract Test Marks
-    memorySheets.forEach((sheetObj) => {
+    userSheets.forEach((sheetObj) => {
       const data = sheetObj.data;
       const sheetName = sheetObj.name;
 
-      if (exactSheetParam && sheetName !== exactSheetParam) {
-        return;
+      if (exactSheetParam) {
+        if (sheetName !== exactSheetParam) return;
+      } else {
+        if (!isTestSheet(sheetName)) return;
       }
 
       if (req.query.singleSheet === "true") {
@@ -1263,7 +1561,7 @@ app.get("/api/student", (req, res) => {
 
       const isNEETSheet = /neet/i.test(sheetName) || headers.includes("botany") || headers.includes("zoology");
       const isJEESheet = !isNEETSheet && (/jee/i.test(sheetName) || headers.includes("mathematics") || headers.includes("maths"));
-      const isFoundationSheet = !isNEETSheet && !isJEESheet && (/foundation/i.test(sheetName) || /fnd/i.test(sheetName) || /class\s*(?:6|7|8|9|10)/i.test(sheetName) || headers.includes("science") || headers.includes("sst") || headers.includes("mat") || headers.includes("english") || headers.includes("hindi"));
+      const isFoundationSheet = !isNEETSheet && !isJEESheet && (/foundation/i.test(sheetName) || /fnd/i.test(sheetName) || /class\s*(?:6|7|8|9|10)/i.test(sheetName) || headers.includes("science") || headers.includes("sst") || headers.includes("social studies") || headers.includes("mat") || headers.includes("mental ability") || headers.includes("english"));
 
       const sheetStream = isNEETSheet ? "NEET" : isFoundationSheet ? "Foundation" : "JEE";
 
@@ -1274,7 +1572,7 @@ app.get("/api/student", (req, res) => {
       const idxBatch = findColumnIndex(headers, ["batch"]);
 
       const idxPhy = findColumnIndex(headers, ["physics", "avg physics %", "physics marks"]);
-      const idxChem = findColumnIndex(headers, ["chemistry", "avg chemistry %", "chemistry marks"]);
+      const idxChem = findColumnIndex(headers, ["chemistry", "chemisytry", "avg chemistry %", "chemistry marks"]);
       const idxMaths = findColumnIndex(headers, ["mathematics", "maths", "avg maths %"]);
       const idxBot = findColumnIndex(headers, ["botany", "botany marks"]);
       const idxZoo = findColumnIndex(headers, ["zoology", "zoology marks"]);
@@ -1339,6 +1637,7 @@ app.get("/api/student", (req, res) => {
               score: row[col.index] !== undefined && row[col.index] !== "" ? row[col.index] : "-",
             })),
             stream: testStream,
+            center: sheetObj.center || "Pimpri PW Vidyapeeth",
           };
 
           if (testObj.score !== "N/A" && testObj.score !== "") {
@@ -1365,6 +1664,16 @@ app.get("/api/student", (req, res) => {
         };
       });
 
+      // Sort tests chronologically (ascending order) so the latest test is at the end of the array
+      updatedTests.sort((a, b) => {
+        const dateA = parseSheetDate(a.originalSheetName || "");
+        const dateB = parseSheetDate(b.originalSheetName || "");
+        if (dateA.month !== dateB.month) {
+          return dateA.month - dateB.month;
+        }
+        return dateA.day - dateB.day;
+      });
+
       let latestRank = "N/A";
       let latestRankDate = "N/A";
       if (updatedTests.length > 0) {
@@ -1382,6 +1691,19 @@ app.get("/api/student", (req, res) => {
       const detectedInfo = detectStreamAndClass(profile.batch, updatedTests.flatMap((t: any) => (t.subjectScores || []).map((s: any) => s.subject)));
       profile.stream = detectedInfo.stream;
       profile.class = detectedInfo.class;
+      
+      // Determine the mapped center based on the student's latest test record
+      let latestCenter = profile.center || "Pimpri PW Vidyapeeth";
+      if (updatedTests.length > 0) {
+        const latestTest = updatedTests[updatedTests.length - 1];
+        if (latestTest && latestTest.center) {
+          latestCenter = latestTest.center;
+        }
+      }
+      profile.center = latestCenter;
+      
+      // Inject secure cryptographic shareToken
+      profile.shareToken = generateShareToken(reg);
 
       studentsArray.push({
         profile: profile,
@@ -1412,287 +1734,13 @@ app.get("/api/student", (req, res) => {
       }
     }
 
-    // Center-based access control: non-admin users with an assigned center
-    // only see students belonging to that center. Admins (and shared links
-    // with no user identity) see everything. Users without a center set are
-    // not locked out (lenient default).
-    let visibleStudents = studentsArray;
-    if (searcher) {
-      const requesterRole = getRoleForEmail(searcher);
-      const requesterCenter = getCenterForEmail(searcher).trim().toLowerCase();
-      if (requesterRole !== "admin" && requesterCenter) {
-        visibleStudents = studentsArray.filter(
-          (s) => String(s.profile.center || "").trim().toLowerCase() === requesterCenter
-        );
-      }
-    }
-
     res.json({
       stream: finalStreamType,
-      students: visibleStudents,
+      students: studentsArray,
     });
   } catch (err: any) {
     res.status(500).json({ error: "Internal Core Engine Error: " + err.toString() });
   }
-});
-
-// ============================================================
-//  SESSION + ROLE + ADMIN PANEL ENDPOINTS
-// ============================================================
-
-const VALID_ROLES: Role[] = ["admin", "teacher", "staff"];
-
-// Register/refresh a login session. First ever user becomes super-admin.
-app.post("/api/auth/session", (req, res) => {
-  const email = String(req.body?.email || "").trim().toLowerCase();
-  const name = req.body?.name ? String(req.body.name) : undefined;
-  const event = req.body?.event === "resume" ? "resume" : "login";
-  if (!email) {
-    return res.status(400).json({ error: "Email is required." });
-  }
-  const user = ensureUser(email, name);
-  user.lastLogin = new Date().toISOString();
-  saveAppState();
-  logActivity(email, event === "resume" ? "session_resume" : "login", name ? `as ${name}` : undefined);
-  res.json({ email: user.email, name: user.name, role: user.role, center: user.center || "" });
-});
-
-// Lightweight role lookup (no logging)
-app.get("/api/me", (req, res) => {
-  const email = String(req.query.email || "").trim().toLowerCase();
-  if (!email) return res.status(400).json({ error: "Email required." });
-  res.json({ email, role: getRoleForEmail(email), center: getCenterForEmail(email) });
-});
-
-// --- Admin: list users ---
-app.get("/api/admin/users", (req, res) => {
-  if (!requireAdmin(req, res)) return;
-  const users = Object.values(appState.users).sort((a, b) => a.email.localeCompare(b.email));
-  res.json({ users, sheetConfigured: settingsStore.isConfigured() });
-});
-
-// --- Admin: pull the roster fresh from the settings spreadsheet ---
-app.post("/api/admin/users/reload", async (req, res) => {
-  const admin = requireAdmin(req, res);
-  if (!admin) return;
-  if (!settingsStore.isConfigured()) {
-    return res.status(400).json({ error: "Settings spreadsheet is not configured." });
-  }
-  await loadUsersFromSheet();
-  logActivity(admin.email, "users_reload", "Pulled roster from settings sheet");
-  res.json({ success: true, count: Object.keys(appState.users).length });
-});
-
-// --- Admin: set a single user's role (and optionally center) ---
-app.post("/api/admin/users/role", (req, res) => {
-  const admin = requireAdmin(req, res);
-  if (!admin) return;
-  const email = String(req.body?.email || "").trim().toLowerCase();
-  const role = String(req.body?.role || "").trim().toLowerCase() as Role;
-  const center = req.body?.center !== undefined ? String(req.body.center).trim() : undefined;
-  if (!email || !VALID_ROLES.includes(role)) {
-    return res.status(400).json({ error: "Valid email and role (admin/teacher/staff) required." });
-  }
-  const existing = appState.users[email];
-  // Prevent demoting the last remaining admin
-  if (existing && existing.role === "admin" && role !== "admin") {
-    const adminCount = Object.values(appState.users).filter((u) => u.role === "admin").length;
-    if (adminCount <= 1) {
-      return res.status(400).json({ error: "Cannot demote the last admin. Promote someone else first." });
-    }
-  }
-  if (existing) {
-    existing.role = role;
-    if (center !== undefined) existing.center = center;
-  } else {
-    appState.users[email] = {
-      email,
-      role,
-      center: center || "",
-      addedAt: new Date().toISOString(),
-      addedBy: admin.email,
-    };
-  }
-  saveAppState();
-  flushUsersToSheet();
-  logActivity(admin.email, "role_change", `${email} → ${role}${center !== undefined ? ` @ ${center || "—"}` : ""}`);
-  res.json({ success: true, user: appState.users[email] });
-});
-
-// --- Admin: bulk add emails with a role (+ optional center) ---
-app.post("/api/admin/users/bulk", (req, res) => {
-  const admin = requireAdmin(req, res);
-  if (!admin) return;
-  const raw = String(req.body?.emails || "");
-  const role = String(req.body?.role || "staff").trim().toLowerCase() as Role;
-  const center = req.body?.center !== undefined ? String(req.body.center).trim() : "";
-  if (!VALID_ROLES.includes(role)) {
-    return res.status(400).json({ error: "Invalid role." });
-  }
-  // Split on commas, semicolons, whitespace or newlines
-  const candidates = raw
-    .split(/[\s,;]+/)
-    .map((e) => e.trim().toLowerCase())
-    .filter(Boolean);
-
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  const added: string[] = [];
-  const updated: string[] = [];
-  const invalid: string[] = [];
-
-  candidates.forEach((email) => {
-    if (!emailRegex.test(email)) {
-      invalid.push(email);
-      return;
-    }
-    if (appState.users[email]) {
-      appState.users[email].role = role;
-      if (center) appState.users[email].center = center;
-      updated.push(email);
-    } else {
-      appState.users[email] = {
-        email,
-        role,
-        center,
-        addedAt: new Date().toISOString(),
-        addedBy: admin.email,
-      };
-      added.push(email);
-    }
-  });
-
-  saveAppState();
-  flushUsersToSheet();
-  logActivity(admin.email, "bulk_import", `${added.length} added, ${updated.length} updated as ${role}${center ? ` @ ${center}` : ""}`);
-  res.json({ success: true, added, updated, invalid });
-});
-
-// --- Admin: remove a user ---
-app.delete("/api/admin/users", (req, res) => {
-  const admin = requireAdmin(req, res);
-  if (!admin) return;
-  const email = String(req.body?.email || req.query.email || "").trim().toLowerCase();
-  if (!email || !appState.users[email]) {
-    return res.status(404).json({ error: "User not found." });
-  }
-  if (appState.users[email].role === "admin") {
-    const adminCount = Object.values(appState.users).filter((u) => u.role === "admin").length;
-    if (adminCount <= 1) {
-      return res.status(400).json({ error: "Cannot remove the last admin." });
-    }
-  }
-  delete appState.users[email];
-  saveAppState();
-  flushUsersToSheet();
-  logActivity(admin.email, "user_removed", email);
-  res.json({ success: true });
-});
-
-// --- Admin: activity log ---
-app.get("/api/admin/activity", (req, res) => {
-  if (!requireAdmin(req, res)) return;
-  const limit = Math.min(parseInt(String(req.query.limit || "300"), 10) || 300, MAX_LOG_ENTRIES);
-  res.json({ activity: appState.activityLog.slice(0, limit), total: appState.activityLog.length });
-});
-
-// --- Admin: notifications ---
-app.get("/api/admin/notifications", (req, res) => {
-  if (!requireAdmin(req, res)) return;
-  const unread = appState.notifications.filter((n) => !n.read).length;
-  res.json({ notifications: appState.notifications.slice(0, 200), unread });
-});
-
-app.post("/api/admin/notifications/read", (req, res) => {
-  if (!requireAdmin(req, res)) return;
-  const id = req.body?.id ? String(req.body.id) : null;
-  if (id) {
-    const n = appState.notifications.find((x) => x.id === id);
-    if (n) n.read = true;
-  } else {
-    appState.notifications.forEach((n) => (n.read = true));
-  }
-  saveAppState();
-  res.json({ success: true, unread: appState.notifications.filter((n) => !n.read).length });
-});
-
-app.post("/api/admin/notifications/clear", (req, res) => {
-  if (!requireAdmin(req, res)) return;
-  appState.notifications = [];
-  saveAppState();
-  res.json({ success: true });
-});
-
-// --- Admin: last sync per sheet/center ---
-app.get("/api/admin/sync-status", (req, res) => {
-  if (!requireAdmin(req, res)) return;
-  const sheets = sortSheetNamesDescending(memorySheets.map((s) => s.name)).map((name) => {
-    const info = appState.sheetSync[name];
-    return {
-      name,
-      rows: info ? info.rows : countSheetRows(memorySheets.find((s) => s.name === name)!),
-      lastSync: info ? info.lastSync : lastLoaded,
-    };
-  });
-  res.json({
-    lastLoaded,
-    isLoading,
-    loadError,
-    sheetCount: memorySheets.length,
-    sheets,
-  });
-});
-
-// --- Admin: export cache data (CSV or Excel) ---
-app.get("/api/admin/export-cache", (req, res) => {
-  if (!requireAdmin(req, res)) return;
-  const format = String(req.query.format || "xlsx").toLowerCase();
-  const stamp = new Date().toISOString().slice(0, 10);
-
-  if (memorySheets.length === 0) {
-    return res.status(503).json({ error: "Cache is empty. Sync the database first." });
-  }
-
-  if (format === "csv") {
-    // Flatten every sheet's rows into one CSV with a "Sheet" column
-    const lines: string[] = [];
-    const esc = (v: any) => {
-      const s = v === undefined || v === null ? "" : String(v);
-      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-    };
-    memorySheets.forEach((sheet) => {
-      sheet.data.forEach((row) => {
-        if (!row) return;
-        lines.push([esc(sheet.name), ...row.map(esc)].join(","));
-      });
-    });
-    const csv = "Sheet,Data...\n" + lines.join("\n");
-    const adminCsv = String(req.header("x-user-email") || "").trim().toLowerCase();
-    if (adminCsv) logActivity(adminCsv, "export_cache", `format=csv, ${memorySheets.length} sheets`);
-    res.setHeader("Content-Type", "text/csv; charset=utf-8");
-    res.setHeader("Content-Disposition", `attachment; filename="vp-cache-${stamp}.csv"`);
-    return res.send(csv);
-  }
-
-  // Default: build a multi-sheet XLSX workbook from the cache
-  const wb = XLSX.utils.book_new();
-  memorySheets.forEach((sheet, i) => {
-    const ws = XLSX.utils.aoa_to_sheet(sheet.data);
-    // Excel sheet names max 31 chars and must be unique
-    let safeName = (sheet.name || `Sheet${i + 1}`).replace(/[\\/?*\[\]:]/g, " ").slice(0, 28);
-    if (!safeName.trim()) safeName = `Sheet${i + 1}`;
-    let finalName = safeName;
-    let dup = 1;
-    while (wb.SheetNames.includes(finalName)) {
-      finalName = `${safeName.slice(0, 25)}_${dup++}`;
-    }
-    XLSX.utils.book_append_sheet(wb, ws, finalName);
-  });
-  const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
-  const admin = String(req.header("x-user-email") || "").trim().toLowerCase();
-  if (admin) logActivity(admin, "export_cache", `format=xlsx, ${memorySheets.length} sheets`);
-  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-  res.setHeader("Content-Disposition", `attachment; filename="vp-cache-${stamp}.xlsx"`);
-  res.send(buffer);
 });
 
 // Configure Vite integration or static file server

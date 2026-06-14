@@ -1,26 +1,27 @@
-# Hugging Face Spaces (Docker SDK) — Node/Express + Vite SPA
-# The official node image already ships a "node" user at UID 1000 (what HF expects).
+# Use official Node.js runtime as parent image
 FROM node:20-slim
 
+# Set working directory in container
 WORKDIR /app
 
-# Install dependencies (incl. dev deps needed for the build)
+# Copy package files
 COPY package*.json ./
+
+# Install dependencies
 RUN npm ci
 
-# Copy source and build the client bundle + server bundle
+# Copy the rest of the application code
 COPY . .
+
+# Build Vite frontend and esbuild server backend
 RUN npm run build
 
-# Make the working dir writable for the runtime user (local JSON cache, etc.)
-RUN chown -R node:node /app
-
-ENV NODE_ENV=production \
-    PORT=7860 \
-    HOME=/home/node
-
-USER node
-
+# Expose port (Hugging Face expects port 7860 by default)
 EXPOSE 7860
 
+# Set environment variables
+ENV PORT=7860
+ENV NODE_ENV=production
+
+# Run the app
 CMD ["node", "dist/server.cjs"]

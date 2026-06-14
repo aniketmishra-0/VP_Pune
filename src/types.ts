@@ -41,6 +41,7 @@ export interface Dropdowns {
   names: string[];
   sheets?: string[];
   sheetStats?: Record<string, number>;
+  sheetUrls?: Record<string, string>;
   lastLoaded?: string | null;
   isLoading?: boolean;
 }

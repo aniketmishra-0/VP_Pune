@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
+// @ts-ignore
+import html2pdf from "html2pdf.js";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Search,
@@ -19,13 +21,25 @@ import {
   ChevronRight,
   LayoutGrid,
   Check,
+  Play,
+  Lock,
+  Phone,
+  HelpCircle,
   GraduationCap,
-  Share2,
+  Calendar,
+  Grid,
+  MapPin,
+  Mail,
   Settings,
+  Share2,
   X,
+  FileSpreadsheet,
+  Plus,
+  Trash2,
+  ExternalLink,
+  ChevronDown,
 } from "lucide-react";
 import { Student, Dropdowns, TestRecord, Profile } from "./types";
-import AdminSettings, { Role, SessionUser } from "./components/AdminSettings";
 
 function PWLogo({ size = "h-10 w-10", textSize = "text-sm", className = "" }: { size?: string, textSize?: string, className?: string }) {
   const [hasError, setHasError] = React.useState(false);
@@ -50,16 +64,104 @@ function PWLogo({ size = "h-10 w-10", textSize = "text-sm", className = "" }: { 
   );
 }
 
+function OwlLogo({ className = "w-10 h-10" }: { className?: string }) {
+  return (
+    <div className={`flex items-center justify-center bg-blue-500/10 rounded-xl p-2 shrink-0 ${className}`}>
+      <svg className="w-6 h-6" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="50" cy="50" r="45" className="fill-[#5277f7]/10 stroke-[#5277f7]/20" strokeWidth="2" />
+        {/* Glasses frame */}
+        <rect x="22" y="38" width="56" height="24" rx="12" className="stroke-[#5277f7]" strokeWidth="8" fill="none" />
+        {/* Eyeglass bridges */}
+        <path d="M42 50H58" className="stroke-[#5277f7]" strokeWidth="8" strokeLinecap="round" />
+        {/* Pupils */}
+        <circle cx="36" cy="50" r="5" className="fill-[#5277f7]" />
+        {/* Right Pupil */}
+        <circle cx="64" cy="50" r="5" className="fill-[#5277f7]" />
+        {/* Owl feather accents */}
+        <path d="M28 24C33 27 40 27 43 24" className="stroke-[#5277f7]" strokeWidth="4" strokeLinecap="round" />
+        <path d="M72 24C67 27 60 27 57 24" className="stroke-[#5277f7]" strokeWidth="4" strokeLinecap="round" />
+      </svg>
+    </div>
+  );
+}
+
+const STUDENT_AVATAR_SVG = `data:image/svg+xml;utf8,${encodeURIComponent(`
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+    <rect width="100" height="100" rx="30" fill="#f1f5f9"/>
+    <circle cx="50" cy="38" r="17" fill="#475569"/>
+    <path d="M20 80c0-14 13-24 30-24s30 10 30 24" fill="#475569"/>
+  </svg>
+`)}`;
+
 function getStudentAvatar(name: string, index: number) {
   // Returns a beautifully clean default silhouette avatar representing the classic student/user outline as requested by the user.
   // Dark slate-gray avatar silhouette over a soft slate-100 background.
-  return `data:image/svg+xml;utf8,${encodeURIComponent(`
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
-      <rect width="100" height="100" rx="30" fill="#f1f5f9"/>
-      <circle cx="50" cy="38" r="17" fill="#475569"/>
-      <path d="M20 80c0-14 13-24 30-24s30 10 30 24" fill="#475569"/>
-    </svg>
-  `)}`;
+  return STUDENT_AVATAR_SVG;
+}
+
+function getClassmatesAvatars(name: string, index: number) {
+  const photos = [
+    "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=120",
+    "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=120",
+    "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&q=80&w=120",
+    "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=120",
+    "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=120",
+    "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&q=80&w=120",
+    "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&q=80&w=120"
+  ];
+  const hash = Math.abs(name.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0) + index);
+  return [
+    photos[hash % photos.length],
+    photos[(hash + 1) % photos.length],
+    photos[(hash + 2) % photos.length]
+  ];
+}
+
+function getTimetableDays(student: Student) {
+  const days = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"];
+  if (student.tests && student.tests.length > 0) {
+    return student.tests.slice(0, 5).map((test, index) => {
+      const d = new Date(test.date);
+      if (isNaN(d.getTime())) {
+        return {
+          dayNum: index + 20,
+          month: "April",
+          dayName: days[index % days.length],
+          testName: test.name,
+          dateStr: test.date
+        };
+      }
+      return {
+        dayNum: d.getDate(),
+        month: d.toLocaleString("en-US", { month: "short" }),
+        dayName: d.toLocaleString("en-US", { weekday: "long" }).toUpperCase(),
+        testName: test.name,
+        dateStr: test.date
+      };
+    });
+  }
+  return [
+    { dayNum: 20, month: "Apr", dayName: "MONDAY", testName: "Topic Test 1", dateStr: "" },
+    { dayNum: 21, month: "Apr", dayName: "TUESDAY", testName: "Topic Test 2", dateStr: "" },
+    { dayNum: 22, month: "Apr", dayName: "WEDNESDAY", testName: "Topic Test 3", dateStr: "" },
+    { dayNum: 23, month: "Apr", dayName: "THURSDAY", testName: "Topic Test 4", dateStr: "" },
+    { dayNum: 24, month: "Apr", dayName: "FRIDAY", testName: "Topic Test 5", dateStr: "" }
+  ];
+}
+
+function getSuggestedSyllabus(stream: string) {
+  if (stream === "NEET") {
+    return [
+      { name: "Plant Anatomy & Physiology", duration: "2 hours", color: "bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-thin border-rose-500/20", iconColor: "text-rose-500", rawColor: "rose" },
+      { name: "Mechanics & Thermal Physics", duration: "2 hours", color: "bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-thin border-teal-500/20", iconColor: "text-teal-500", rawColor: "teal" },
+      { name: "Organic Biomolecules", duration: "1 hour", color: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-thin border-amber-500/20", iconColor: "text-amber-500", rawColor: "amber" }
+    ];
+  }
+  return [
+    { name: "Integral Calculus & Areas", duration: "2 hours", color: "bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-thin border-rose-500/20", iconColor: "text-rose-500", rawColor: "rose" },
+    { name: "Electrostatics & Capacitance", duration: "2 hours", color: "bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-thin border-teal-500/20", iconColor: "text-teal-500", rawColor: "teal" },
+    { name: "Chemical Kinetics Revision", duration: "1 hour", color: "bg-[#fef3c7] text-[#92400e] dark:bg-[#78350f]/20 dark:text-[#fde047] border border-thin border-[#f59e0b]/25", iconColor: "text-[#d97706]", rawColor: "amber" }
+  ];
 }
 
 function formatFullTestName(name: string): string {
@@ -109,13 +211,37 @@ export default function App() {
       .join(" ");
   };
 
+  const getUserInitials = (email: string) => {
+    const name = getFullNameFromEmail(email);
+    const parts = name.split(" ");
+    if (parts.length >= 2) {
+      return (parts[0].charAt(0) + parts[1].charAt(0)).toUpperCase();
+    }
+    return name.substring(0, 2).toUpperCase();
+  };
+
   const [theme, setTheme] = useState<"light" | "dark">(
     () => (localStorage.getItem("theme") as "light" | "dark") || "light"
   );
-  const [activeView, setActiveView] = useState<"home" | "input" | "batchList" | "dashboard" | "sheetsList" | "settings">("home");
+  const [activeView, setActiveView] = useState<"home" | "input" | "batchList" | "dashboard" | "sheetsList" | "admin">("home");
   const [searchType, setSearchType] = useState<"batch" | "name" | "reg" | null>(null);
   const [sheetFilterQuery, setSheetFilterQuery] = useState<string>("");
   
+  // Check if we are viewing a shared report directly via URL without logging in
+  const publicInfo = React.useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    const regParam = params.get("reg");
+    const tokenParam = params.get("token");
+    if (regParam) {
+      return { reg: regParam, token: tokenParam };
+    }
+    const parts = window.location.pathname.split("/").filter(Boolean);
+    if (parts.length >= 2 && (parts[0] === "student" || parts[0] === "share")) {
+      return { reg: parts[1], token: parts[2] || null };
+    }
+    return null;
+  }, []);
+
   // Real PW ID Login system
   const [loggedInUser, setLoggedInUser] = useState<{ email: string; name?: string; picture?: string } | null>(() => {
     const saved = localStorage.getItem("pwUserEmail");
@@ -123,55 +249,17 @@ export default function App() {
     const savedPicture = localStorage.getItem("pwUserPicture");
     return saved ? { email: saved, name: savedName || undefined, picture: savedPicture || undefined } : null;
   });
+  const isPublicReport = !loggedInUser && !!publicInfo;
   const [loginError, setLoginError] = useState<string | null>(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
-
-  // Role-based access control + admin notifications
-  const [userRole, setUserRole] = useState<Role>(() => (localStorage.getItem("pwUserRole") as Role) || "staff");
-  const [userCenter, setUserCenter] = useState<string>(() => localStorage.getItem("pwUserCenter") || "");
-  const [notifUnread, setNotifUnread] = useState<number>(0);
-  const isAdmin = userRole === "admin";
-
-  // Establish a session with the backend: records audit log + returns the user's role
-  const establishSession = async (email: string, name: string | undefined, event: "login" | "resume") => {
-    try {
-      const res = await fetch("/api/auth/session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, name, event }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const role: Role = data.role || "staff";
-        setUserRole(role);
-        localStorage.setItem("pwUserRole", role);
-        setUserCenter(data.center || "");
-        localStorage.setItem("pwUserCenter", data.center || "");
-        return role;
-      }
-    } catch (err) {
-      console.error("Session establish failed:", err);
-    }
-    return "staff" as Role;
-  };
-
-  // Poll unread notification count for admins
-  const refreshUnread = async (email: string) => {
-    try {
-      const res = await fetch("/api/admin/notifications", { headers: { "x-user-email": email } });
-      if (res.ok) {
-        const data = await res.json();
-        setNotifUnread(data.unread || 0);
-      }
-    } catch (_) {}
-  };
 
   // Input fields
   const [selectedBatch, setSelectedBatch] = useState<string>("");
   const [nameQuery, setNameQuery] = useState<string>("");
   const [regInput, setRegInput] = useState<string>("");
   const [batchSearchQuery, setBatchSearchQuery] = useState<string>("");
+  const [batchPageSize, setBatchPageSize] = useState<number>(50);
 
   const [nameSuggestions, setNameSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState<boolean>(false);
@@ -191,25 +279,404 @@ export default function App() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [dbStatus, setDbStatus] = useState<{ lastLoaded?: string | null; sheetCount?: number }>({});
 
+  // Configuration Settings states (Visual Interface)
+  const [spreadsheetUrls, setSpreadsheetUrls] = useState<string[]>([]);
+  const [spreadsheetCenters, setSpreadsheetCenters] = useState<Array<{ pattern: string; center: string }>>([]);
+  const [subsheetCenters, setSubsheetCenters] = useState<Array<{ center: string; patterns: string[] }>>([]);
+  const [staffAccess, setStaffAccess] = useState<Array<{ email: string; centers: string[] }>>([]);
+  const [activeSheets, setActiveSheets] = useState<Array<{ name: string; sourceUrl: string; center: string }>>([]);
+  const [adminTab, setAdminTab] = useState<"config" | "debugger" | "guide">("config");
+  const [newUrlInput, setNewUrlInput] = useState<string>("");
+  const [debuggerFilter, setDebuggerFilter] = useState<string>("");
+  const [openCenter, setOpenCenter] = useState<string | null>(null);
+  const [typedEmails, setTypedEmails] = useState<Record<number, string>>({});
+  
+  // Custom Batch Dropdown states
+  const [isBatchDropdownOpen, setIsBatchDropdownOpen] = useState<boolean>(false);
+  const [classSelectSearchQuery, setClassSelectSearchQuery] = useState<string>("");
+  const batchDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (batchDropdownRef.current && !batchDropdownRef.current.contains(e.target as Node)) {
+        setIsBatchDropdownOpen(false);
+      }
+    };
+    if (isBatchDropdownOpen) {
+      document.addEventListener("mousedown", handleOutsideClick);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+    };
+  }, [isBatchDropdownOpen]);
+  
+  const [isSavingConfig, setIsSavingConfig] = useState<boolean>(false);
+  const [configSaveMessage, setConfigSaveMessage] = useState<string | null>(null);
+  const [configSaveError, setConfigSaveError] = useState<string | null>(null);
+
+  const fetchConfig = async () => {
+    try {
+      const res = await securedFetch("/api/config");
+      if (!res.ok) throw new Error(`HTTP Error status ${res.status}`);
+      const data = await res.json();
+      
+      // Parse Spreadsheet URLs
+      const urls = (data.local?.SPREADSHEET_URL || "")
+        .split(",")
+        .map((u: string) => u.trim())
+        .filter(Boolean);
+      setSpreadsheetUrls(urls);
+
+      // Parse Spreadsheet centers (File mappings)
+      const sCenters = data.local?.SPREADSHEET_CENTERS || {};
+      const sCentersList = Object.entries(sCenters).map(([pattern, center]) => ({
+        pattern,
+        center: String(center)
+      }));
+      setSpreadsheetCenters(sCentersList);
+
+      // Parse Subsheet centers (Tab mappings)
+      const subCenters = data.local?.SUBSHEET_CENTERS || {};
+      const subCentersList = Object.entries(subCenters).map(([center, patterns]) => ({
+        center,
+        patterns: Array.isArray(patterns) ? patterns.map(String) : []
+      }));
+      setSubsheetCenters(subCentersList);
+
+      // Parse Staff Access (ACL)
+      const accessObj = data.local?.STAFF_ACCESS || {};
+      const accessList = Object.entries(accessObj).map(([email, centers]) => ({
+        email,
+        centers: Array.isArray(centers) ? centers.map(String) : []
+      }));
+      setStaffAccess(accessList);
+
+      // Set Active Sheets
+      setActiveSheets(data.activeSheets || []);
+    } catch (err: any) {
+      setConfigSaveError("Failed to fetch system configurations: " + err.message);
+    }
+  };
+
+  // Fetch configurations when activeView is changed to 'admin'
+  useEffect(() => {
+    if (activeView === "admin") {
+      setConfigSaveMessage(null);
+      setConfigSaveError(null);
+      fetchConfig();
+    }
+  }, [activeView]);
+
   const [exportMode, setExportMode] = useState<boolean>(false);
   const exportAreaRef = useRef<HTMLDivElement>(null);
+  const mainCanvasRef = useRef<HTMLDivElement>(null);
+
+  // Scroll main canvas back to top on view changes to prevent scroll residue bugs
+  useEffect(() => {
+    if (mainCanvasRef.current) {
+      mainCanvasRef.current.scrollTop = 0;
+    }
+  }, [activeView, searchType, studentsPayload, selectedStudentIndex]);
+
+  // New interactive dashboard active states
+  const [filterTestDate, setFilterTestDate] = useState<string | null>(null);
+  const [highlightedTestName, setHighlightedTestName] = useState<string | null>(null);
+  const [showingSyncModal, setShowingSyncModal] = useState<boolean>(false);
+
+  // Robust clipboard copy utility supporting legacy mobile webviews
+  const safeCopyToClipboard = async (text: string): Promise<boolean> => {
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch (err) {
+        console.warn("navigator.clipboard failed, trying fallback", err);
+      }
+    }
+    try {
+      const textArea = document.createElement("textarea");
+      textArea.value = text;
+      textArea.style.top = "0";
+      textArea.style.left = "0";
+      textArea.style.position = "fixed";
+      textArea.style.opacity = "0";
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      const successful = document.execCommand("copy");
+      document.body.removeChild(textArea);
+      return successful;
+    } catch (err) {
+      console.error("Fallback copy failed", err);
+      return false;
+    }
+  };
+
+  // Optimized single-pass student filtration logic for large roster directories
+  const filteredStudents = React.useMemo(() => {
+    if (!studentsPayload || !studentsPayload.students) return [];
+    const query = batchSearchQuery.toLowerCase().trim();
+    if (!query) {
+      return studentsPayload.students.map((student, originalIdx) => ({ student, originalIdx }));
+    }
+    const queryTokens = query.split(/\s+/).filter(Boolean);
+    if (queryTokens.length === 0) {
+      return studentsPayload.students.map((student, originalIdx) => ({ student, originalIdx }));
+    }
+    const results: { student: Student; originalIdx: number }[] = [];
+    const len = studentsPayload.students.length;
+    for (let i = 0; i < len; i++) {
+      const student = studentsPayload.students[i];
+      const name = (student.profile.name || "").toLowerCase();
+      const regNo = (student.profile.regNo || "").toLowerCase();
+      const batch = (student.profile.batch || "").toLowerCase();
+      
+      const nameWords = name.split(/[\s\-_,.]+/).filter(Boolean);
+      const batchWords = batch.split(/[\s\-_,.]+/).filter(Boolean);
+      
+      const matchesAllTokens = queryTokens.every(token => {
+        const nameWordMatches = nameWords.some(word => word.startsWith(token));
+        const batchWordMatches = batchWords.some(word => word.startsWith(token));
+        const fullNamePrefix = name.startsWith(token);
+        const fullBatchPrefix = batch.startsWith(token);
+        const regMatches = regNo.includes(token);
+        return nameWordMatches || batchWordMatches || fullNamePrefix || fullBatchPrefix || regMatches;
+      });
+
+      if (matchesAllTokens) {
+        results.push({ student, originalIdx: i });
+      }
+    }
+    return results;
+  }, [studentsPayload, batchSearchQuery]);
+
+  // Memoized worksheet filtration logic
+  const filteredSheets = React.useMemo(() => {
+    if (!dropdowns.sheets) return [];
+    const queryLower = (sheetFilterQuery || "").toLowerCase().trim();
+    if (!queryLower) return dropdowns.sheets;
+    return dropdowns.sheets.filter((sheet) =>
+      sheet.toLowerCase().includes(queryLower)
+    );
+  }, [dropdowns.sheets, sheetFilterQuery]);
 
   // Sync theme changes with document body
   useEffect(() => {
     const root = window.document.documentElement;
+    const themeMeta = document.getElementById("theme-meta");
     if (theme === "dark") {
       root.classList.add("dark");
+      if (themeMeta) themeMeta.setAttribute("content", "#0c0e17");
     } else {
       root.classList.remove("dark");
+      if (themeMeta) themeMeta.setAttribute("content", "#4e74e6");
     }
     localStorage.setItem("theme", theme);
   }, [theme]);
+
+  // Listen to beforeprint and afterprint to toggle exportMode for native browser prints (Ctrl+P)
+  useEffect(() => {
+    const handleBeforePrint = () => {
+      setExportMode(true);
+    };
+    const handleAfterPrint = () => {
+      setExportMode(false);
+    };
+    window.addEventListener("beforeprint", handleBeforePrint);
+    window.addEventListener("afterprint", handleAfterPrint);
+    return () => {
+      window.removeEventListener("beforeprint", handleBeforePrint);
+      window.removeEventListener("afterprint", handleAfterPrint);
+    };
+  }, []);
+
+  // Ref to prevent pushing state when popped (back/forward)
+  const isPopStateRef = useRef(false);
+  // Ref to keep track of last pushed state as a serialized string
+  const lastPushedStateRef = useRef<string>("");
+
+  // Setup PopState listener for back/forward navigation
+  useEffect(() => {
+    if (isPublicReport) return;
+    const handlePopState = (event: PopStateEvent) => {
+      // If we go back to the very beginning (no state), default to home
+      if (!event.state) {
+        isPopStateRef.current = true;
+        setActiveView("home");
+        setSearchType(null);
+        setStudentsPayload(null);
+        setSelectedStudentIndex(0);
+        
+        const initialState = {
+          activeView: "home",
+          searchType: null,
+          selectedBatch: "",
+          regInput: "",
+          nameQuery: "",
+          studentsPayload: null,
+          selectedStudentIndex: 0
+        };
+        lastPushedStateRef.current = JSON.stringify(initialState);
+        
+        setTimeout(() => {
+          isPopStateRef.current = false;
+        }, 80);
+        return;
+      }
+
+      isPopStateRef.current = true;
+      const state = event.state;
+
+      // Restore all navigation state
+      if (state.activeView !== undefined) setActiveView(state.activeView);
+      if (state.searchType !== undefined) setSearchType(state.searchType);
+      if (state.selectedBatch !== undefined) setSelectedBatch(state.selectedBatch);
+      if (state.regInput !== undefined) setRegInput(state.regInput);
+      if (state.nameQuery !== undefined) setNameQuery(state.nameQuery);
+      if (state.studentsPayload !== undefined) setStudentsPayload(state.studentsPayload);
+      if (state.selectedStudentIndex !== undefined) setSelectedStudentIndex(state.selectedStudentIndex);
+
+      // Serialize and update our last pushed state tracking ref
+      lastPushedStateRef.current = JSON.stringify(state);
+
+      // Allow some time for state updates to apply before allowing pushes
+      setTimeout(() => {
+        isPopStateRef.current = false;
+      }, 80);
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  // Synchronize state changes to browser history
+  useEffect(() => {
+    if (isPublicReport) return;
+    // If we're currently executing a popstate restore, do not push
+    if (isPopStateRef.current) return;
+
+    const currentState = {
+      activeView,
+      searchType,
+      selectedBatch,
+      regInput,
+      nameQuery,
+      studentsPayload,
+      selectedStudentIndex
+    };
+
+    const currentStateStr = JSON.stringify(currentState);
+
+    // If the state is identical to what we last pushed, do nothing
+    if (currentStateStr === lastPushedStateRef.current) return;
+
+    // Check if this is the first state initialization
+    if (!lastPushedStateRef.current) {
+      window.history.replaceState(currentState, "", window.location.pathname + window.location.search);
+      lastPushedStateRef.current = currentStateStr;
+      return;
+    }
+
+    const lastState = JSON.parse(lastPushedStateRef.current);
+
+    const viewChanged = lastState.activeView !== activeView;
+    const searchTypeChanged = activeView === "input" && lastState.searchType !== searchType;
+    const studentIndexChanged = activeView === "dashboard" && lastState.selectedStudentIndex !== selectedStudentIndex;
+    
+    const lastPayloadId = lastState.studentsPayload?.students?.[0]?.profile?.regNo || null;
+    const currentPayloadId = studentsPayload?.students?.[0]?.profile?.regNo || null;
+    const payloadChanged = lastPayloadId !== currentPayloadId || lastState.studentsPayload?.students?.length !== studentsPayload?.students?.length;
+
+    let shouldPush = false;
+    let shouldReplace = false;
+
+    if (viewChanged || searchTypeChanged || studentIndexChanged || payloadChanged) {
+      shouldPush = true;
+    } else {
+      shouldReplace = true;
+    }
+
+    if (shouldPush || shouldReplace) {
+      let url = window.location.pathname;
+      const params = new URLSearchParams();
+      
+      if (activeView === "dashboard" && studentsPayload?.students?.[selectedStudentIndex]) {
+        const student = studentsPayload.students[selectedStudentIndex];
+        if (student.profile.regNo) {
+          params.set("reg", student.profile.regNo);
+          // Preserve share token for public/shared links
+          if (student.profile.shareToken) {
+            params.set("token", student.profile.shareToken);
+          }
+        }
+      } else if (activeView === "batchList" && selectedBatch) {
+        params.set("batch", selectedBatch);
+      } else if (activeView === "input" && searchType) {
+        params.set("type", searchType);
+      }
+
+      const paramStr = params.toString();
+      if (paramStr) {
+        url += "?" + paramStr;
+      }
+
+      try {
+        if (shouldPush) {
+          window.history.pushState(currentState, "", url);
+        } else if (shouldReplace) {
+          window.history.replaceState(currentState, "", url);
+        }
+      } catch (e) {
+        // Fallback for environment/sandbox limitations or serialize errors
+        console.warn("History pushState failed, trying without heavy payload:", e);
+        const leanState = { ...currentState, studentsPayload: null };
+        try {
+          if (shouldPush) {
+            window.history.pushState(leanState, "", url);
+          } else {
+            window.history.replaceState(leanState, "", url);
+          }
+        } catch (err) {
+          console.error("Critical history api fail:", err);
+        }
+      }
+      
+      lastPushedStateRef.current = currentStateStr;
+    }
+  }, [activeView, searchType, selectedBatch, studentsPayload, selectedStudentIndex, regInput, nameQuery]);
+
+  // Utility wrapper for secured backend API fetches
+  const securedFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const headers = new Headers(init?.headers || {});
+    const email = localStorage.getItem("pwUserEmail");
+    const staffToken = localStorage.getItem("pwStaffToken");
+    
+    if (email) {
+      headers.set("X-User-Email", email);
+    }
+    if (staffToken) {
+      headers.set("X-Staff-Token", staffToken);
+    }
+
+    let finalInput = input;
+    // Inject share token if it's a student query by a public user
+    const isPublic = !email && !!publicInfo;
+    if (isPublic && typeof input === "string" && input.includes("/api/student")) {
+      const token = new URLSearchParams(window.location.search).get("token") || (publicInfo ? publicInfo.token : null);
+      if (token) {
+        const separator = input.includes("?") ? "&" : "?";
+        finalInput = `${input}${separator}token=${encodeURIComponent(token)}`;
+      }
+    }
+
+    return fetch(finalInput, { ...init, headers });
+  };
 
   // Fetch initial dropdown metadata from Express server backend
   const fetchDropdowns = async () => {
     try {
       setDropdowns((prev) => ({ ...prev, isLoading: true }));
-      const response = await fetch("/api/dropdowns");
+      const response = await securedFetch("/api/dropdowns");
       if (!response.ok) {
         throw new Error(`Failed to initialize dropdown parameters. Code: ${response.status}`);
       }
@@ -219,12 +686,13 @@ export default function App() {
         names: data.names || [],
         sheets: data.sheets || [],
         sheetStats: data.sheetStats || {},
+        sheetUrls: data.sheetUrls || {},
         isLoading: false,
         lastLoaded: data.lastLoaded,
       });
 
       // Also get general database health summary
-      const healthRes = await fetch("/api/health");
+      const healthRes = await securedFetch("/api/health");
       if (healthRes.ok) {
         const health = await healthRes.json();
         setDbStatus({
@@ -240,18 +708,15 @@ export default function App() {
   };
 
   useEffect(() => {
-    fetchDropdowns();
-
-    // Resume an existing session (records audit + refreshes role) when already logged in
-    if (loggedInUser?.email) {
-      establishSession(loggedInUser.email, loggedInUser.name, "resume").then((role) => {
-        if (role === "admin") refreshUnread(loggedInUser.email);
-      });
+    if (loggedInUser) {
+      fetchDropdowns();
     }
+  }, [loggedInUser]);
 
+  useEffect(() => {
     // Support sharing deep-linking via query parameters on mount
     const params = new URLSearchParams(window.location.search);
-    const regParam = params.get("reg");
+    const regParam = params.get("reg") || (publicInfo ? publicInfo.reg : null);
     const nameParam = params.get("name");
     const batchParam = params.get("batch");
 
@@ -260,7 +725,7 @@ export default function App() {
       setIsSearching(true);
       try {
         const encodeQuery = encodeURIComponent(queryVal.trim());
-        const res = await fetch(`/api/student?query=${encodeQuery}`);
+        const res = await securedFetch(`/api/student?query=${encodeQuery}`);
         if (!res.ok) {
           const errorData = await res.json();
           throw new Error(errorData.error || "No students found matching your criteria.");
@@ -301,7 +766,7 @@ export default function App() {
     setLoginError(null);
     setIsLoggingIn(true);
     try {
-      const response = await fetch("/api/auth/google/url");
+      const response = await securedFetch("/api/auth/google/url");
       if (!response.ok) {
         throw new Error("Unable to fetch secure login address. Ensure server is online.");
       }
@@ -331,20 +796,16 @@ export default function App() {
   useEffect(() => {
     const handleOAuthMessage = (event: MessageEvent) => {
       const origin = event.origin;
-      // The OAuth popup is served from this same backend, so same-origin is the
-      // primary trusted source. Also allow Cloud Run / localhost for dev previews.
-      const isAllowedOrigin =
-        origin === window.location.origin ||
-        origin.endsWith(".run.app") ||
-        origin.includes("localhost") ||
-        origin.includes("127.0.0.1");
+      const isAllowedOrigin = origin.endsWith(".run.app") || origin.endsWith(".hf.space") || origin.includes("localhost") || origin.includes("127.0.0.1");
       if (!isAllowedOrigin) return;
 
       if (event.data?.type === "GOOGLE_AUTH_SUCCESS") {
         const email = event.data.email;
         const name = event.data.name || "";
         const picture = event.data.picture || "";
+        const staffToken = event.data.staffToken || "";
         localStorage.setItem("pwUserEmail", email);
+        localStorage.setItem("pwStaffToken", staffToken);
         if (name) {
           localStorage.setItem("pwUserName", name);
         } else {
@@ -359,10 +820,6 @@ export default function App() {
         setActiveView("home");
         setIsLoggingIn(false);
         setLoginError(null);
-        // Register the session: writes audit log entry + resolves role
-        establishSession(email, name, "login").then((role) => {
-          if (role === "admin") refreshUnread(email);
-        });
       } else if (event.data?.type === "GOOGLE_AUTH_FAILURE") {
         setLoginError(event.data.error || "Google authentication rejected.");
         setIsLoggingIn(false);
@@ -377,12 +834,8 @@ export default function App() {
     localStorage.removeItem("pwUserEmail");
     localStorage.removeItem("pwUserName");
     localStorage.removeItem("pwUserPicture");
-    localStorage.removeItem("pwUserRole");
-    localStorage.removeItem("pwUserCenter");
+    localStorage.removeItem("pwStaffToken");
     setLoggedInUser(null);
-    setUserRole("staff");
-    setUserCenter("");
-    setNotifUnread(0);
     setActiveView("home");
     setStudentsPayload(null);
     setShowProfileModal(false);
@@ -432,15 +885,103 @@ export default function App() {
     setNameSuggestions(filtered);
   }, [nameQuery, dropdowns.names]);
 
+  // Submit configuration updates to Express server
+  const handleSaveConfig = async (
+    e?: React.FormEvent,
+    overrides?: {
+      urls?: string[];
+      sCenters?: Array<{ pattern: string; center: string }>;
+      subCenters?: Array<{ center: string; patterns: string[] }>;
+      access?: Array<{ email: string; centers: string[] }>;
+    }
+  ) => {
+    if (e) e.preventDefault();
+    setIsSavingConfig(true);
+    setConfigSaveMessage(null);
+    setConfigSaveError(null);
+
+    try {
+      const activeUrls = overrides?.urls || spreadsheetUrls;
+      const activeSCenters = overrides?.sCenters || spreadsheetCenters;
+      const activeSubCenters = overrides?.subCenters || subsheetCenters;
+      const activeAccess = overrides?.access || staffAccess;
+
+      // 1. Build Spreadsheet URLs string
+      const urlStr = activeUrls.map(u => u.trim()).filter(Boolean).join(", ");
+
+      // 2. Build Spreadsheet Centers object
+      const sCentersObj: Record<string, string> = {};
+      activeSCenters.forEach(item => {
+        const pat = item.pattern.trim();
+        const ctr = item.center.trim();
+        if (pat && ctr) {
+          sCentersObj[pat] = ctr;
+        }
+      });
+
+      // 3. Build Subsheet Centers object
+      const subCentersObj: Record<string, string[]> = {};
+      activeSubCenters.forEach(item => {
+        const ctr = item.center.trim();
+        const pats = item.patterns.map(p => p.trim()).filter(Boolean);
+        if (ctr && pats.length > 0) {
+          subCentersObj[ctr] = pats;
+        }
+      });
+
+      // 4. Build Staff Access (ACL) object
+      const staffAccessObj: Record<string, string[]> = {};
+      activeAccess.forEach(item => {
+        const email = item.email.trim();
+        const ctrs = item.centers.map(c => c.trim()).filter(Boolean);
+        if (email && ctrs.length > 0) {
+          staffAccessObj[email] = ctrs;
+        }
+      });
+
+      // 5. Make POST request
+      const response = await securedFetch("/api/config", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          SPREADSHEET_URL: urlStr,
+          SPREADSHEET_CENTERS: sCentersObj,
+          SUBSHEET_CENTERS: subCentersObj,
+          STAFF_ACCESS: staffAccessObj,
+        }),
+      });
+
+      if (!response.ok) {
+        let errMsg = "Failed to save configuration settings.";
+        try {
+          const errData = await response.json();
+          if (errData && errData.error) errMsg = errData.error;
+        } catch (_) {}
+        throw new Error(errMsg);
+      }
+
+      const resData = await response.json();
+      setConfigSaveMessage(resData.message || "Configurations successfully updated and database cache reloaded!");
+      
+      // Reload configurations and cache stats
+      await fetchConfig();
+      // Fetch dropdowns to sync student rosters
+      await fetchDropdowns();
+    } catch (err: any) {
+      setConfigSaveError(err.message || String(err));
+    } finally {
+      setIsSavingConfig(false);
+    }
+  };
+
   // Force Database Synchronization with Google Sheets again via Express backend
   const handleDatabaseSync = async () => {
     setIsRefreshing(true);
     setErrorMessage(null);
     try {
-      const response = await fetch("/api/refresh", {
-        method: "POST",
-        headers: loggedInUser?.email ? { "x-user-email": loggedInUser.email } : undefined,
-      });
+      const response = await securedFetch("/api/refresh", { method: "POST" });
       if (!response.ok) {
         let errMsg = "Sync failed. Check network link.";
         try {
@@ -453,7 +994,6 @@ export default function App() {
       
       // Pull fresh data
       await fetchDropdowns();
-      if (isAdmin && loggedInUser?.email) refreshUnread(loggedInUser.email);
       setIsRefreshing(false);
     } catch (err: any) {
       setErrorMessage(err.message || "Manual database synchronization failed.");
@@ -485,9 +1025,7 @@ export default function App() {
 
     try {
       const encodeQuery = encodeURIComponent(finalQuery.trim());
-      const res = await fetch(`/api/student?query=${encodeQuery}`, {
-        headers: loggedInUser?.email ? { "x-user-email": loggedInUser.email } : undefined,
-      });
+      const res = await securedFetch(`/api/student?query=${encodeQuery}`);
       if (!res.ok) {
         const errorData = await res.json();
         throw new Error(errorData.error || "No students found matching your criteria.");
@@ -499,6 +1037,7 @@ export default function App() {
 
       if (searchType === "batch" && data.students && data.students.length > 1) {
         setActiveView("batchList");
+        setBatchPageSize(50);
       } else {
         setActiveView("dashboard");
       }
@@ -516,7 +1055,7 @@ export default function App() {
     setIsSearching(true);
     setSelectedSheetName(sheetName);
     try {
-      const res = await fetch(`/api/student?query=${encodeURIComponent(sheetName)}&singleSheet=true&exactSheet=${encodeURIComponent(sheetName)}`);
+      const res = await securedFetch(`/api/student?query=${encodeURIComponent(sheetName)}&singleSheet=true&exactSheet=${encodeURIComponent(sheetName)}`);
       if (!res.ok) {
         const errorData = await res.json();
         throw new Error(errorData.error || `No student records mapped in sheet "${sheetName}".`);
@@ -528,6 +1067,7 @@ export default function App() {
       setSearchType("batch");
       setBatchSearchQuery("");
       setActiveView("batchList");
+      setBatchPageSize(50);
     } catch (err: any) {
       setErrorMessage(err.message || `Failed to load students for sheet "${sheetName}".`);
     } finally {
@@ -540,7 +1080,7 @@ export default function App() {
     setIsSearching(true);
     setSelectedSheetName(null);
     try {
-      const res = await fetch(`/api/student?query=all`);
+      const res = await securedFetch(`/api/student?query=all`);
       if (!res.ok) {
         const errorData = await res.json();
         throw new Error(errorData.error || "No students found in the database.");
@@ -551,6 +1091,7 @@ export default function App() {
       setSelectedStudentIndex(0);
       setSearchType("batch");
       setActiveView("batchList");
+      setBatchPageSize(50);
     } catch (err: any) {
       setErrorMessage(err.message || "Failed to load all student records.");
     } finally {
@@ -571,7 +1112,11 @@ export default function App() {
 
   // Modern print styling and trigger
   const triggerPrint = () => {
-    window.print();
+    setExportMode(true);
+    setTimeout(() => {
+      window.print();
+      setExportMode(false);
+    }, 150);
   };
 
   // Download high-resolution landscape A4 PDF report with dark mode auto-stripping
@@ -597,13 +1142,11 @@ export default function App() {
       html2canvas: { scale: 2, useCORS: true, backgroundColor: "#ffffff", windowWidth: 1120 },
       jsPDF: { unit: "mm", format: "a4", orientation: "landscape" },
       pagebreak: { mode: ["avoid-all", "css", "legacy"] }
-    };
+    } as any;
 
     // Wait slightly for DOM adjustment (CSS repaint)
     setTimeout(() => {
-      // @ts-ignore
-      if (typeof html2pdf !== "undefined") {
-        // @ts-ignore
+      try {
         html2pdf().set(opt).from(exportAreaRef.current).save().then(() => {
           setExportMode(false);
           // Restore dark mode state
@@ -617,8 +1160,9 @@ export default function App() {
             document.documentElement.classList.add("dark");
           }
         });
-      } else {
-        alert("PDF printing engine is setting up. Please use native Browser Print (Print Icon) instead!");
+      } catch (err: any) {
+        console.error("PDF generation exception:", err);
+        alert("PDF printing engine encountered an issue. Please try native Browser Print (Print Icon) instead!");
         setExportMode(false);
         if (isDark) {
           document.documentElement.classList.add("dark");
@@ -632,7 +1176,7 @@ export default function App() {
     const activeStudent = studentsPayload?.students[selectedStudentIndex];
     if (!activeStudent) return;
 
-    const shareUrl = `${window.location.origin}${window.location.pathname}?reg=${encodeURIComponent(activeStudent.profile.regNo || "")}`;
+    const shareUrl = `${window.location.origin}/student/${encodeURIComponent(activeStudent.profile.regNo || "")}/${encodeURIComponent(activeStudent.profile.shareToken || "")}`;
     const shareTitle = `PW Vidyapeeth Academic Report Card - ${activeStudent.profile.name}`;
     const shareText = `Check out the academic performance card for ${activeStudent.profile.name} at PW Vidyapeeth.`;
 
@@ -653,11 +1197,11 @@ export default function App() {
   };
 
   const copyLinkToClipboard = (url: string) => {
-    navigator.clipboard.writeText(url).then(() => {
-      setCopiedShare(true);
-      setTimeout(() => setCopiedShare(false), 2000);
-    }).catch(err => {
-      console.error("Failed to copy link: ", err);
+    safeCopyToClipboard(url).then((success) => {
+      if (success) {
+        setCopiedShare(true);
+        setTimeout(() => setCopiedShare(false), 2000);
+      }
     });
   };
 
@@ -723,7 +1267,7 @@ export default function App() {
     const preferredSubjectOrder = [
       "physics", "phys", "phys.", "chemistry", "chem", "chem.",
       "mathematics", "maths", "math", "botany", "bot.", "zoology", "zoo.",
-      "science", "mat", "sst", "english", "hindi"
+      "science", "mat", "mental ability", "sst", "social studies", "english"
     ];
 
     const getSubjectPriority = (sub: string) => {
@@ -746,13 +1290,45 @@ export default function App() {
     if (activeStream === "NEET") {
       return ["Physics", "Chemistry", "Botany", "Zoology"];
     } else if (activeStream === "Foundation") {
-      return ["Science", "Mathematics", "English", "MAT", "SST", "Hindi"];
+      return ["Science", "Mathematics", "English", "MAT", "SST"];
     } else {
       return ["Physics", "Chemistry", "Mathematics"];
     }
   }, [dynamicSubjects, activeStudent?.profile?.stream, studentsPayload?.stream]);
 
-  if (!loggedInUser) {
+  if (isPublicReport) {
+    if (errorMessage) {
+      return (
+        <div className={`min-h-screen font-sans flex flex-col justify-center items-center bg-slate-50 dark:bg-[#0c0e17] p-4 text-slate-800 dark:text-slate-100 ${theme === "dark" ? "dark" : ""}`}>
+          <div className="w-full max-w-md bg-white dark:bg-[#111827] rounded-[32px] p-6 shadow-xl border border-slate-200/50 dark:border-gray-800 text-center space-y-4">
+            <div className="w-12 h-12 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-2xl flex items-center justify-center mx-auto text-xl font-bold">!</div>
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white">Failed to Load Report</h3>
+            <p className="text-sm text-slate-500 dark:text-gray-400">{errorMessage}</p>
+            <button 
+              onClick={() => { window.location.href = window.location.origin + window.location.pathname; }}
+              className="px-6 py-2.5 rounded-xl bg-[#5277f7] hover:bg-[#4062dd] text-white font-bold text-xs uppercase tracking-wider cursor-pointer border-0"
+            >
+              Back to Login
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // Show loading spinner if search is in progress OR data hasn't loaded yet
+    if (isSearching || !studentsPayload) {
+      return (
+        <div className={`min-h-screen font-sans flex flex-col justify-center items-center bg-slate-50 dark:bg-[#0c0e17] p-4 text-slate-800 dark:text-slate-100 ${theme === "dark" ? "dark" : ""}`}>
+          <div className="text-center space-y-4">
+            <div className="w-12 h-12 border-4 border-[#5277f7] border-t-transparent rounded-full animate-spin mx-auto"></div>
+            <p className="text-sm text-slate-500 dark:text-gray-400 font-medium font-sans animate-pulse">Loading shared report card...</p>
+          </div>
+        </div>
+      );
+    }
+  }
+
+  if (!loggedInUser && !isPublicReport) {
     return (
       <div className={`min-h-screen font-sans flex flex-col justify-center items-center transition-all bg-[#4e74e6] dark:bg-[#0c0e17] p-4 text-slate-800 dark:text-slate-100 ${theme === "dark" ? "dark" : ""}`}>
         <div className="w-full max-w-md bg-white dark:bg-[#111827] rounded-[32px] shadow-2xl border border-slate-200/50 dark:border-gray-800 p-6 sm:p-8 flex flex-col items-center relative overflow-hidden">
@@ -773,7 +1349,7 @@ export default function App() {
           <div className="mb-6 flex flex-col items-center text-center">
             <PWLogo size="w-16 h-16" className="mb-3" />
             <span className="text-[10px] text-[#5277f7] uppercase tracking-[0.25em] font-mono font-black">
-              Vidyapeeth Pune
+              Pimpri PW Vidyapeeth
             </span>
             <h2 className="text-xl font-extrabold text-slate-900 dark:text-white uppercase tracking-wider font-display mt-1 animate-pulse">
               Academic Assessment Hub
@@ -839,14 +1415,18 @@ export default function App() {
   }
 
   return (
-    <div className={`h-[100dvh] w-screen overflow-hidden font-sans flex flex-col justify-center items-center transition-all bg-[#4e74e6] dark:bg-[#0c0e17] p-0 sm:p-4 md:p-6 text-slate-800 dark:text-slate-100 ${theme === "dark" && !exportMode ? "dark" : ""} ${exportMode ? "export-mode bg-white p-0 text-black" : ""}`}>
+    <div className={`w-screen font-sans flex flex-col transition-all text-slate-800 dark:text-slate-100 ${
+      exportMode 
+        ? "export-mode bg-white p-0 text-black min-h-screen h-auto overflow-visible" 
+        : "h-[100dvh] overflow-hidden justify-center items-center bg-[#4e74e6] dark:bg-[#0c0e17] p-0 sm:p-4 md:p-6"
+    } ${theme === "dark" && !exportMode ? "dark" : ""}`}>
       
       {/* INITIAL BLUR SPINNER IF SYSTEM DROP DOWNS PRE-LOAD */}
       {dropdowns.isLoading && activeView === "home" && (
         <div id="initialSplash" className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white dark:bg-[#0b0f19]">
           <div className="animate-spin h-10 w-10 border-2 border-slate-250 dark:border-gray-800 border-t-blue-600 dark:border-t-blue-500 rounded-full mb-6"></div>
           <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white font-display uppercase tracking-widest">
-            Vidyapeeth Pune
+            Pimpri PW Vidyapeeth
           </h1>
           <p className="text-xs text-slate-400 mt-1 dark:text-slate-500 font-mono">Caching administrative indices...</p>
         </div>
@@ -862,12 +1442,246 @@ export default function App() {
         </div>
       )}
 
+      {/* ANIMATED FLOATING BACKGROUND — Education/Science themed icons */}
+      {!exportMode && (
+        <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden select-none no-print" aria-hidden="true">
+          
+          {/* ═══════════════ ATOMS ═══════════════ */}
+          {/* Large Atom — top left */}
+          <svg className="absolute w-20 h-20 text-white/[0.2] dark:text-white/[0.1] animate-float-drift" style={{ top: "5%", left: "3%", animationDuration: "25s" }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
+            <circle cx="12" cy="12" r="2.5" fill="currentColor" />
+            <ellipse cx="12" cy="12" rx="10" ry="4" />
+            <ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(60 12 12)" />
+            <ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(120 12 12)" />
+          </svg>
+
+          {/* Medium Atom — bottom right */}
+          <svg className="absolute w-16 h-16 text-white/[0.15] dark:text-white/[0.08] animate-float-drift-reverse" style={{ bottom: "8%", right: "4%", animationDuration: "30s" }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2">
+            <circle cx="12" cy="12" r="2" fill="currentColor" />
+            <ellipse cx="12" cy="12" rx="10" ry="4" />
+            <ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(60 12 12)" />
+            <ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(120 12 12)" />
+          </svg>
+
+          {/* Small Atom — center right */}
+          <svg className="absolute w-12 h-12 text-sky-200/[0.2] dark:text-sky-300/[0.1] animate-float-sway" style={{ top: "45%", right: "2%", animationDuration: "20s" }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <circle cx="12" cy="12" r="2" fill="currentColor" />
+            <ellipse cx="12" cy="12" rx="9" ry="3.5" />
+            <ellipse cx="12" cy="12" rx="9" ry="3.5" transform="rotate(60 12 12)" />
+            <ellipse cx="12" cy="12" rx="9" ry="3.5" transform="rotate(120 12 12)" />
+          </svg>
+
+          {/* ═══════════════ DNA HELIX ═══════════════ */}
+          {/* DNA — left side tall */}
+          <svg className="absolute w-14 h-28 text-white/[0.18] dark:text-white/[0.09] animate-float-rise" style={{ top: "15%", left: "5%", animationDuration: "18s" }} viewBox="0 0 30 60" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+            <path d="M8 2 C8 10, 22 10, 22 18 C22 26, 8 26, 8 34 C8 42, 22 42, 22 50 C22 58, 8 58, 8 58" />
+            <path d="M22 2 C22 10, 8 10, 8 18 C8 26, 22 26, 22 34 C22 42, 8 42, 8 50 C8 58, 22 58, 22 58" />
+            <line x1="8" y1="10" x2="22" y2="10" strokeWidth="1" opacity="0.6" />
+            <line x1="8" y1="18" x2="22" y2="18" strokeWidth="1" opacity="0.6" />
+            <line x1="8" y1="26" x2="22" y2="26" strokeWidth="1" opacity="0.6" />
+            <line x1="8" y1="34" x2="22" y2="34" strokeWidth="1" opacity="0.6" />
+            <line x1="8" y1="42" x2="22" y2="42" strokeWidth="1" opacity="0.6" />
+            <line x1="8" y1="50" x2="22" y2="50" strokeWidth="1" opacity="0.6" />
+          </svg>
+
+          {/* DNA — right side */}
+          <svg className="absolute w-12 h-24 text-purple-200/[0.18] dark:text-purple-300/[0.08] animate-float-zigzag" style={{ bottom: "20%", right: "5%", animationDuration: "22s", animationDelay: "3s" }} viewBox="0 0 30 60" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+            <path d="M8 2 C8 10, 22 10, 22 18 C22 26, 8 26, 8 34 C8 42, 22 42, 22 50 C22 58, 8 58, 8 58" />
+            <path d="M22 2 C22 10, 8 10, 8 18 C8 26, 22 26, 22 34 C22 42, 8 42, 8 50 C8 58, 22 58, 22 58" />
+            <line x1="10" y1="10" x2="20" y2="10" strokeWidth="1" opacity="0.5" />
+            <line x1="10" y1="18" x2="20" y2="18" strokeWidth="1" opacity="0.5" />
+            <line x1="10" y1="26" x2="20" y2="26" strokeWidth="1" opacity="0.5" />
+            <line x1="10" y1="34" x2="20" y2="34" strokeWidth="1" opacity="0.5" />
+            <line x1="10" y1="42" x2="20" y2="42" strokeWidth="1" opacity="0.5" />
+            <line x1="10" y1="50" x2="20" y2="50" strokeWidth="1" opacity="0.5" />
+          </svg>
+
+          {/* ═══════════════ STARS & SPARKLES ═══════════════ */}
+          {/* Big Star — top right */}
+          <svg className="absolute w-12 h-12 text-yellow-300/30 dark:text-yellow-300/15 animate-twinkle" style={{ top: "8%", right: "6%", animationDuration: "4s" }} viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 2l2.4 7.2H22l-6 4.8 2.4 7.2L12 16.4l-6.4 4.8L8 14 2 9.2h7.6z" />
+          </svg>
+
+          {/* 4-point Sparkle — center top */}
+          <svg className="absolute w-10 h-10 text-white/[0.25] dark:text-white/[0.12] animate-twinkle" style={{ top: "4%", left: "35%", animationDuration: "3.5s", animationDelay: "1s" }} viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 0L14 10L24 12L14 14L12 24L10 14L0 12L10 10Z" />
+          </svg>
+
+          {/* Small Star — bottom left */}
+          <svg className="absolute w-8 h-8 text-amber-200/25 dark:text-amber-200/12 animate-twinkle" style={{ bottom: "12%", left: "8%", animationDuration: "5s", animationDelay: "2s" }} viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 2l2.4 7.2H22l-6 4.8 2.4 7.2L12 16.4l-6.4 4.8L8 14 2 9.2h7.6z" />
+          </svg>
+
+          {/* Sparkle dot cluster — top left area */}
+          <div className="absolute w-3 h-3 rounded-full bg-white/30 dark:bg-white/15 animate-twinkle" style={{ top: "20%", left: "12%", animationDuration: "2.5s" }}></div>
+          <div className="absolute w-2 h-2 rounded-full bg-white/25 dark:bg-white/12 animate-twinkle" style={{ top: "22%", left: "14%", animationDuration: "4s", animationDelay: "1s" }}></div>
+          <div className="absolute w-2.5 h-2.5 rounded-full bg-sky-200/30 dark:bg-sky-200/15 animate-twinkle" style={{ top: "18%", left: "10%", animationDuration: "3s", animationDelay: "0.5s" }}></div>
+
+          {/* Sparkle dots — right area */}
+          <div className="absolute w-2.5 h-2.5 rounded-full bg-white/25 dark:bg-white/12 animate-twinkle" style={{ top: "35%", right: "8%", animationDuration: "3.5s", animationDelay: "2s" }}></div>
+          <div className="absolute w-3 h-3 rounded-full bg-purple-200/25 dark:bg-purple-200/12 animate-twinkle" style={{ top: "55%", right: "12%", animationDuration: "4.5s", animationDelay: "0.7s" }}></div>
+
+          {/* Sparkle dots — bottom area */}
+          <div className="absolute w-2 h-2 rounded-full bg-white/30 dark:bg-white/15 animate-twinkle" style={{ bottom: "25%", left: "18%", animationDuration: "3s", animationDelay: "1.5s" }}></div>
+          <div className="absolute w-3 h-3 rounded-full bg-amber-200/20 dark:bg-amber-200/10 animate-twinkle" style={{ bottom: "35%", right: "15%", animationDuration: "5s", animationDelay: "3s" }}></div>
+
+          {/* ═══════════════ BOOK ═══════════════ */}
+          <svg className="absolute w-14 h-14 text-white/[0.2] dark:text-white/[0.1] animate-float-sway" style={{ top: "60%", right: "3%", animationDuration: "20s" }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+            <line x1="9" y1="7" x2="17" y2="7" strokeWidth="1" opacity="0.5" />
+            <line x1="9" y1="10" x2="15" y2="10" strokeWidth="1" opacity="0.4" />
+            <line x1="9" y1="13" x2="16" y2="13" strokeWidth="1" opacity="0.3" />
+          </svg>
+
+          {/* ═══════════════ INFINITY SYMBOL ═══════════════ */}
+          <svg className="absolute w-16 h-10 text-white/[0.22] dark:text-white/[0.1] animate-float-drift" style={{ top: "3%", left: "55%", animationDuration: "26s" }} viewBox="0 0 40 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <path d="M20 12c-3-5-8-8-12-5s-2 10 2 13 8 1 10-2" />
+            <path d="M20 12c3 5 8 8 12 5s2-10-2-13-8-1-10 2" />
+          </svg>
+
+          {/* ═══════════════ PI SYMBOL ═══════════════ */}
+          <svg className="absolute w-12 h-12 text-white/[0.2] dark:text-white/[0.1] animate-float-drift-reverse" style={{ bottom: "5%", left: "40%", animationDuration: "28s" }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <path d="M4 8h16" />
+            <path d="M8 8v12" />
+            <path d="M14 8v8c0 3 1.5 4 3.5 4" />
+          </svg>
+
+          {/* ═══════════════ PLUS SIGNS ═══════════════ */}
+          {/* Big Plus — right upper */}
+          <svg className="absolute w-10 h-10 text-white/[0.22] dark:text-white/[0.1] animate-float-zigzag" style={{ top: "20%", right: "3%", animationDuration: "18s" }} viewBox="0 0 24 24" fill="currentColor">
+            <rect x="10" y="2" width="4" height="20" rx="2" />
+            <rect x="2" y="10" width="20" height="4" rx="2" />
+          </svg>
+
+          {/* Small Plus — bottom left area */}
+          <svg className="absolute w-6 h-6 text-white/[0.25] dark:text-white/[0.12] animate-float-sway" style={{ bottom: "30%", left: "4%", animationDuration: "14s", animationDelay: "2s" }} viewBox="0 0 24 24" fill="currentColor">
+            <rect x="10" y="2" width="4" height="20" rx="2" />
+            <rect x="2" y="10" width="20" height="4" rx="2" />
+          </svg>
+
+          {/* ═══════════════ TRIANGLES ═══════════════ */}
+          {/* Big Triangle outline — left mid */}
+          <svg className="absolute w-14 h-14 text-white/[0.18] dark:text-white/[0.08] animate-float-sway" style={{ top: "40%", left: "2%", animationDuration: "22s" }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round">
+            <polygon points="12,3 22,21 2,21" />
+          </svg>
+
+          {/* Small Triangle — bottom right area */}
+          <svg className="absolute w-8 h-8 text-sky-200/20 dark:text-sky-200/10 animate-float-drift" style={{ bottom: "40%", right: "7%", animationDuration: "19s", animationDelay: "4s" }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round">
+            <polygon points="12,3 22,21 2,21" />
+          </svg>
+
+          {/* ═══════════════ HEXAGONS ═══════════════ */}
+          {/* Large Hexagon — bottom center-right */}
+          <svg className="absolute w-16 h-16 text-white/[0.15] dark:text-white/[0.07] animate-slow-spin" style={{ bottom: "6%", right: "20%", animationDuration: "40s" }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2">
+            <polygon points="12,2 22,8.5 22,15.5 12,22 2,15.5 2,8.5" />
+          </svg>
+
+          {/* Small Hexagon — top left */}
+          <svg className="absolute w-10 h-10 text-white/[0.2] dark:text-white/[0.1] animate-float-drift-reverse" style={{ top: "30%", left: "8%", animationDuration: "24s", animationDelay: "5s" }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <polygon points="12,2 22,8.5 22,15.5 12,22 2,15.5 2,8.5" />
+          </svg>
+
+          {/* ═══════════════ DIAMONDS ═══════════════ */}
+          {/* Big Diamond — left lower */}
+          <div className="absolute w-10 h-10 border-2 border-white/[0.2] dark:border-white/[0.1] animate-float-drift rotate-45" style={{ bottom: "18%", left: "6%", animationDuration: "20s" }}></div>
+
+          {/* Small Diamond — right upper */}
+          <div className="absolute w-6 h-6 border-2 border-sky-200/25 dark:border-sky-200/12 animate-float-zigzag rotate-45" style={{ top: "15%", right: "15%", animationDuration: "16s", animationDelay: "1s" }}></div>
+
+          {/* ═══════════════ GRADUATION CAP ═══════════════ */}
+          <svg className="absolute w-14 h-14 text-white/[0.18] dark:text-white/[0.08] animate-float-drift-reverse" style={{ top: "25%", left: "4%", animationDuration: "26s", animationDelay: "2s" }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M22 10l-10-5L2 10l10 5 10-5z" />
+            <path d="M6 12v5c0 2 3 3 6 3s6-1 6-3v-5" />
+            <line x1="22" y1="10" x2="22" y2="16" />
+          </svg>
+
+          {/* ═══════════════ BEAKER / FLASK ═══════════════ */}
+          <svg className="absolute w-12 h-12 text-white/[0.2] dark:text-white/[0.1] animate-float-rise" style={{ bottom: "15%", left: "15%", animationDuration: "16s", animationDelay: "1s" }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 3h6" />
+            <path d="M10 3v7.4a4 4 0 0 1-1.17 2.83L5 17a2 2 0 0 0 1.5 3.4h11A2 2 0 0 0 19 17l-3.83-3.77A4 4 0 0 1 14 10.4V3" />
+            <path d="M7.5 16h9" opacity="0.4" />
+          </svg>
+
+          {/* ═══════════════ PENCIL ═══════════════ */}
+          <svg className="absolute w-10 h-10 text-white/[0.18] dark:text-white/[0.08] animate-float-sway" style={{ top: "70%", left: "3%", animationDuration: "17s", animationDelay: "3s" }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+            <path d="m15 5 4 4" />
+          </svg>
+
+          {/* ═══════════════ SIGMA / MATH ═══════════════ */}
+          <svg className="absolute w-12 h-12 text-white/[0.2] dark:text-white/[0.1] animate-float-drift" style={{ top: "75%", right: "5%", animationDuration: "24s", animationDelay: "6s" }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M18 4H6l6 8-6 8h12" />
+          </svg>
+
+          {/* ═══════════════ CIRCLE RINGS ═══════════════ */}
+          {/* Big ring — top area */}
+          <div className="absolute w-14 h-14 rounded-full border-2 border-white/[0.15] dark:border-white/[0.07] animate-pulse-glow" style={{ top: "10%", left: "25%", animationDuration: "6s" }}></div>
+
+          {/* Medium ring — bottom area */}
+          <div className="absolute w-10 h-10 rounded-full border-2 border-white/[0.18] dark:border-white/[0.08] animate-float-sway" style={{ bottom: "22%", right: "10%", animationDuration: "15s", animationDelay: "4s" }}></div>
+
+          {/* Small ring — center */}
+          <div className="absolute w-6 h-6 rounded-full border-2 border-sky-200/20 dark:border-sky-200/10 animate-pulse-glow" style={{ top: "50%", left: "8%", animationDuration: "5s", animationDelay: "2s" }}></div>
+
+          {/* ═══════════════ CALCULATOR ═══════════════ */}
+          <svg className="absolute w-10 h-10 text-white/[0.15] dark:text-white/[0.07] animate-float-zigzag" style={{ top: "65%", right: "8%", animationDuration: "21s", animationDelay: "5s" }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="4" y="2" width="16" height="20" rx="2" />
+            <rect x="8" y="6" width="8" height="4" rx="1" opacity="0.5" />
+            <circle cx="8" cy="14" r="0.8" fill="currentColor" />
+            <circle cx="12" cy="14" r="0.8" fill="currentColor" />
+            <circle cx="16" cy="14" r="0.8" fill="currentColor" />
+            <circle cx="8" cy="18" r="0.8" fill="currentColor" />
+            <circle cx="12" cy="18" r="0.8" fill="currentColor" />
+            <circle cx="16" cy="18" r="0.8" fill="currentColor" />
+          </svg>
+
+          {/* ═══════════════ LIGHTBULB ═══════════════ */}
+          <svg className="absolute w-10 h-10 text-yellow-200/[0.2] dark:text-yellow-200/[0.1] animate-pulse-glow" style={{ top: "12%", left: "45%", animationDuration: "7s", animationDelay: "1s" }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5" />
+            <path d="M9 18h6" />
+            <path d="M10 22h4" />
+          </svg>
+
+          {/* ═══════════════ GLOBE / EARTH ═══════════════ */}
+          <svg className="absolute w-14 h-14 text-white/[0.15] dark:text-white/[0.07] animate-slow-spin" style={{ bottom: "10%", left: "30%", animationDuration: "50s" }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2">
+            <circle cx="12" cy="12" r="10" />
+            <ellipse cx="12" cy="12" rx="4" ry="10" />
+            <path d="M2 12h20" />
+            <path d="M4.5 6.5h15" opacity="0.5" />
+            <path d="M4.5 17.5h15" opacity="0.5" />
+          </svg>
+
+          {/* ═══════════════ SQUARE ROOT / RADICAL ═══════════════ */}
+          <svg className="absolute w-10 h-10 text-white/[0.2] dark:text-white/[0.1] animate-float-rise" style={{ top: "80%", left: "20%", animationDuration: "14s", animationDelay: "3s" }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 12h3l3 8 5-16h7" />
+          </svg>
+
+          {/* ═══════════════ MUSIC NOTE (creativity) ═══════════════ */}
+          <svg className="absolute w-8 h-8 text-white/[0.15] dark:text-white/[0.07] animate-float-drift-reverse" style={{ top: "85%", right: "12%", animationDuration: "22s", animationDelay: "4s" }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 18V5l12-2v13" />
+            <circle cx="6" cy="18" r="3" />
+            <circle cx="18" cy="16" r="3" />
+          </svg>
+
+          {/* ═══════════════ EXTRA FLOATING BARS ═══════════════ */}
+          <div className="absolute w-10 h-2 rounded-full bg-white/[0.15] dark:bg-white/[0.06] animate-float-drift rotate-12" style={{ bottom: "28%", left: "2%", animationDuration: "19s", animationDelay: "6s" }}></div>
+          <div className="absolute w-8 h-1.5 rounded-full bg-white/[0.12] dark:bg-white/[0.05] animate-float-sway -rotate-6" style={{ top: "50%", right: "4%", animationDuration: "16s", animationDelay: "8s" }}></div>
+          <div className="absolute w-12 h-2 rounded-full bg-white/[0.1] dark:bg-white/[0.04] animate-float-drift-reverse rotate-3" style={{ top: "88%", left: "10%", animationDuration: "21s", animationDelay: "2s" }}></div>
+
+        </div>
+      )}
+
       {/* MAIN HARDWARE DECK CASING */}
-      <div className={`w-full max-w-[1400px] h-full md:h-[88vh] bg-[#f0f4fa] dark:bg-[#090d16] rounded-none md:rounded-[40px] shadow-none md:shadow-2xl overflow-hidden flex flex-col md:flex-row relative transition-all border-0 md:border border-white/15 ${exportMode ? "border-0 shadow-none rounded-none bg-white min-h-screen w-full text-black" : ""}`}>
+      <div className={`w-full max-w-[1400px] bg-[#f0f4fa] dark:bg-[#090d16] flex flex-col md:flex-row relative transition-all border-white/15 z-10 ${
+        exportMode 
+          ? "border-0 shadow-none rounded-none bg-white min-h-screen w-full text-black h-auto overflow-visible" 
+          : "h-full md:h-[88vh] rounded-none md:rounded-[40px] shadow-none md:shadow-2xl overflow-hidden border-0 md:border"
+      }`}>
         
         {/* MOBILE SPECIAL TOP NAV BAR */}
         {!exportMode && (
-          <header className="md:hidden flex bg-white dark:bg-[#111827] h-14 w-full border-b border-slate-200/50 dark:border-gray-800/40 shrink-0 items-center justify-between px-4 relative z-30 shadow-sm">
+          <header className="md:hidden flex bg-white dark:bg-[#111827] h-14 w-full border-b border-slate-200/50 dark:border-gray-800/40 shrink-0 items-center justify-between px-4 relative z-30 shadow-sm no-print">
             {/* Top PW Logo Identity */}
             <div className="flex items-center gap-2">
               <PWLogo size="w-8 h-8" textSize="text-[10px] animate-pulse" />
@@ -879,14 +1693,16 @@ export default function App() {
 
             {/* Top Right Buttons (Sync, Theme, Profile) */}
             <div className="flex items-center gap-2">
-              <button
-                onClick={handleDatabaseSync}
-                disabled={isRefreshing}
-                className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-400 hover:text-[#5277f7] hover:bg-slate-50 dark:hover:bg-gray-800/50 transition-all cursor-pointer relative"
-                title="Synchronize Google Sheets"
-              >
-                <RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin text-[#5277f7]" : ""}`} />
-              </button>
+              {loggedInUser && (
+                <button
+                  onClick={handleDatabaseSync}
+                  disabled={isRefreshing}
+                  className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-400 hover:text-[#5277f7] hover:bg-slate-50 dark:hover:bg-gray-800/50 transition-all cursor-pointer relative"
+                  title="Synchronize Google Sheets"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin text-[#5277f7]" : ""}`} />
+                </button>
+              )}
 
               <button
                 onClick={() => setTheme(theme === "light" ? "dark" : "light")}
@@ -896,31 +1712,12 @@ export default function App() {
                 {theme === "light" ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4 text-amber-400" />}
               </button>
 
-              {isAdmin && (
-                <button
-                  onClick={() => {
-                    setActiveView("settings");
-                    setErrorMessage(null);
-                    if (loggedInUser?.email) refreshUnread(loggedInUser.email);
-                  }}
-                  className="relative w-9 h-9 rounded-xl flex items-center justify-center text-slate-400 hover:text-[#5277f7] hover:bg-slate-50 dark:hover:bg-gray-800/50 transition-all cursor-pointer"
-                  title="Admin Settings"
-                >
-                  <Settings className="w-4 h-4" />
-                  {notifUnread > 0 && (
-                    <span className="absolute top-0.5 right-0.5 min-w-[14px] h-[14px] px-1 rounded-full bg-rose-500 text-white text-[7px] font-black flex items-center justify-center leading-none">
-                      {notifUnread > 9 ? "9+" : notifUnread}
-                    </span>
-                  )}
-                </button>
-              )}
-
-              <div className="relative">
-                <button
-                  onClick={() => setShowProfileModal(!showProfileModal)}
-                  className="w-9 h-9 rounded-xl overflow-hidden border border-slate-200/50 dark:border-gray-850 hover:border-[#5277f7] transition-all cursor-pointer bg-slate-50 dark:bg-gray-800/60 flex items-center justify-center shrink-0 focus:outline-none"
-                >
-                  {loggedInUser ? (
+              {loggedInUser && (
+                <div className="relative">
+                  <button
+                    onClick={() => setShowProfileModal(!showProfileModal)}
+                    className="w-9 h-9 rounded-xl overflow-hidden border border-slate-200/50 dark:border-gray-850 hover:border-[#5277f7] transition-all cursor-pointer bg-slate-50 dark:bg-gray-800/60 flex items-center justify-center shrink-0 focus:outline-none"
+                  >
                     <img
                       src={loggedInUser.picture || `https://ui-avatars.com/api/?name=${encodeURIComponent(getFullNameFromEmail(loggedInUser.email))}&background=1d4ed8&color=fff&bold=true&size=128`}
                       alt="Profile"
@@ -930,23 +1727,20 @@ export default function App() {
                         e.currentTarget.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(getFullNameFromEmail(loggedInUser.email))}&background=1d4ed8&color=fff&bold=true&size=128`;
                       }}
                     />
-                  ) : (
-                    <span className="font-extrabold text-[10px] text-slate-800 dark:text-white">PW</span>
-                  )}
-                </button>
+                  </button>
 
-                <AnimatePresence>
-                  {showProfileModal && (
-                    <>
-                      {/* Click Outside Overlay Backdrop */}
-                      <motion.div
-                        key="profile-backdrop-mobile"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-40 cursor-default bg-transparent"
-                        onClick={() => setShowProfileModal(false)}
-                      />
+                  <AnimatePresence>
+                    {showProfileModal && (
+                      <>
+                        {/* Click Outside Overlay Backdrop */}
+                        <motion.div
+                          key="profile-backdrop-mobile"
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          className="fixed inset-0 z-40 cursor-default bg-transparent"
+                          onClick={() => setShowProfileModal(false)}
+                        />
 
                       {/* Float profile card details popover */}
                       {loggedInUser && (
@@ -982,7 +1776,7 @@ export default function App() {
                           <div className="py-3.5 space-y-2">
                             <div className="flex justify-between text-[10px] text-slate-400 dark:text-slate-500 font-mono">
                               <span>Center:</span>
-                              <span className="font-bold text-slate-700 dark:text-gray-300">Vidyapeeth Pune</span>
+                              <span className="font-bold text-slate-700 dark:text-gray-300">Pimpri PW Vidyapeeth</span>
                             </div>
                             <div className="flex justify-between text-[10px] text-slate-400 dark:text-slate-500 font-mono">
                               <span>Access Category:</span>
@@ -1007,13 +1801,14 @@ export default function App() {
                   )}
                 </AnimatePresence>
               </div>
-            </div>
-          </header>
-        )}
+            )}
+          </div>
+        </header>
+      )}
 
         {/* RESPONSIVE LEFT SIDEBAR BAR (DESKTOP ONLY) */}
-        {!exportMode && (
-          <aside className="hidden md:flex bg-white dark:bg-[#111827] md:flex-col justify-between items-center md:py-8 md:w-24 border-r border-slate-200/50 dark:border-gray-800/40 shrink-0 relative z-30">
+        {!exportMode && loggedInUser && (
+          <aside className="hidden md:flex bg-white dark:bg-[#111827] md:flex-col justify-between items-center md:py-8 md:w-24 border-r border-slate-200/50 dark:border-gray-800/40 shrink-0 relative z-30 no-print">
             {/* Top PW Logo Identity */}
             <div className="flex md:flex-col items-center gap-2">
               <PWLogo size="w-11 h-11" textSize="text-base animate-pulse" />
@@ -1036,7 +1831,7 @@ export default function App() {
 
               {/* Search Trigger Tab */}
               <button
-                onClick={() => { setSearchType("name"); setActiveView("input"); setErrorMessage(null); }}
+                onClick={() => { setSearchType("reg"); setActiveView("input"); setErrorMessage(null); }}
                 className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all cursor-pointer ${
                   activeView === "input"
                     ? "bg-[#5277f7] text-white shadow-lg shadow-[#5277f7]/20"
@@ -1083,6 +1878,19 @@ export default function App() {
                 <RefreshCw className={`w-5 h-5 ${isRefreshing ? "animate-spin text-[#5277f7]" : ""}`} />
               </button>
 
+              {/* Configuration Settings Tab */}
+              <button
+                onClick={() => { setActiveView("admin"); setErrorMessage(null); }}
+                className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all cursor-pointer ${
+                  activeView === "admin"
+                    ? "bg-[#5277f7] text-white shadow-lg shadow-[#5277f7]/20"
+                    : "text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-gray-800/60"
+                }`}
+                title="System Configuration & Guide"
+              >
+                <Settings className="w-5 h-5" />
+              </button>
+
               {/* Workspace Color Preferences */}
               <button
                 onClick={() => setTheme(theme === "light" ? "dark" : "light")}
@@ -1091,30 +1899,6 @@ export default function App() {
               >
                 {theme === "light" ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5 text-amber-400" />}
               </button>
-
-              {/* Admin-only Settings (with unread notification badge) */}
-              {isAdmin && (
-                <button
-                  onClick={() => {
-                    setActiveView("settings");
-                    setErrorMessage(null);
-                    if (loggedInUser?.email) refreshUnread(loggedInUser.email);
-                  }}
-                  className={`relative w-12 h-12 rounded-2xl flex items-center justify-center transition-all cursor-pointer ${
-                    activeView === "settings"
-                      ? "bg-[#5277f7] text-white shadow-lg shadow-[#5277f7]/20"
-                      : "text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-gray-800/60"
-                  }`}
-                  title="Admin Settings"
-                >
-                  <Settings className="w-5 h-5" />
-                  {notifUnread > 0 && (
-                    <span className="absolute top-1.5 right-1.5 min-w-[16px] h-[16px] px-1 rounded-full bg-rose-500 text-white text-[8px] font-black flex items-center justify-center leading-none">
-                      {notifUnread > 9 ? "9+" : notifUnread}
-                    </span>
-                  )}
-                </button>
-              )}
             </nav>
 
             {/* Bottom Active Staff Profile Popover Toggle */}
@@ -1186,7 +1970,7 @@ export default function App() {
                         <div className="py-3.5 space-y-2">
                           <div className="flex justify-between text-[10px] text-slate-400 dark:text-slate-500 font-mono">
                             <span>Center:</span>
-                            <span className="font-bold text-slate-700 dark:text-gray-300">Vidyapeeth Pune</span>
+                            <span className="font-bold text-slate-700 dark:text-gray-300">Pimpri PW Vidyapeeth</span>
                           </div>
                           <div className="flex justify-between text-[10px] text-slate-400 dark:text-slate-500 font-mono">
                             <span>Access Category:</span>
@@ -1215,7 +1999,11 @@ export default function App() {
         )}
 
         {/* MAIN DISPLAY CANVAS CORES */}
-        <div className={`flex-1 flex flex-col min-w-0 ${exportMode ? "p-0 bg-white text-black" : "p-2.5 sm:p-4 md:p-5 bg-[#f4f7fc] dark:bg-[#090d16]"} overflow-y-auto custom-scrollbar relative z-10`}>
+        <div ref={mainCanvasRef} className={`flex-1 flex flex-col min-w-0 ${
+          exportMode 
+            ? "p-0 bg-white text-black h-auto overflow-visible" 
+            : "p-2.5 sm:p-4 md:p-5 pb-24 md:pb-5 bg-[#f4f7fc] dark:bg-[#090d16] overflow-y-auto custom-scrollbar"
+        } relative z-10`}>
           
           {/* Top general status notification banner */}
           {errorMessage && !exportMode && (
@@ -1235,17 +2023,7 @@ export default function App() {
           )}
 
           <AnimatePresence mode="wait">
-
-            {/* ADMIN SETTINGS VIEW (admins only) */}
-            {activeView === "settings" && isAdmin && loggedInUser && (
-              <AdminSettings
-                key="settings"
-                currentUser={{ email: loggedInUser.email, name: loggedInUser.name, role: userRole, center: userCenter } as SessionUser}
-                onClose={() => setActiveView("home")}
-                onUnreadChange={(n) => setNotifUnread(n)}
-              />
-            )}
-
+            
             {/* HOME VIEW: Dribbble Aesthetic layout */}
             {activeView === "home" && (
               <motion.div
@@ -1253,97 +2031,131 @@ export default function App() {
                 initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -15 }}
-                className="space-y-8 my-auto"
+                className="space-y-4 sm:space-y-8 py-2 sm:py-8 my-auto"
               >
                 {/* Brand Promos */}
-                <div className="text-center space-y-4 max-w-2xl mx-auto py-2">
-                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#5277f7]/10 border border-[#5277f7]/20 text-[10px] font-bold text-[#5277f7] dark:text-blue-400 font-mono uppercase tracking-widest">
-                    <Sparkles className="w-3 h-3 text-[#5277f7]" /> PW Vidyapeeth Academic Portal
+                <div className="text-center space-y-1.5 sm:space-y-4 max-w-2xl mx-auto py-1">
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#5277f7]/10 border border-[#5277f7]/20 text-[10px] font-bold text-[#5277f7] dark:text-blue-400 font-mono uppercase tracking-widest scale-90 sm:scale-100">
+                    <Sparkles className="w-3 h-3 text-[#5277f7] animate-pulse" /> PW Vidyapeeth Academic Portal
                   </div>
-                  <h2 className="text-3xl md:text-5xl font-extrabold tracking-tight text-slate-900 dark:text-white font-display">
+                  <h2 className="text-xl sm:text-3xl md:text-5xl font-extrabold tracking-tight text-slate-900 dark:text-white font-display px-4">
                     PW Vidyapeeth Academic Assessment Portal
                   </h2>
-                  <p className="text-xs md:text-sm text-slate-500 dark:text-gray-400 max-w-lg mx-auto font-sans leading-relaxed">
+                  <p className="hidden sm:block text-xs md:text-sm text-slate-500 dark:text-gray-400 max-w-md md:max-w-lg mx-auto font-sans leading-relaxed px-4">
                     Instantly view student academic cards, detailed subject scores, test metrics, and comprehensive division rosters.
                   </p>
                 </div>
 
                 {/* THREE DIRECTORY ACTIONS (Bento Cards to choice Search Type) */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-6 max-w-5xl mx-auto px-4 md:px-0">
                   {/* Search Type 1: Batch */}
                   <button
                     onClick={() => { setSearchType("batch"); setActiveView("input"); }}
-                    className="bg-white dark:bg-[#111827] border border-slate-200/50 dark:border-gray-800/40 rounded-3xl p-6 text-left hover:border-[#5277f7] dark:hover:border-blue-500 hover:shadow-xl hover:shadow-[#5277f7]/5 transition-all duration-300 group cursor-pointer outline-none relative overflow-hidden"
+                    className="bg-white dark:bg-[#111827] border border-slate-200/50 dark:border-gray-800/40 rounded-2xl md:rounded-3xl p-4 md:p-6 text-left hover:border-[#5277f7] dark:hover:border-blue-500 hover:shadow-xl hover:shadow-[#5277f7]/5 transition-all duration-300 group cursor-pointer outline-none relative overflow-hidden flex flex-row md:flex-col md:justify-between items-start md:items-stretch gap-4 md:gap-0 min-h-0 md:min-h-[220px]"
                   >
-                    <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-blue-500/5 to-transparent rounded-bl-full pointer-events-none"></div>
-                    <div className="w-12 h-12 rounded-2xl bg-blue-500/5 text-[#5277f7] flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-                      <BookOpen className="w-6 h-6" />
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-blue-500/10 to-transparent group-hover:from-blue-500/20 group-hover:scale-110 transition-all duration-300 rounded-bl-full pointer-events-none"></div>
+                    <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl md:rounded-2xl bg-blue-500/5 text-[#5277f7] dark:bg-blue-500/10 dark:text-blue-400 group-hover:bg-[#5277f7] group-hover:text-white transition-all duration-300 flex items-center justify-center shrink-0 md:mb-6 group-hover:scale-110">
+                      <BookOpen className="w-5 h-5 md:w-6 md:h-6" />
                     </div>
-                    <h3 className="text-base font-extrabold text-slate-900 dark:text-white font-display group-hover:text-[#5277f7] transition-colors">
-                      Browse Cohort Batches
-                    </h3>
-                    <p className="text-[11px] text-slate-450 dark:text-gray-400 mt-2 font-sans leading-relaxed">
-                      Get full student rosters and class rankings compiled across Pune division batches.
-                    </p>
-                    <div className="mt-6 flex items-center gap-1.5 text-xs font-bold text-[#5277f7]">
-                      Browse Divisions <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-sm md:text-base font-extrabold text-slate-900 dark:text-white font-display group-hover:text-[#5277f7] transition-colors leading-tight">
+                        Browse Student Directory
+                      </h3>
+                      <p className="text-[11px] text-slate-450 dark:text-gray-400 mt-1 md:mt-2 font-sans leading-relaxed">
+                        Get full student rosters and class rankings compiled across Pune division batches.
+                      </p>
+                      {/* Mobile action link */}
+                      <div className="md:hidden mt-2 flex items-center gap-1.5 text-xs font-bold text-[#5277f7]">
+                        Browse Directory <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                      </div>
+                    </div>
+                    {/* Desktop-only action link */}
+                    <div className="hidden md:flex mt-6 items-center gap-1.5 text-xs font-bold text-[#5277f7]">
+                      Browse Directory <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
                     </div>
                   </button>
 
                   {/* Search Type 2: Name */}
                   <button
                     onClick={() => { setSearchType("name"); setActiveView("input"); }}
-                    className="bg-white dark:bg-[#111827] border border-slate-200/50 dark:border-gray-800/40 rounded-3xl p-6 text-left hover:border-[#5277f7] dark:hover:border-blue-500 hover:shadow-xl hover:shadow-[#5277f7]/5 transition-all duration-300 group cursor-pointer outline-none relative overflow-hidden"
+                    className="bg-white dark:bg-[#111827] border border-slate-200/50 dark:border-gray-800/40 rounded-2xl md:rounded-3xl p-4 md:p-6 text-left hover:border-[#5277f7] dark:hover:border-blue-500 hover:shadow-xl hover:shadow-[#5277f7]/5 transition-all duration-300 group cursor-pointer outline-none relative overflow-hidden flex flex-row md:flex-col md:justify-between items-start md:items-stretch gap-4 md:gap-0 min-h-0 md:min-h-[220px]"
                   >
-                    <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-teal-500/5 to-transparent rounded-bl-full pointer-events-none"></div>
-                    <div className="w-12 h-12 rounded-2xl bg-teal-500/5 text-teal-500 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-                      <User className="w-6 h-6" />
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-teal-500/10 to-transparent group-hover:from-teal-500/20 group-hover:scale-110 transition-all duration-300 rounded-bl-full pointer-events-none"></div>
+                    <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl md:rounded-2xl bg-teal-500/5 text-teal-500 dark:bg-teal-500/10 dark:text-teal-400 group-hover:bg-teal-500 group-hover:text-white transition-all duration-300 flex items-center justify-center shrink-0 md:mb-6 group-hover:scale-110">
+                      <User className="w-5 h-5 md:w-6 md:h-6" />
                     </div>
-                    <h3 className="text-base font-extrabold text-slate-900 dark:text-white font-display group-hover:text-[#5277f7] transition-colors">
-                      Search Student by Name
-                    </h3>
-                    <p className="text-[11px] text-slate-450 dark:text-gray-400 mt-2 font-sans leading-relaxed">
-                      Search for individual student profiles using dynamic autocomplete search filters.
-                    </p>
-                    <div className="mt-6 flex items-center gap-1.5 text-xs font-bold text-teal-600 dark:text-teal-400">
-                      Search Profile <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-sm md:text-base font-extrabold text-slate-900 dark:text-white font-display group-hover:text-[#5277f7] transition-colors leading-tight">
+                        Search Student by Name
+                      </h3>
+                      <p className="text-[11px] text-slate-450 dark:text-gray-400 mt-1 md:mt-2 font-sans leading-relaxed">
+                        Search for individual student profiles using dynamic autocomplete search filters.
+                      </p>
+                      {/* Mobile action link */}
+                      <div className="md:hidden mt-2 flex items-center gap-1.5 text-xs font-bold text-teal-600 dark:text-teal-400">
+                        Search Profile <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                      </div>
+                    </div>
+                    {/* Desktop-only action link */}
+                    <div className="hidden md:flex mt-6 items-center gap-1.5 text-xs font-bold text-teal-600 dark:text-teal-400">
+                      Search Profile <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
                     </div>
                   </button>
 
                   {/* Search Type 3: Reg No */}
                   <button
                     onClick={() => { setSearchType("reg"); setActiveView("input"); }}
-                    className="bg-white dark:bg-[#111827] border border-slate-200/50 dark:border-gray-800/40 rounded-3xl p-6 text-left hover:border-[#5277f7] dark:hover:border-blue-500 hover:shadow-xl hover:shadow-[#5277f7]/5 transition-all duration-300 group cursor-pointer outline-none relative overflow-hidden"
+                    className="bg-white dark:bg-[#111827] border border-slate-200/50 dark:border-gray-800/40 rounded-2xl md:rounded-3xl p-4 md:p-6 text-left hover:border-[#5277f7] dark:hover:border-blue-500 hover:shadow-xl hover:shadow-[#5277f7]/5 transition-all duration-300 group cursor-pointer outline-none relative overflow-hidden flex flex-row md:flex-col md:justify-between items-start md:items-stretch gap-4 md:gap-0 min-h-0 md:min-h-[220px]"
                   >
-                    <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-purple-500/5 to-transparent rounded-bl-full pointer-events-none"></div>
-                    <div className="w-12 h-12 rounded-2xl bg-purple-500/5 text-purple-500 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-                      <Hash className="w-6 h-6" />
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-purple-500/10 to-transparent group-hover:from-purple-500/20 group-hover:scale-110 transition-all duration-300 rounded-bl-full pointer-events-none"></div>
+                    <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl md:rounded-2xl bg-purple-500/5 text-purple-500 dark:bg-purple-500/10 dark:text-purple-400 group-hover:bg-purple-500 group-hover:text-white transition-all duration-300 flex items-center justify-center shrink-0 md:mb-6 group-hover:scale-110">
+                      <Hash className="w-5 h-5 md:w-6 md:h-6" />
                     </div>
-                    <h3 className="text-base font-extrabold text-slate-900 dark:text-white font-display group-hover:text-[#5277f7] transition-colors">
-                      Search by Roll Number / Registration ID
-                    </h3>
-                    <p className="text-[11px] text-slate-450 dark:text-gray-400 mt-2 font-sans leading-relaxed">
-                      Locate complete student reports directly by entering their official roll or registration key.
-                    </p>
-                    <div className="mt-6 flex items-center gap-1.5 text-xs font-bold text-purple-600 dark:text-purple-400">
-                      Search Roll Key <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-sm md:text-base font-extrabold text-slate-900 dark:text-white font-display group-hover:text-[#5277f7] transition-colors leading-tight">
+                        Search Registration Number
+                      </h3>
+                      <p className="text-[11px] text-slate-450 dark:text-gray-400 mt-1 md:mt-2 font-sans leading-relaxed">
+                        Locate complete student reports directly by entering their official roll or registration key.
+                      </p>
+                      {/* Mobile action link */}
+                      <div className="md:hidden mt-2 flex items-center gap-1.5 text-xs font-bold text-purple-650 dark:text-purple-400">
+                        Search Registration ID <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                      </div>
+                    </div>
+                    {/* Desktop-only action link */}
+                    <div className="hidden md:flex mt-6 items-center gap-1.5 text-xs font-bold text-purple-600 dark:text-purple-400">
+                      Search Registration ID <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
                     </div>
                   </button>
                 </div>
 
                 {/* DB Metadata Tracker */}
-                <div className="max-w-xl mx-auto p-4 rounded-2xl bg-[#eaedf5] dark:bg-[#111827]/45 text-center flex flex-col justify-center items-center gap-1.5">
-                  <div className="flex items-center gap-2 text-[10px] font-mono text-slate-400 dark:text-slate-500">
-                    <Compass className="w-3.5 h-3.5 text-emerald-500" />
+                <div className="max-w-xl mx-auto p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-[#eaedf5] dark:bg-[#111827]/45 text-center flex flex-col justify-center items-center gap-1 mx-4 sm:mx-auto">
+                  <div className="flex items-center gap-2 text-[10px] sm:text-[11px] font-mono text-slate-500 dark:text-slate-400">
+                    <Compass className="w-3.5 h-3.5 text-emerald-500 animate-spin" style={{ animationDuration: '3s' }} />
                     IN-MEMORY INDEX CACHE STATUS: <span className="text-emerald-500 font-bold tracking-widest uppercase">● ACTIVE OPTIMIZED</span>
                   </div>
                   {dbStatus.lastLoaded && (
-                    <div className="text-[9px] text-slate-400 dark:text-slate-500 font-mono flex items-center gap-1 font-medium">
+                    <div className="text-[9px] sm:text-[10px] text-slate-400 dark:text-slate-500 font-mono flex items-center gap-1 font-medium justify-center flex-wrap">
                       <Clock className="w-3 h-3 text-slate-400" />
-                      Assessed database mapped: {new Date(dbStatus.lastLoaded).toLocaleDateString()} {new Date(dbStatus.lastLoaded).toLocaleTimeString()} ({dbStatus.sheetCount || 0} worksheets cached)
+                      Assessed database mapped: {new Date(dbStatus.lastLoaded).toLocaleDateString()} {new Date(dbStatus.lastLoaded).toLocaleTimeString()} ({dbStatus.sheetCount || 0} sheets cached)
                     </div>
                   )}
                 </div>
+
+                {/* INLINE FOOTER FOR HOME VIEW (MOBILE & DESKTOP) */}
+                <footer className="w-full text-center py-4 mt-6 border-t border-slate-250/20 dark:border-gray-800/40 no-print">
+                  <p className="text-slate-450 dark:text-gray-500 text-[11px] font-mono leading-relaxed flex items-center justify-center gap-1.5 flex-wrap">
+                    <span>For technical issues, contact:</span>
+                    <a
+                      href="mailto:aniket.mishra2@pw.live"
+                      className="text-[#5277f7] dark:text-blue-400 hover:underline font-extrabold transition-colors flex items-center gap-1.5"
+                    >
+                      <Mail className="w-3.5 h-3.5" /> aniket.mishra2@pw.live
+                    </a>
+                  </p>
+                </footer>
               </motion.div>
             )}
 
@@ -1372,24 +2184,83 @@ export default function App() {
                     <h2 className="text-lg font-extrabold text-slate-900 dark:text-white font-display leading-tight">
                       {searchType === "batch" && "Division Class List"}
                       {searchType === "name" && "Student Profile search"}
-                      {searchType === "reg" && "Sequence Roll Key"}
+                      {searchType === "reg" && "Registration Number Search"}
                     </h2>
                   </div>
 
                   {/* Batch Select Options */}
                   {searchType === "batch" && (
-                    <div className="space-y-1.5">
+                    <div className="space-y-1.5 relative" ref={batchDropdownRef}>
                       <label className="text-[10px] font-mono tracking-wider font-bold text-slate-400 uppercase">SELECT DIVISION BATCH</label>
-                      <select
-                        value={selectedBatch}
-                        onChange={(e) => setSelectedBatch(e.target.value)}
-                        className="w-full bg-slate-50 dark:bg-gray-800/60 border border-slate-200/60 dark:border-gray-700/60 rounded-xl px-4 py-3 text-slate-800 dark:text-white font-bold focus:outline-none focus:border-[#5277f7] text-xs cursor-pointer"
+                      
+                      {/* Trigger Button */}
+                      <button
+                        type="button"
+                        onClick={() => setIsBatchDropdownOpen(!isBatchDropdownOpen)}
+                        className="w-full bg-slate-50 dark:bg-gray-800/60 border border-slate-200/60 dark:border-gray-700/60 rounded-xl px-4 py-3 text-slate-800 dark:text-white font-bold flex items-center justify-between text-xs cursor-pointer select-none hover:bg-slate-100 dark:hover:bg-gray-800 transition-all focus:outline-none focus:ring-1 focus:ring-[#5277f7]"
                       >
-                        <option value="">Select class division...</option>
-                        {dropdowns.batches.map((b) => (
-                          <option key={b} value={b}>{b}</option>
-                        ))}
-                      </select>
+                        <span className={selectedBatch ? "text-slate-800 dark:text-white" : "text-slate-400"}>
+                          {selectedBatch || "Select class division..."}
+                        </span>
+                        <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isBatchDropdownOpen ? "rotate-180 text-[#5277f7]" : ""}`} />
+                      </button>
+
+                      {/* Dropdown Panel */}
+                      {isBatchDropdownOpen && (
+                        <div className="absolute left-0 right-0 mt-1.5 bg-white dark:bg-[#111827] border border-slate-200/50 dark:border-gray-800/60 rounded-2xl shadow-2xl z-50 p-2.5 space-y-2.5 max-h-72 overflow-hidden flex flex-col">
+                          {/* Search bar inside */}
+                          <div className="relative shrink-0">
+                            <input
+                              type="text"
+                              placeholder="Search division..."
+                              value={classSelectSearchQuery}
+                              onChange={(e) => setClassSelectSearchQuery(e.target.value)}
+                              className="w-full bg-slate-50 dark:bg-gray-850/60 border border-slate-200/40 dark:border-gray-800/60 rounded-xl pl-8 pr-3 py-2 text-xs text-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-[#5277f7]"
+                              autoFocus
+                            />
+                            <Search className="w-4 h-4 text-slate-450 dark:text-gray-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                          </div>
+
+                          {/* Options list */}
+                          <div className="overflow-y-auto flex-1 custom-scrollbar max-h-48 space-y-0.5">
+                            {(() => {
+                              const filtered = dropdowns.batches.filter(b =>
+                                b.toLowerCase().includes(classSelectSearchQuery.toLowerCase())
+                              );
+
+                              if (filtered.length === 0) {
+                                return (
+                                  <div className="text-[11px] text-slate-450 italic p-3 text-center">
+                                    No divisions match.
+                                  </div>
+                                );
+                              }
+
+                              return filtered.map((b) => (
+                                <button
+                                  key={b}
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedBatch(b);
+                                    setIsBatchDropdownOpen(false);
+                                    setClassSelectSearchQuery("");
+                                  }}
+                                  className={`w-full text-left px-3 py-2.5 rounded-xl text-xs font-bold flex items-center justify-between transition-all hover:bg-slate-50 dark:hover:bg-gray-800/65 ${
+                                    selectedBatch === b
+                                      ? "text-[#5277f7] dark:text-blue-400 bg-blue-50/50 dark:bg-blue-950/20"
+                                      : "text-slate-700 dark:text-slate-350"
+                                  }`}
+                                >
+                                  <span>{b}</span>
+                                  {selectedBatch === b && (
+                                    <Check className="w-3.5 h-3.5 text-[#5277f7] dark:text-blue-400 shrink-0" />
+                                  )}
+                                </button>
+                              ));
+                            })()}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -1463,20 +2334,8 @@ export default function App() {
             )}
 
             {/* BATCH STUDENTS LIST SCREEN */}
-            {activeView === "batchList" && studentsPayload && (() => {
-              const query = batchSearchQuery.toLowerCase().trim();
-              const filteredStudents = studentsPayload.students
-                .map((student, originalIdx) => ({ student, originalIdx }))
-                .filter(({ student }) => {
-                  if (!query) return true;
-                  const name = (student.profile.name || "").toLowerCase();
-                  const regNo = (student.profile.regNo || "").toLowerCase();
-                  const batch = (student.profile.batch || "").toLowerCase();
-                  return name.includes(query) || regNo.includes(query) || batch.includes(query);
-                });
-
-              return (
-                <motion.div
+            {activeView === "batchList" && studentsPayload && (
+              <motion.div
                   key="batchList"
                   initial={{ opacity: 0, y: 15 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -1490,23 +2349,23 @@ export default function App() {
                     <ArrowLeft className="w-3.5 h-3.5" /> {selectedSheetName ? "Back to sheets directory" : "Select another division batch"}
                   </button>
 
-                  <div className="bg-white dark:bg-[#111827] border border-slate-200/50 dark:border-gray-800/40 rounded-3xl p-5 md:p-6 shadow-sm space-y-4">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3.5 border-b border-slate-100 dark:border-gray-800">
+                  <div className="bg-white dark:bg-[#111827] border border-slate-200/50 dark:border-gray-800/40 rounded-3xl p-4 sm:p-6 shadow-sm space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-150 dark:border-gray-800">
                       <div>
-                        <span className="text-[9px] text-[#5277f7] uppercase tracking-widest font-mono font-bold block mb-1">
-                          {selectedSheetName ? "Google Sheets filter" : "Active Database Sheet"}
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-blue-500/10 text-[9px] text-[#5277f7] dark:text-blue-400 uppercase tracking-widest font-mono font-extrabold mb-1.5 no-print">
+                          <BookOpen className="w-3 h-3" /> {selectedSheetName ? "Google Sheets filter" : "Active Database Sheet"}
                         </span>
-                        <h2 className="text-base font-extrabold text-slate-900 dark:text-white uppercase tracking-wider font-display leading-none">
+                        <h2 className="text-sm sm:text-base font-black text-slate-900 dark:text-white uppercase tracking-wider font-display leading-tight">
                           {selectedSheetName ? selectedSheetName : "Student Directory Roster"}
                         </h2>
                       </div>
                       <div className="flex items-center gap-2 flex-wrap">
                         {batchSearchQuery && (
-                          <span className="text-[9px] font-mono font-bold px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                          <span className="text-[9px] font-mono font-bold px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-500 border border-amber-500/20 animate-pulse">
                             Filtered: {filteredStudents.length} of {studentsPayload.students.length}
                           </span>
                         )}
-                        <span className="text-[10px] font-mono font-bold px-3 py-1 rounded-full bg-blue-500/5 text-[#5277f7] border border-blue-500/15">
+                        <span className="text-[10px] font-mono font-extrabold px-3 py-1 rounded-full bg-blue-500/5 text-[#5277f7] border border-blue-500/15">
                           {studentsPayload.students.length} Pupils found
                         </span>
                       </div>
@@ -1514,13 +2373,13 @@ export default function App() {
 
                     {/* INTERACTIVE SEARCH BAR */}
                     <div className="relative">
-                      <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-450 dark:text-gray-500" />
+                      <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-gray-500" />
                       <input
                         type="text"
                         value={batchSearchQuery}
                         onChange={(e) => setBatchSearchQuery(e.target.value)}
                         placeholder="Search student by Name, Roll/Reg, or Class Batch..."
-                        className="w-full bg-slate-50 dark:bg-[#090d16]/80 border border-slate-200/60 dark:border-gray-800/80 rounded-2xl pl-11 pr-10 py-3 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 text-xs focus:outline-none focus:border-[#5277f7] focus:ring-1 focus:ring-[#5277f7]/30 transition-all font-sans"
+                        className="w-full bg-slate-50 dark:bg-[#090d16]/80 border border-slate-200/50 dark:border-gray-800/80 rounded-2xl pl-11 pr-10 py-3 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 text-xs focus:outline-none focus:border-[#5277f7] focus:ring-2 focus:ring-[#5277f7]/10 transition-all font-sans"
                       />
                       {batchSearchQuery && (
                         <button
@@ -1534,43 +2393,45 @@ export default function App() {
                     </div>
 
                     {filteredStudents.length > 0 ? (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 max-h-[55vh] overflow-y-auto custom-scrollbar pr-1 pt-1">
-                        {filteredStudents.map(({ student, originalIdx }) => (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 max-h-none md:max-h-[55vh] overflow-y-visible md:overflow-y-auto custom-scrollbar pr-1 pt-1">
+                        {filteredStudents.slice(0, batchPageSize).map(({ student, originalIdx }) => (
                           <button
                             key={student.profile.regNo + "_" + originalIdx}
                             onClick={() => selectStudentFromBatch(originalIdx)}
-                            className="bg-slate-50 dark:bg-gray-800/30 hover:bg-slate-100 dark:hover:bg-gray-800/60 border border-slate-200/40 dark:border-gray-700/40 rounded-2xl p-4 flex items-center justify-between transition-all text-left w-full cursor-pointer outline-none group"
+                            className="bg-slate-50/50 dark:bg-gray-800/20 hover:bg-white dark:hover:bg-gray-800/80 border border-slate-200/50 dark:border-gray-800/50 hover:border-[#5277f7] dark:hover:border-blue-500 rounded-2xl p-3 sm:p-4 flex items-center justify-between transition-all duration-300 text-left w-full cursor-pointer outline-none group hover:shadow-md hover:shadow-blue-500/5"
                           >
-                            <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-3 min-w-0">
                               <img
                                 alt="avatar"
                                 src={getStudentAvatar(student.profile.name, originalIdx)}
-                                className="w-9 h-9 rounded-xl object-cover border border-slate-200/20"
+                                className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl object-cover border border-slate-200/20 dark:border-gray-800/40 shrink-0 group-hover:scale-105 transition-transform"
                                 referrerPolicy="no-referrer"
                               />
-                              <div className="space-y-1">
-                                <div className="font-extrabold text-slate-800 dark:text-white text-xs group-hover:text-[#5277f7] transition-colors leading-tight">
+                              <div className="min-w-0 space-y-1">
+                                <div className="font-extrabold text-slate-800 dark:text-white text-xs sm:text-sm group-hover:text-[#5277f7] dark:group-hover:text-blue-400 transition-colors leading-tight truncate pr-1">
                                   {student.profile.name}
                                 </div>
-                                <div className="flex flex-col gap-0.5">
-                                  <div className="text-[10px] text-slate-500 dark:text-gray-400 font-mono font-bold flex items-center gap-1">
-                                    <span className="text-[9px] text-slate-400 font-normal">Roll:</span>
-                                    {student.profile.regNo}
-                                  </div>
-                                  <div className="text-[10px] text-slate-500 dark:text-gray-400 font-mono font-bold flex items-center gap-1 truncate max-w-[170px]" title={student.profile.batch}>
-                                    <span className="text-[9px] text-slate-400 font-normal">Class:</span>
-                                    <span className="truncate">{student.profile.batch || "N/A"}</span>
-                                  </div>
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-gray-800 text-slate-500 dark:text-slate-400 border border-slate-200/30 dark:border-gray-700/30">
+                                    #{student.profile.regNo}
+                                  </span>
+                                  {student.profile.batch && (
+                                    <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-blue-50/50 dark:bg-blue-950/20 text-[#5277f7] dark:text-blue-400 border border-blue-100/30 dark:border-blue-900/20 truncate max-w-[120px]" title={student.profile.batch}>
+                                      {student.profile.batch}
+                                    </span>
+                                  )}
                                 </div>
                               </div>
                             </div>
                             <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
                               <button
                                 onClick={() => {
-                                  const shareUrl = `${window.location.origin}${window.location.pathname}?reg=${encodeURIComponent(student.profile.regNo || "")}`;
-                                  navigator.clipboard.writeText(shareUrl).then(() => {
-                                    setCopiedReg(student.profile.regNo);
-                                    setTimeout(() => setCopiedReg(null), 2000);
+                                  const shareUrl = `${window.location.origin}/student/${encodeURIComponent(student.profile.regNo || "")}/${encodeURIComponent(student.profile.shareToken || "")}`;
+                                  safeCopyToClipboard(shareUrl).then((success) => {
+                                    if (success) {
+                                      setCopiedReg(student.profile.regNo);
+                                      setTimeout(() => setCopiedReg(null), 2000);
+                                    }
                                   });
                                 }}
                                 className="p-1.5 rounded-xl bg-white hover:bg-slate-100 dark:bg-gray-850 dark:hover:bg-gray-750 text-slate-400 hover:text-[#5277f7] border border-slate-200/50 dark:border-gray-800 transition-all flex items-center justify-center cursor-pointer"
@@ -1592,6 +2453,16 @@ export default function App() {
                             </div>
                           </button>
                         ))}
+                        {filteredStudents.length > batchPageSize && (
+                          <div className="col-span-full flex justify-center py-4">
+                            <button
+                              onClick={() => setBatchPageSize((prev) => prev + 50)}
+                              className="px-6 py-2.5 rounded-xl bg-[#5277f7] hover:bg-[#4062dd] text-white text-xs font-bold uppercase tracking-wider cursor-pointer border-0 transition-all shadow-md shadow-blue-500/20 hover:shadow-lg hover:shadow-blue-500/30"
+                            >
+                              Load More ({filteredStudents.length - batchPageSize} remaining)
+                            </button>
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <div className="py-12 text-center space-y-3">
@@ -1614,8 +2485,8 @@ export default function App() {
                     )}
                   </div>
                 </motion.div>
-              );
-            })()}            {/* MAIN STUDENT REPORT CARDS & DASHBOARDS */}
+            )}
+            {/* MAIN STUDENT REPORT CARDS & DASHBOARDS */}
             {activeView === "dashboard" && activeStudent && (
               <motion.div
                 key="dashboard"
@@ -1627,22 +2498,28 @@ export default function App() {
                 
                 {/* BACK CONTROL LINE WITH PRINT STRIPS */}
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 no-print border-b border-slate-200/30 dark:border-gray-800/30 pb-4">
-                  <button
-                    onClick={() => {
-                      if (searchType === "batch" && studentsPayload && studentsPayload.students.length > 1) {
-                        setActiveView("batchList");
-                      } else {
-                        setActiveView("input");
-                      }
-                      setErrorMessage(null);
-                    }}
-                    className="flex items-center gap-2 text-slate-505 dark:text-gray-400 hover:text-[#5277f7] transition-all text-xs font-bold font-sans cursor-pointer uppercase tracking-wider"
-                  >
-                    <ArrowLeft className="w-4 h-4 text-[#5277f7]" />
-                    {searchType === "batch" && studentsPayload && studentsPayload.students.length > 1
-                      ? "GO BACK TO GRID"
-                      : "START NEW QUERY"}
-                  </button>
+                  {loggedInUser ? (
+                    <button
+                      onClick={() => {
+                        if (searchType === "batch" && studentsPayload && studentsPayload.students.length > 1) {
+                          setActiveView("batchList");
+                        } else {
+                          setActiveView("input");
+                        }
+                        setErrorMessage(null);
+                      }}
+                      className="flex items-center gap-2 text-slate-505 dark:text-gray-400 hover:text-[#5277f7] transition-all text-xs font-bold font-sans cursor-pointer uppercase tracking-wider border-0 bg-transparent"
+                    >
+                      <ArrowLeft className="w-4 h-4 text-[#5277f7]" />
+                      {searchType === "batch" && studentsPayload && studentsPayload.students.length > 1
+                        ? "GO BACK TO GRID"
+                        : "START NEW QUERY"}
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-2 text-[#5277f7] dark:text-blue-400 text-xs font-black font-display uppercase tracking-wider select-none">
+                      <PWLogo size="w-6 h-6" /> Vidyapeeth Student Portal
+                    </div>
+                  )}
 
                   <div className="flex flex-wrap gap-2.5 w-full sm:w-auto">
                     <button
@@ -1652,21 +2529,23 @@ export default function App() {
                     >
                       <Printer className="w-4 h-4" /> Print report
                     </button>
-                    <button
-                      onClick={handleShareReport}
-                      className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-white transition-all shadow-md shadow-orange-500/10 cursor-pointer text-xs font-bold font-display uppercase tracking-wider border-0"
-                      title="Share Student Report Card Link"
-                    >
-                      {copiedShare ? (
-                        <>
-                          <Check className="w-4 h-4" /> Copied!
-                        </>
-                      ) : (
-                        <>
-                          <Share2 className="w-4 h-4" /> Share Card
-                        </>
-                      )}
-                    </button>
+                    {loggedInUser && (
+                      <button
+                        onClick={handleShareReport}
+                        className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-white transition-all shadow-md shadow-orange-500/10 cursor-pointer text-xs font-bold font-display uppercase tracking-wider border-0"
+                        title="Share Student Report Card Link"
+                      >
+                        {copiedShare ? (
+                          <>
+                            <Check className="w-4 h-4" /> Copied!
+                          </>
+                        ) : (
+                          <>
+                            <Share2 className="w-4 h-4" /> Share Card
+                          </>
+                        )}
+                      </button>
+                    )}
                     <button
                       onClick={downloadReportPdf}
                       className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-[#5277f7] hover:bg-[#4062dd] text-white transition-all shadow-md shadow-blue-500/10 cursor-pointer text-xs font-bold font-display uppercase tracking-wider border-0"
@@ -1693,7 +2572,7 @@ export default function App() {
                         PW Vidyapeeth
                       </h2>
                       <p className="text-[9px] text-gray-500 font-mono tracking-widest uppercase mt-0.5">
-                        Vidyapeeth Pune Student Analytics
+                        {activeStudent.profile.center || "Pimpri PW Vidyapeeth"} Student Analytics
                       </p>
                     </div>
                   </div>
@@ -1708,69 +2587,117 @@ export default function App() {
                 </div>
 
                 {/* VISUAL PROFILE BOARD CARD */}
-                <div className="bg-gradient-to-r from-slate-900 via-slate-950 to-indigo-950 text-white rounded-2xl p-4 md:p-5 shadow-lg border border-slate-805/85 relative overflow-hidden print-card-shadow mb-4">
-                  <div className="absolute top-0 right-0 w-64 h-64 bg-[radial-gradient(circle,rgba(59,130,246,0.1),transparent)] rounded-full blur-2xl pointer-events-none"></div>
-                  <div className="absolute -bottom-10 -left-10 w-48 h-48 bg-indigo-500/5 rounded-full blur-xl pointer-events-none"></div>
+                <div className={`${
+                  exportMode 
+                    ? "bg-slate-50 text-slate-900 border border-slate-200" 
+                    : "bg-gradient-to-r from-slate-900 via-slate-950 to-indigo-950 text-white border border-slate-805/85 shadow-lg"
+                } rounded-2xl p-4 md:p-5 relative overflow-hidden print-card-shadow mb-4`}>
+                  {!exportMode && (
+                    <>
+                      <div className="absolute top-0 right-0 w-64 h-64 bg-radial-gradient from-blue-500/10 to-transparent rounded-full blur-2xl pointer-events-none"></div>
+                      <div className="absolute -bottom-10 -left-10 w-48 h-48 bg-indigo-500/5 rounded-full blur-xl pointer-events-none"></div>
+                    </>
+                  )}
                   
                   <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 relative z-10 w-full">
                     <div className="space-y-4 flex-1 w-full">
                       <div>
-                        <span className="inline-flex gap-1.5 px-2.5 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-[9px] font-bold uppercase tracking-wider text-blue-400 font-mono mb-1.5">
+                        <span className={`inline-flex gap-1.5 px-2.5 py-0.5 rounded-full border text-[9px] font-bold uppercase tracking-wider font-mono mb-1.5 ${
+                          exportMode 
+                            ? "bg-blue-50 border-blue-100 text-blue-600" 
+                            : "bg-blue-500/10 border border-blue-500/20 text-blue-400"
+                        }`}>
                           Student Assessment Portfolio
                         </span>
-                        <h2 className="text-xl md:text-2xl font-black tracking-tight font-display bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent leading-tight animate-fade-in">
+                        <h2 className={`text-xl md:text-2xl font-black tracking-tight font-display leading-tight animate-fade-in ${
+                          exportMode 
+                            ? "text-slate-900" 
+                            : "bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent"
+                        }`}>
                           {activeStudent.profile.name}
                         </h2>
                       </div>
 
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-y-3 gap-x-4 w-full pt-2 border-t border-white/5">
+                      <div className={`grid grid-cols-2 md:grid-cols-4 gap-y-3 gap-x-4 w-full pt-2 border-t ${
+                        exportMode ? "border-slate-200" : "border-white/5"
+                      }`}>
                         <div className="space-y-0.5">
-                          <span className="text-[9px] text-slate-400 uppercase tracking-widest font-mono font-bold block">
+                          <span className={`text-[9px] uppercase tracking-widest font-mono font-bold block ${
+                            exportMode ? "text-slate-500" : "text-slate-400"
+                          }`}>
                             Registration ID
                           </span>
-                          <span className="text-xs font-semibold tracking-wide text-slate-200 font-mono">
+                          <span className={`text-xs font-semibold tracking-wide font-mono ${
+                            exportMode ? "text-slate-800" : "text-slate-200"
+                          }`}>
                             {activeStudent.profile.regNo || "N/A"}
                           </span>
                         </div>
                         <div className="space-y-0.5">
-                          <span className="text-[9px] text-slate-400 uppercase tracking-widest font-mono font-bold block">
+                          <span className={`text-[9px] uppercase tracking-widest font-mono font-bold block ${
+                            exportMode ? "text-slate-500" : "text-slate-400"
+                          }`}>
                             Assess Stream
                           </span>
-                          <span className="inline-flex font-black text-[9px] text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-full tracking-wider uppercase border border-blue-500/20 font-mono">
+                          <span className={`inline-flex font-black text-[9px] px-2 py-0.5 rounded-full tracking-wider uppercase border font-mono ${
+                            exportMode 
+                              ? "text-blue-600 bg-blue-50 border-blue-100" 
+                              : "text-blue-400 bg-blue-500/10 border border-blue-500/20"
+                          }`}>
                             {activeStudent.profile.stream || studentsPayload?.stream || "JEE"}
                           </span>
                         </div>
                         <div className="space-y-0.5">
-                          <span className="text-[9px] text-slate-400 uppercase tracking-widest font-mono font-bold block">
+                          <span className={`text-[9px] uppercase tracking-widest font-mono font-bold block ${
+                            exportMode ? "text-slate-500" : "text-slate-400"
+                          }`}>
                             Mapped center
                           </span>
-                          <span className="text-xs font-semibold text-slate-200">
-                            {activeStudent.profile.center || "Vidyapeeth Pune"}
+                          <span className={`text-xs font-semibold ${
+                            exportMode ? "text-slate-800" : "text-slate-200"
+                          }`}>
+                            {activeStudent.profile.center || "Pimpri PW Vidyapeeth"}
                           </span>
                         </div>
                         <div className="space-y-0.5">
-                          <span className="text-[9px] text-slate-400 uppercase tracking-widest font-mono font-bold block">
+                          <span className={`text-[9px] uppercase tracking-widest font-mono font-bold block ${
+                            exportMode ? "text-slate-500" : "text-slate-400"
+                          }`}>
                             Study Division
                           </span>
-                          <span className="text-xs font-bold text-indigo-300 block truncate" title={activeStudent.profile.batch}>
+                          <span className={`text-xs font-bold block truncate ${
+                            exportMode ? "text-indigo-600" : "text-indigo-300"
+                          }`} title={activeStudent.profile.batch}>
                             {activeStudent.profile.batch || "N/A"}
                           </span>
                         </div>
                       </div>
                     </div>
 
-                    <div className="bg-white/5 backdrop-blur-md rounded-xl p-3 border border-white/10 flex flex-col items-center justify-center shrink-0 w-full md:w-36 text-center shadow-md">
-                      <span className="text-[9px] text-slate-400 uppercase tracking-widest font-mono font-bold block mb-0.5">
+                    <div className={`rounded-xl p-3 flex flex-col items-center justify-center shrink-0 w-full md:w-36 text-center ${
+                      exportMode 
+                        ? "bg-slate-100 border border-slate-200 shadow-sm" 
+                        : "bg-white/5 backdrop-blur-md border border-white/10 shadow-md"
+                    }`}>
+                      <span className={`text-[9px] uppercase tracking-widest font-mono font-bold block mb-0.5 ${
+                        exportMode ? "text-slate-500" : "text-slate-400"
+                      }`}>
                         Latest Rank
                       </span>
-                      <span className="text-xl md:text-2xl font-black text-amber-400 flex items-center gap-1 font-display tracking-tight drop-shadow-md">
-                        <Award className="w-5 h-5 text-yellow-400 shrink-0" />
+                      <span className={`text-xl md:text-2xl font-black flex items-center gap-1 font-display tracking-tight ${
+                        exportMode ? "text-amber-700" : "text-amber-400 drop-shadow-md"
+                      }`}>
+                        <Award className={`w-5 h-5 shrink-0 ${exportMode ? "text-amber-600" : "text-yellow-400"}`} />
                         {activeStudent.profile.latestRank !== "N/A"
                           ? `#${activeStudent.profile.latestRank}`
                           : "N/A"}
                       </span>
                       {activeStudent.profile.latestRank !== "N/A" && activeStudent.profile.latestRankDate && activeStudent.profile.latestRankDate !== "N/A" && (
-                        <span className="text-[9px] font-bold font-mono uppercase tracking-wider mt-1.5 bg-white/10 text-slate-200 px-2.5 py-0.5 rounded-full border border-white/10">
+                        <span className={`text-[9px] font-bold font-mono uppercase tracking-wider mt-1.5 px-2.5 py-0.5 rounded-full border ${
+                          exportMode 
+                            ? "bg-slate-200 text-slate-700 border-slate-300" 
+                            : "bg-white/10 text-slate-200 border-white/10"
+                        }`}>
                           {formatDateString(activeStudent.profile.latestRankDate)}
                         </span>
                       )}
@@ -1872,15 +2799,15 @@ export default function App() {
                           <th className="px-3 py-2 text-left">Date</th>
                           <th className="px-3 py-2 text-left min-w-[110px]">Class</th>
                           <th className="px-3 py-2 text-left min-w-[190px]">Test Name</th>
-                          <th className="px-2 py-2 text-center">Max Marks</th>
-                          <th className="px-2 py-2 text-center font-bold">Obtained</th>
+                          <th className="px-3 py-2 text-center">Max Marks</th>
+                          <th className="px-3 py-2 text-center font-bold">Obtained</th>
                           <th className="px-3 py-2 text-left text-blue-600 dark:text-blue-400 font-extrabold min-w-[130px]">Avg Score %</th>
                           {finalSubjects.map((sub) => (
-                            <th key={sub} className="px-2 py-2 text-right capitalize">
+                            <th key={sub} className="px-3 py-2 text-right capitalize">
                               {sub}
                             </th>
                           ))}
-                          <th className="px-2 py-2 text-right">Skipped</th>
+                          <th className="px-3 py-2 text-right">Skipped</th>
                           <th className="px-3 py-2 text-right font-black text-emerald-600 dark:text-emerald-400">Rank</th>
                         </tr>
                       </thead>
@@ -1935,7 +2862,7 @@ export default function App() {
                                 </td>
 
                                 {/* Out Of Marks */}
-                                <td className="px-2 py-1.5 md:py-2 md:table-cell flex justify-between items-center text-center">
+                                <td className="px-3 py-1.5 md:py-2 md:table-cell flex justify-between items-center text-center">
                                   <span className="md:hidden text-[9px] font-bold text-slate-400 dark:text-gray-500 uppercase tracking-widest font-mono">
                                     Max Marks:
                                   </span>
@@ -1945,7 +2872,7 @@ export default function App() {
                                 </td>
 
                                 {/* Score Obtained */}
-                                <td className="px-2 py-1.5 md:py-2 md:table-cell flex justify-between items-center text-center">
+                                <td className="px-3 py-1.5 md:py-2 md:table-cell flex justify-between items-center text-center">
                                   <span className="md:hidden text-[9px] font-bold text-slate-400 dark:text-gray-500 uppercase tracking-widest font-mono">
                                     Score:
                                   </span>
@@ -2004,7 +2931,7 @@ export default function App() {
                                   return (
                                     <td
                                       key={subName}
-                                      className={`px-2 py-1.5 md:py-2 md:table-cell flex justify-between items-center text-right ${
+                                      className={`px-3 py-1.5 md:py-2 md:table-cell flex justify-between items-center text-right ${
                                         subIdx === 0
                                           ? "border-t border-slate-100 dark:border-gray-800/40 md:border-t-0"
                                           : ""
@@ -2013,7 +2940,7 @@ export default function App() {
                                       <span className="md:hidden text-[9px] font-bold text-slate-400 dark:text-gray-500 uppercase tracking-widest font-mono">
                                         {subName}:
                                       </span>
-                                      <span className="font-mono text-slate-600 dark:text-gray-300 font-bold bg-slate-50 dark:bg-slate-800 md:bg-transparent px-2 md:px-0 py-0.5 md:py-0 rounded text-[11px]">
+                                      <span className="font-mono text-slate-700 dark:text-gray-300 font-bold text-[11px]">
                                         {formatRawScoreValue(scoreVal)}
                                       </span>
                                     </td>
@@ -2021,7 +2948,7 @@ export default function App() {
                                 })}
 
                                 {/* Unattempted question count */}
-                                <td className="px-2 py-1.5 md:py-2 md:table-cell flex justify-between items-center text-right">
+                                <td className="px-3 py-1.5 md:py-2 md:table-cell flex justify-between items-center text-right">
                                   <span className="md:hidden text-[9px] font-bold text-slate-400 dark:text-gray-500 uppercase tracking-widest font-mono">
                                     Unattempted:
                                   </span>
@@ -2058,7 +2985,7 @@ export default function App() {
 
                 {/* VISUAL FOOTER PRINT COMPONENT */}
                 <div className={`${exportMode ? "block" : "hidden md:print:block"} print-footer mt-8 pt-4 border-t border-slate-200 text-center text-gray-500 text-[10px] italic`}>
-                  This report was compiled and printed generated via automatic performance matrices on PW Vidyapeeth Pune Hub database.
+                  This report was compiled and printed generated via automatic performance matrices on PW {activeStudent.profile.center || "Pimpri PW Vidyapeeth"} Hub database.
                 </div>
 
               </div>
@@ -2099,23 +3026,14 @@ export default function App() {
               </div>
 
               {/* Grid of sheets */}
-              {dropdowns.sheets && dropdowns.sheets.length > 0 ? (() => {
-                const queryLower = (sheetFilterQuery || "").toLowerCase().trim();
-                const filteredSheets = dropdowns.sheets.filter(sheet => 
-                  sheet.toLowerCase().includes(queryLower)
-                );
-
-                if (filteredSheets.length === 0) {
-                  return (
-                    <div className="bg-white dark:bg-[#111827] rounded-3xl p-12 text-center border border-slate-200/50 dark:border-gray-800/40">
-                      <AlertCircle className="w-10 h-10 text-slate-400 mx-auto mb-3" />
-                      <h3 className="text-base font-bold text-slate-800 dark:text-slate-200">No Sheets Found</h3>
-                      <p className="text-xs text-slate-500 dark:text-gray-400 mt-1">Try matching another date or grade name.</p>
-                    </div>
-                  );
-                }
-
-                return (
+              {dropdowns.sheets && dropdowns.sheets.length > 0 ? (
+                filteredSheets.length === 0 ? (
+                  <div className="bg-white dark:bg-[#111827] rounded-3xl p-12 text-center border border-slate-200/50 dark:border-gray-800/40">
+                    <AlertCircle className="w-10 h-10 text-slate-400 mx-auto mb-3" />
+                    <h3 className="text-base font-bold text-slate-800 dark:text-slate-200">No Sheets Found</h3>
+                    <p className="text-xs text-slate-500 dark:text-gray-400 mt-1">Try matching another date or grade name.</p>
+                  </div>
+                ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     {filteredSheets.map((sheetName) => {
                       const dateRegex = /^(\d{1,2})(?:st|nd|rd|th)?\s+(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)/i;
@@ -2141,7 +3059,21 @@ export default function App() {
                               <span className="inline-flex font-black text-[9px] text-[#5277f7] dark:text-blue-400 bg-blue-500/10 px-2 py-1 rounded-lg uppercase tracking-widest font-mono">
                                 {dateBadge}
                               </span>
-                              <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-[#5277f7] dark:group-hover:text-blue-400 transition-colors" />
+                              <div className="flex items-center gap-2">
+                                {dropdowns.sheetUrls && dropdowns.sheetUrls[sheetName] && (
+                                  <a
+                                    href={dropdowns.sheetUrls[sheetName]}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="p-1.5 rounded-lg hover:bg-[#5277f7]/10 dark:hover:bg-blue-500/15 text-slate-400 dark:text-gray-500 hover:text-[#5277f7] dark:hover:text-blue-400 transition-all flex items-center justify-center shrink-0 cursor-pointer"
+                                    title="Open in Google Sheets"
+                                  >
+                                    <FileSpreadsheet className="w-3.5 h-3.5" />
+                                  </a>
+                                )}
+                                <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-[#5277f7] dark:group-hover:text-blue-400 transition-colors shrink-0" />
+                              </div>
                             </div>
 
                             <h3 className="line-clamp-2 text-sm font-bold text-slate-900 dark:text-white group-hover:text-[#5277f7] dark:group-hover:text-blue-400 transition-colors leading-snug pr-4">
@@ -2167,8 +3099,8 @@ export default function App() {
                       );
                     })}
                   </div>
-                );
-              })() : (
+                )
+              ) : (
                 <div className="bg-white dark:bg-[#111827] rounded-3xl p-12 text-center border border-slate-200/50 dark:border-gray-800/40">
                   <div className="animate-spin h-8 w-8 border-2 border-slate-250 dark:border-gray-800 border-t-blue-600 dark:border-t-blue-500 rounded-full mx-auto mb-4"></div>
                   <p className="text-xs text-slate-500 dark:text-gray-400">Loading sheets roster from Google database...</p>
@@ -2177,12 +3109,998 @@ export default function App() {
             </motion.div>
           )}
 
+          {activeView === "admin" && (
+            <motion.div
+              key="admin"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              className="space-y-6 max-w-6xl mx-auto py-2 w-full text-slate-800 dark:text-slate-100"
+            >
+              {/* Header Panel */}
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white dark:bg-[#111827] p-6 rounded-3xl border border-slate-200/50 dark:border-gray-800/40 shadow-sm">
+                <div className="space-y-1">
+                  <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white flex items-center gap-2">
+                    <Settings className="w-5 h-5 text-[#5277f7] dark:text-blue-400" />
+                    App Control Center & System Settings
+                  </h2>
+                  <p className="text-xs sm:text-sm text-slate-500 dark:text-gray-400">
+                    Manage spreadsheet databases, custom tuition center configurations, and view portal guidelines.
+                  </p>
+                </div>
+              </div>              {/* Helper: Resolution explanation calculator */}
+              {(() => {
+                const getSheetResolutionSource = (sheetName: string, sourceUrl: string) => {
+                  const cleanSheetName = sheetName.trim().toLowerCase();
+                  const cleanSourceUrl = String(sourceUrl || "").trim().toLowerCase();
+
+                  // 1. Check tab-level overrides
+                  for (const group of subsheetCenters) {
+                    for (const pat of group.patterns) {
+                      const cleanPat = String(pat).trim().toLowerCase();
+                      if (!cleanPat) continue;
+
+                      // Match by GID URL
+                      const match = cleanPat.match(/[?&]gid=(\d+)/i);
+                      const patGid = match ? match[1] : null;
+                      if (patGid && cleanSheetName.includes(patGid)) {
+                        return { type: "Tab Rule", pattern: pat, center: group.center };
+                      }
+
+                      // Match by Subsheet Name directly
+                      if (cleanSheetName === cleanPat || cleanSheetName.includes(cleanPat)) {
+                        return { type: "Tab Rule", pattern: pat, center: group.center };
+                      }
+                    }
+                  }
+
+                  // 2. Default fallback for the 12 default subsheets mapping to Pimple Saudagar
+                  const isDefaultWorkbook = !cleanSourceUrl || 
+                                            cleanSourceUrl.includes("1ztnvtyd4wrcv9bthqi1ek-nh8tsieszw5ifvhxtajpm") || 
+                                            cleanSourceUrl.includes("2pacx-1vsvei4kdmjhmimnsclebffoavbwlct9sjf1kaphus7torlfuthc7m7jk3tgx6xclqltylnxxvpfxhei");
+                  const defaultPimpleSaudagarSheets = [
+                    "03 may 11th jee city test tc",
+                    "10 may 11th jee milestone tc",
+                    "24 may 11th jee city test 2",
+                    "31th may 11th jee milestone",
+                    "10 may 12th jee city test tc",
+                    "931820364",
+                    "17 may 12th jee milestone",
+                    "31 may 12th jee city test tc",
+                    "07th june 12th jee milestone",
+                    "10 may 12th neet city test tc",
+                    "1901367772",
+                    "17 may 12th neet milestone",
+                    "31 may 12th neet city test 2",
+                    "07 june 12th neet phase 1 milestone"
+                  ];
+                  if (isDefaultWorkbook && defaultPimpleSaudagarSheets.some(s => cleanSheetName.includes(s.toLowerCase()))) {
+                    return { type: "Default Fallback", pattern: "Default Subsheet List", center: "Pimple Saudagar Tuition Center" };
+                  }
+
+                  // 3. Check SPREADSHEET_CENTERS (spreadsheet file-level mappings)
+                  for (const item of spreadsheetCenters) {
+                    const cleanPat = String(item.pattern).trim().toLowerCase();
+                    if (cleanPat && cleanSourceUrl.includes(cleanPat)) {
+                      return { type: "Spreadsheet Rule", pattern: item.pattern, center: item.center };
+                    }
+                  }
+
+                  return { type: "System Default", pattern: "N/A", center: "Pimpri PW Vidyapeeth" };
+                };
+
+                const allKnownCenters = Array.from(new Set([
+                  "Pimpri PW Vidyapeeth",
+                  "Pimple Saudagar Tuition Center",
+                  ...spreadsheetCenters.map(c => c.center),
+                  ...subsheetCenters.map(c => c.center),
+                  ...activeSheets.map(s => s.center)
+                ].map(c => c.trim()).filter(Boolean)));
+
+                const handleQuickMapSheet = async (sheetName: string, targetCenter: string) => {
+                  if (!targetCenter) return;
+                  
+                  let updatedGroups = subsheetCenters.map(group => {
+                    return {
+                      ...group,
+                      patterns: group.patterns.filter(p => p.trim().toLowerCase() !== sheetName.trim().toLowerCase())
+                    };
+                  });
+
+                  let centerFound = false;
+                  updatedGroups = updatedGroups.map(group => {
+                    if (group.center.trim().toLowerCase() === targetCenter.trim().toLowerCase()) {
+                      centerFound = true;
+                      return {
+                        ...group,
+                        patterns: Array.from(new Set([...group.patterns, sheetName.trim()]))
+                      };
+                    }
+                    return group;
+                  });
+
+                  if (!centerFound) {
+                    updatedGroups.push({
+                      center: targetCenter.trim(),
+                      patterns: [sheetName.trim()]
+                    });
+                  }
+
+                  setSubsheetCenters(updatedGroups);
+                  await handleSaveConfig(undefined, { subCenters: updatedGroups });
+                };
+
+                return (
+                  <div className="space-y-6">
+                    {/* Visual Tab Selection */}
+                    <div className="flex bg-slate-100 dark:bg-gray-900/60 p-1.5 rounded-2xl max-w-md border border-slate-200/40 dark:border-gray-800/30">
+                      <button
+                        onClick={() => setAdminTab("config")}
+                        className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                          adminTab === "config"
+                            ? "bg-white dark:bg-gray-800 text-[#5277f7] dark:text-white shadow-sm"
+                            : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white"
+                        }`}
+                      >
+                        <Settings className="w-3.5 h-3.5" />
+                        Rule Builder
+                      </button>
+                      <button
+                        onClick={() => setAdminTab("debugger")}
+                        className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                          adminTab === "debugger"
+                            ? "bg-white dark:bg-gray-800 text-[#5277f7] dark:text-white shadow-sm"
+                            : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white"
+                        }`}
+                      >
+                        <FileSpreadsheet className="w-3.5 h-3.5" />
+                        Cache Debugger
+                      </button>
+                      <button
+                        onClick={() => setAdminTab("guide")}
+                        className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                          adminTab === "guide"
+                            ? "bg-white dark:bg-gray-800 text-[#5277f7] dark:text-white shadow-sm"
+                            : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white"
+                        }`}
+                      >
+                        <BookOpen className="w-3.5 h-3.5" />
+                        Setup Guide
+                      </button>
+                    </div>
+
+                    {/* Mappings Configurator Section */}
+                    {adminTab === "config" && (
+                      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                        {/* Interactive Form Controls */}
+                        <div className="lg:col-span-8 bg-white dark:bg-[#111827] rounded-3xl border border-slate-200/50 dark:border-gray-800/40 p-6 shadow-sm space-y-6">
+                          <div>
+                            <h3 className="text-sm font-bold tracking-wider uppercase text-slate-400 font-mono mb-1">Google Spreadsheet Sources</h3>
+                            <p className="text-[10px] text-slate-400 mb-3">Add URLs to Excel/XLSX exported workbooks. Cached sheets will automatically pull tests from these files.</p>
+                            
+                            <div className="space-y-2.5 mb-3">
+                              {spreadsheetUrls.length === 0 ? (
+                                <div className="p-4 border border-dashed border-slate-200 dark:border-gray-800/60 rounded-xl text-center text-xs text-slate-400 italic bg-slate-50/50 dark:bg-transparent">
+                                  No spreadsheet workbooks registered yet.
+                                </div>
+                              ) : (
+                                spreadsheetUrls.map((url, idx) => (
+                                  <div key={idx} className="flex items-center justify-between p-2.5 bg-slate-50 dark:bg-gray-900/40 border border-slate-200/50 dark:border-gray-800/40 rounded-xl">
+                                    <span className="text-xs font-mono truncate max-w-[85%] text-slate-700 dark:text-slate-350 select-all" title={url}>
+                                      {url}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => setSpreadsheetUrls(spreadsheetUrls.filter((_, i) => i !== idx))}
+                                      className="p-1 text-slate-400 hover:text-rose-500 rounded transition-all cursor-pointer"
+                                      title="Delete source URL"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                placeholder="Paste Google Sheet Excel/XLSX export link..."
+                                value={newUrlInput}
+                                onChange={(e) => setNewUrlInput(e.target.value)}
+                                className="flex-1 p-2.5 text-xs rounded-xl border border-slate-200 dark:border-gray-800 bg-slate-50 dark:bg-gray-900/60 text-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-[#5277f7]"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (newUrlInput.trim()) {
+                                    setSpreadsheetUrls([...spreadsheetUrls, newUrlInput.trim()]);
+                                    setNewUrlInput("");
+                                  }
+                                }}
+                                className="bg-[#5277f7] hover:bg-[#3d62dd] text-white px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer transition-all shadow-sm shadow-blue-500/10"
+                              >
+                                <Plus className="w-4 h-4 shrink-0" /> Add
+                              </button>
+                            </div>
+                          </div>
+
+                          <hr className="border-slate-100 dark:border-gray-800/30" />
+
+                          {/* SPREADSHEET_CENTERS mapping Input */}
+                          <div className="space-y-3">
+                            <div>
+                              <h3 className="text-sm font-bold tracking-wider uppercase text-slate-400 font-mono mb-1">File-Level Center Mappings</h3>
+                              <p className="text-[10px] text-slate-400">Map an entire spreadsheet workbook directly to a single tuition center name using its ID substring.</p>
+                            </div>
+
+                            <div className="space-y-3">
+                              {spreadsheetCenters.length === 0 ? (
+                                <div className="p-3 border border-dashed border-slate-200 dark:border-gray-800/60 rounded-xl text-center text-xs text-slate-400 italic bg-slate-50/50 dark:bg-transparent">
+                                  No file-level mappings added.
+                                </div>
+                              ) : (
+                                spreadsheetCenters.map((item, idx) => (
+                                  <div key={idx} className="flex flex-col sm:flex-row gap-3 items-start sm:items-center p-3 bg-slate-50 dark:bg-gray-900/40 border border-slate-200/50 dark:border-gray-800/40 rounded-xl relative group w-full">
+                                    <div className="flex-1 w-full space-y-1">
+                                      <label className="text-[9px] font-bold text-slate-400 block uppercase">Spreadsheet ID/URL Keyword</label>
+                                      <input
+                                        type="text"
+                                        placeholder="e.g. 1ztnvtyd4..."
+                                        value={item.pattern}
+                                        onChange={(e) => {
+                                          const updated = [...spreadsheetCenters];
+                                          updated[idx].pattern = e.target.value;
+                                          setSpreadsheetCenters(updated);
+                                        }}
+                                        className="w-full p-2 text-xs rounded-lg border border-slate-200 dark:border-gray-800 bg-white dark:bg-gray-950 text-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-[#5277f7] font-mono"
+                                      />
+                                    </div>
+                                    <div className="flex-1 w-full space-y-1">
+                                      <label className="text-[9px] font-bold text-slate-400 block uppercase">Assigned Center Name</label>
+                                      <select
+                                        value={allKnownCenters.includes(item.center) ? item.center : "custom"}
+                                        onChange={(e) => {
+                                          const val = e.target.value;
+                                          const updated = [...spreadsheetCenters];
+                                          if (val === "custom") {
+                                            updated[idx].center = "";
+                                          } else {
+                                            updated[idx].center = val;
+                                          }
+                                          setSpreadsheetCenters(updated);
+                                        }}
+                                        className="w-full p-2 text-xs rounded-lg border border-slate-200 dark:border-gray-800 bg-white dark:bg-gray-950 text-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-[#5277f7]"
+                                      >
+                                        <option value="">-- Select Center --</option>
+                                        {allKnownCenters.map(c => (
+                                          <option key={c} value={c}>{c}</option>
+                                        ))}
+                                        <option value="custom">+ Custom Center Name...</option>
+                                      </select>
+                                      {(!allKnownCenters.includes(item.center) || item.center === "") && (
+                                        <input
+                                          type="text"
+                                          placeholder="Type Custom Tuition Center Name..."
+                                          value={item.center}
+                                          onChange={(e) => {
+                                            const updated = [...spreadsheetCenters];
+                                            updated[idx].center = e.target.value;
+                                            setSpreadsheetCenters(updated);
+                                          }}
+                                          className="w-full mt-1.5 p-2 text-xs rounded-lg border border-slate-200 dark:border-gray-800 bg-white dark:bg-gray-950 text-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-[#5277f7]"
+                                        />
+                                      )}
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => setSpreadsheetCenters(spreadsheetCenters.filter((_, i) => i !== idx))}
+                                      className="p-2 text-slate-400 hover:text-rose-500 rounded transition-all cursor-pointer mt-0 sm:mt-5 shrink-0 self-end sm:self-center"
+                                      title="Delete mapping"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => setSpreadsheetCenters([...spreadsheetCenters, { pattern: "", center: "" }])}
+                              className="border border-dashed border-slate-200 dark:border-gray-800 hover:border-[#5277f7] text-[#5277f7] hover:bg-[#5277f7]/5 p-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1 cursor-pointer transition-all w-full"
+                            >
+                              <Plus className="w-4 h-4 shrink-0" /> Add Spreadsheet File Mapping Rule
+                            </button>
+                          </div>
+
+                          <hr className="border-slate-100 dark:border-gray-800/30" />
+
+                          {/* SUBSHEET_CENTERS mapping Input */}
+                          <div className="space-y-3">
+                            <div>
+                              <h3 className="text-sm font-bold tracking-wider uppercase text-slate-400 font-mono mb-1">Tab-Level Center Mappings</h3>
+                              <p className="text-[10px] text-slate-400">Map specific tabs (subsheets) to centers. Ideal if multiple tuition centers share a single Google Sheet workbook.</p>
+                            </div>
+
+                            <div className="space-y-4">
+                              {subsheetCenters.length === 0 ? (
+                                <div className="p-3 border border-dashed border-slate-200 dark:border-gray-800/60 rounded-xl text-center text-xs text-slate-400 italic bg-slate-50/50 dark:bg-transparent">
+                                  No tab-level mappings added.
+                                </div>
+                              ) : (
+                                subsheetCenters.map((group, idx) => (
+                                  <div key={idx} className="p-4 bg-slate-50/70 dark:bg-gray-900/40 border border-slate-200/50 dark:border-gray-800/40 rounded-2xl space-y-3 relative">
+                                    <div className="flex items-center justify-between gap-3">
+                                      <div className="flex-1">
+                                        <label className="text-[9px] font-bold text-slate-400 block uppercase mb-1">Tuition Center Name</label>
+                                        <select
+                                          value={allKnownCenters.includes(group.center) ? group.center : "custom"}
+                                          onChange={(e) => {
+                                            const val = e.target.value;
+                                            const updated = [...subsheetCenters];
+                                            if (val === "custom") {
+                                              updated[idx].center = "";
+                                            } else {
+                                              updated[idx].center = val;
+                                            }
+                                            setSubsheetCenters(updated);
+                                          }}
+                                          className="p-2 text-xs rounded-lg border border-slate-200 dark:border-gray-800 bg-white dark:bg-gray-950 text-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-[#5277f7] w-64 max-w-full"
+                                        >
+                                          <option value="">-- Select Center --</option>
+                                          {allKnownCenters.map(c => (
+                                            <option key={c} value={c}>{c}</option>
+                                          ))}
+                                          <option value="custom">+ Custom Center Name...</option>
+                                        </select>
+                                        {(!allKnownCenters.includes(group.center) || group.center === "") && (
+                                          <input
+                                            type="text"
+                                            placeholder="Type Tuition Center Name..."
+                                            value={group.center}
+                                            onChange={(e) => {
+                                              const updated = [...subsheetCenters];
+                                              updated[idx].center = e.target.value;
+                                              setSubsheetCenters(updated);
+                                            }}
+                                            className="w-full mt-1.5 p-2 text-xs rounded-lg border border-slate-200 dark:border-gray-800 bg-white dark:bg-gray-950 text-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-[#5277f7]"
+                                          />
+                                        )}
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => setSubsheetCenters(subsheetCenters.filter((_, i) => i !== idx))}
+                                        className="p-2 text-slate-400 hover:text-rose-500 rounded transition-all cursor-pointer self-start"
+                                        title="Delete this tuition center group"
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </button>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                      <label className="text-[9px] font-bold text-slate-400 block uppercase">Matching Tab Name Keywords or GID URL Substrings</label>
+                                      
+                                      {/* Tags/Chips */}
+                                      <div className="flex flex-wrap gap-1.5">
+                                        {group.patterns.length === 0 ? (
+                                          <span className="text-[10px] text-slate-400 italic">No rules defined yet. Add keywords or tab GIDs below.</span>
+                                        ) : (
+                                          group.patterns.map((pat, pIdx) => (
+                                            <span key={pIdx} className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-[#5277f7] dark:text-blue-300 text-xs border border-blue-200/50 dark:border-blue-800/30">
+                                              {pat}
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  const updated = [...subsheetCenters];
+                                                  updated[idx].patterns = group.patterns.filter((_, i) => i !== pIdx);
+                                                  setSubsheetCenters(updated);
+                                                }}
+                                                className="text-blue-400 hover:text-rose-500 font-bold ml-1 transition-all cursor-pointer text-xs"
+                                                title="Delete rule keyword"
+                                              >
+                                                &times;
+                                              </button>
+                                            </span>
+                                          ))
+                                        )}
+                                      </div>
+
+                                      {/* Tags Add Input */}
+                                      <div className="flex gap-2">
+                                        <input
+                                          type="text"
+                                          placeholder="Type tab substring (e.g. 'milestone') or 'gid=...' and press Enter"
+                                          onKeyDown={(e) => {
+                                            if (e.key === "Enter") {
+                                              e.preventDefault();
+                                              const val = e.currentTarget.value.trim();
+                                              if (val) {
+                                                const updated = [...subsheetCenters];
+                                                updated[idx].patterns = Array.from(new Set([...group.patterns, val]));
+                                                setSubsheetCenters(updated);
+                                                e.currentTarget.value = "";
+                                              }
+                                            }
+                                          }}
+                                          className="flex-1 p-2 text-xs rounded-lg border border-slate-200 dark:border-gray-800 bg-white dark:bg-gray-950 text-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-[#5277f7]"
+                                        />
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            const inputEl = e.currentTarget.previousSibling as HTMLInputElement;
+                                            const val = inputEl.value.trim();
+                                            if (val) {
+                                              const updated = [...subsheetCenters];
+                                              updated[idx].patterns = Array.from(new Set([...group.patterns, val]));
+                                              setSubsheetCenters(updated);
+                                              inputEl.value = "";
+                                            }
+                                          }}
+                                          className="bg-white dark:bg-gray-800 hover:bg-slate-100 dark:hover:bg-gray-750 text-slate-700 dark:text-slate-350 px-3 py-2 rounded-lg text-xs font-bold border border-slate-200/50 dark:border-gray-800/40 cursor-pointer transition-all"
+                                        >
+                                          Add Rule
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => setSubsheetCenters([...subsheetCenters, { center: "", patterns: [] }])}
+                              className="border border-dashed border-slate-200 dark:border-gray-800 hover:border-[#5277f7] text-[#5277f7] hover:bg-[#5277f7]/5 p-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1 cursor-pointer transition-all w-full"
+                            >
+                              <Plus className="w-4 h-4 shrink-0" /> Add Tuition Center Tab Mappings Group
+                            </button>
+                          </div>
+
+                          <hr className="border-slate-100 dark:border-gray-800/30" />
+
+                          {/* STAFF_ACCESS ACL Configurator */}
+                          <div className="space-y-3">
+                            <div>
+                              <h3 className="text-sm font-bold tracking-wider uppercase text-slate-400 font-mono mb-1">Staff Access Controls (ACL)</h3>
+                              <p className="text-[10px] text-slate-400">Restrict which Tuition Centers staff members can view. You can enter multiple emails separated by commas to assign the same mapping. Users not listed default to full admin access (all centers).</p>
+                            </div>
+
+                            <div className="space-y-4">
+                              {staffAccess.length === 0 ? (
+                                <div className="p-3 border border-dashed border-slate-200 dark:border-gray-800/60 rounded-xl text-center text-xs text-slate-400 italic bg-slate-50/50 dark:bg-transparent">
+                                  No access control restrictions configured.
+                                </div>
+                              ) : (
+                                staffAccess.map((item, idx) => (
+                                  <div key={idx} className="p-4 bg-slate-50/70 dark:bg-gray-900/40 border border-slate-200/50 dark:border-gray-800/40 rounded-2xl space-y-3 relative w-full">
+                                    <div className="flex items-center justify-between gap-3">
+                                      <div className="flex-1">
+                                        <label className="text-[9px] font-bold text-slate-400 block uppercase mb-1">Staff Email Addresses</label>
+                                        <div 
+                                          onClick={(e) => {
+                                            const input = e.currentTarget.querySelector("input");
+                                            if (input) input.focus();
+                                          }}
+                                          className="w-full p-2 rounded-xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-gray-950 flex flex-wrap items-center gap-1.5 focus-within:ring-1 focus-within:ring-[#5277f7] cursor-text transition-all min-h-[42px] max-w-2xl"
+                                        >
+                                          {item.email.split(",").map(e => e.trim()).filter(Boolean).map((email, emailIdx) => (
+                                            <div 
+                                              key={emailIdx} 
+                                              className="flex items-center gap-1.5 bg-blue-55/60 dark:bg-blue-950/40 text-[#5277f7] pl-2.5 pr-1.5 py-0.5 rounded-full text-[11px] font-semibold border border-blue-200/50 dark:border-blue-900/30 select-none animate-in fade-in zoom-in-95 duration-150"
+                                            >
+                                              <span>{email}</span>
+                                              <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  const emails = item.email.split(",").map(x => x.trim()).filter(Boolean);
+                                                  const updatedEmails = emails.filter((_, i) => i !== emailIdx);
+                                                  const updated = [...staffAccess];
+                                                  updated[idx].email = updatedEmails.join(",");
+                                                  setStaffAccess(updated);
+                                                }}
+                                                className="p-0.5 rounded-full hover:bg-blue-100 dark:hover:bg-blue-900/40 text-[#5277f7]/70 hover:text-[#5277f7] transition-all cursor-pointer flex items-center justify-center"
+                                                title="Remove email"
+                                              >
+                                                <X className="w-3 h-3" />
+                                              </button>
+                                            </div>
+                                          ))}
+                                          <input
+                                            type="text"
+                                            placeholder={item.email ? "Add email..." : "e.g. member@pw.live (press Enter, Comma, or Tab to add)"}
+                                            value={typedEmails[idx] || ""}
+                                            onChange={(e) => {
+                                              const val = e.target.value;
+                                              if (val.endsWith(",")) {
+                                                const cleanVal = val.slice(0, -1).trim();
+                                                if (cleanVal) {
+                                                  const emails = item.email.split(",").map(x => x.trim()).filter(Boolean);
+                                                  if (!emails.includes(cleanVal)) {
+                                                    const updated = [...staffAccess];
+                                                    updated[idx].email = [...emails, cleanVal].join(",");
+                                                    setStaffAccess(updated);
+                                                  }
+                                                }
+                                                setTypedEmails(prev => ({ ...prev, [idx]: "" }));
+                                              } else {
+                                                setTypedEmails(prev => ({ ...prev, [idx]: val }));
+                                              }
+                                            }}
+                                            onBlur={() => {
+                                              const val = (typedEmails[idx] || "").trim();
+                                              if (val) {
+                                                const emails = item.email.split(",").map(x => x.trim()).filter(Boolean);
+                                                if (!emails.includes(val)) {
+                                                  const updated = [...staffAccess];
+                                                  updated[idx].email = [...emails, val].join(",");
+                                                  setStaffAccess(updated);
+                                                }
+                                              }
+                                              setTypedEmails(prev => ({ ...prev, [idx]: "" }));
+                                            }}
+                                            onKeyDown={(e) => {
+                                              const val = (typedEmails[idx] || "").trim();
+                                              const emails = item.email.split(",").map(x => x.trim()).filter(Boolean);
+                                              
+                                              if (e.key === "Enter" || e.key === "Tab") {
+                                                if (val) {
+                                                  e.preventDefault();
+                                                  if (!emails.includes(val)) {
+                                                    const updated = [...staffAccess];
+                                                    updated[idx].email = [...emails, val].join(",");
+                                                    setStaffAccess(updated);
+                                                  }
+                                                  setTypedEmails(prev => ({ ...prev, [idx]: "" }));
+                                                }
+                                              } else if (e.key === " " && val.includes("@")) {
+                                                e.preventDefault();
+                                                if (!emails.includes(val)) {
+                                                  const updated = [...staffAccess];
+                                                  updated[idx].email = [...emails, val].join(",");
+                                                  setStaffAccess(updated);
+                                                }
+                                                setTypedEmails(prev => ({ ...prev, [idx]: "" }));
+                                              } else if (e.key === "Backspace" && !typedEmails[idx] && emails.length > 0) {
+                                                e.preventDefault();
+                                                const updatedEmails = [...emails];
+                                                updatedEmails.pop();
+                                                const updated = [...staffAccess];
+                                                updated[idx].email = updatedEmails.join(",");
+                                                setStaffAccess(updated);
+                                              }
+                                            }}
+                                            className="flex-1 outline-none border-none bg-transparent text-xs text-slate-800 dark:text-white p-1 min-w-[150px] focus:ring-0 focus:outline-none"
+                                          />
+                                        </div>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => setStaffAccess(staffAccess.filter((_, i) => i !== idx))}
+                                        className="p-2 text-slate-400 hover:text-rose-500 rounded transition-all cursor-pointer self-start"
+                                        title="Remove access rule"
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </button>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                      <label className="text-[9px] font-bold text-slate-400 block uppercase">Allowed Tuition Centers</label>
+                                      <div className="flex flex-wrap gap-2">
+                                        {/* All Centers Option */}
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const updated = [...staffAccess];
+                                            updated[idx].centers = ["*"];
+                                            setStaffAccess(updated);
+                                          }}
+                                          className={`px-3 py-1 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                                            item.centers.includes("*") || item.centers.includes("All")
+                                              ? "bg-[#5277f7] text-white border-[#5277f7] shadow-sm"
+                                              : "bg-white dark:bg-gray-950 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-gray-800 hover:bg-slate-50 dark:hover:bg-gray-900"
+                                          }`}
+                                        >
+                                          Full Access (All Centers)
+                                        </button>
+                                        
+                                        {/* Individual Centers */}
+                                        {allKnownCenters.filter(c => c !== "*" && c.toLowerCase() !== "all").map((center) => {
+                                          const isSelected = item.centers.includes(center) && !item.centers.includes("*");
+                                          return (
+                                            <button
+                                              key={center}
+                                              type="button"
+                                              onClick={() => {
+                                                const updated = [...staffAccess];
+                                                // Remove * wildcard if selecting individual
+                                                let current = item.centers.filter(c => c !== "*" && c !== "All");
+                                                if (current.includes(center)) {
+                                                  current = current.filter(c => c !== center);
+                                                } else {
+                                                  current.push(center);
+                                                }
+                                                // If empty, reset to wild card
+                                                updated[idx].centers = current.length > 0 ? current : ["*"];
+                                                setStaffAccess(updated);
+                                              }}
+                                              className={`px-3 py-1 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                                                isSelected
+                                                  ? "bg-[#5277f7] text-white border-[#5277f7] shadow-sm"
+                                                  : "bg-white dark:bg-gray-950 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-gray-800 hover:bg-slate-50 dark:hover:bg-gray-900"
+                                              }`}
+                                            >
+                                              {center}
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => setStaffAccess([...staffAccess, { email: "", centers: ["*"] }])}
+                              className="border border-dashed border-slate-200 dark:border-gray-800 hover:border-[#5277f7] text-[#5277f7] hover:bg-[#5277f7]/5 p-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1 cursor-pointer transition-all w-full"
+                            >
+                              <Plus className="w-4 h-4 shrink-0" /> Add Staff Access Control Rule
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Save Trigger Panel & Rules Checklist */}
+                        <div className="lg:col-span-4 space-y-6">
+                          <div className="bg-white dark:bg-[#111827] rounded-3xl border border-slate-200/50 dark:border-gray-800/40 p-6 shadow-sm space-y-4">
+                            <h3 className="text-xs font-bold tracking-wider uppercase text-slate-400 font-mono">Publish Rules</h3>
+                            <p className="text-xs text-slate-500 dark:text-gray-400 leading-relaxed">
+                              Saving will update the system cache in the background. Changes will take effect immediately for all active student queries.
+                            </p>
+
+                            {/* Status notifications */}
+                            {configSaveMessage && (
+                              <div className="p-3 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/30 text-emerald-600 dark:text-emerald-400 text-[11px] rounded-xl flex items-center gap-2">
+                                <Check className="w-4 h-4 shrink-0 text-emerald-500" />
+                                <span>{configSaveMessage}</span>
+                              </div>
+                            )}
+                            
+                            {configSaveError && (
+                              <div className="p-3 bg-rose-50 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-900/30 text-rose-600 dark:text-rose-400 text-[11px] rounded-xl flex items-start gap-2">
+                                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-500" />
+                                <span className="break-all">{configSaveError}</span>
+                              </div>
+                            )}
+
+                            <button
+                              type="button"
+                              onClick={() => handleSaveConfig()}
+                              disabled={isSavingConfig}
+                              className="w-full bg-[#5277f7] hover:bg-[#3d62dd] text-white font-bold py-3 px-4 rounded-xl text-xs uppercase tracking-wider font-display transition-all disabled:opacity-50 shrink-0 cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-blue-500/10"
+                            >
+                              {isSavingConfig ? (
+                                <>
+                                  <RefreshCw className="w-4 h-4 animate-spin" />
+                                  Hot-Reloading Cache...
+                                </>
+                              ) : (
+                                "Save Configurations & Refresh"
+                              )}
+                            </button>
+                          </div>
+
+                          <div className="bg-[#5277f7]/5 border border-[#5277f7]/10 dark:bg-blue-950/5 dark:border-blue-900/20 rounded-3xl p-5 space-y-3">
+                            <span className="text-[10px] uppercase font-mono tracking-widest font-black text-[#5277f7] dark:text-blue-400 block">Precedence Hierarchy</span>
+                            <p className="text-xs text-slate-600 dark:text-slate-350 leading-relaxed">
+                              When matching sheet data to tuition centers, the resolver applies:
+                            </p>
+                            <ol className="list-decimal list-inside text-xs text-slate-600 dark:text-slate-350 space-y-2 leading-relaxed font-semibold">
+                              <li><span className="text-blue-600 dark:text-blue-400">Tab-level mappings</span> (highest priority)</li>
+                              <li><span className="text-blue-600 dark:text-blue-400">Default 12-sheet templates</span></li>
+                              <li><span className="text-blue-600 dark:text-blue-400">File-level mappings</span> (spreadsheet ID match)</li>
+                                              <li><span className="text-blue-600 dark:text-blue-400">System Fallback center</span> (Pimpri PW Vidyapeeth)</li>
+                            </ol>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Active Cache Roster Debugger Tab */}
+                    {adminTab === "debugger" && (() => {
+                      const currentUserAccess = loggedInUser
+                        ? staffAccess.find(item => {
+                            const emails = item.email.split(",").map(e => e.trim().toLowerCase());
+                            return emails.includes(loggedInUser.email.trim().toLowerCase());
+                          })
+                        : null;
+                      const isRestricted = currentUserAccess && 
+                        !currentUserAccess.centers.includes("*") && 
+                        !currentUserAccess.centers.includes("All") &&
+                        currentUserAccess.centers.length > 0;
+
+                      return (
+                        <div className="bg-white dark:bg-[#111827] rounded-3xl border border-slate-200/50 dark:border-gray-800/40 p-6 shadow-sm space-y-6">
+                          
+                          {/* Summary & Sync Row */}
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-slate-50 dark:bg-gray-900/40 border border-slate-200/50 dark:border-gray-800/30 p-4 rounded-2xl">
+                            <div className="space-y-1">
+                              <span className="text-[10px] uppercase font-mono tracking-widest font-black text-slate-400 block">Roster Overview</span>
+                              <div className="text-xs text-slate-650 dark:text-slate-350 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+                                <span>Cached: <strong>{activeSheets.length} Sheet Tabs</strong></span>
+                                {dbStatus.lastLoaded && (
+                                  <span>Refreshed: <strong>{new Date(dbStatus.lastLoaded).toLocaleTimeString()}</strong></span>
+                                )}
+                                {isRestricted && (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 border border-amber-200/50 dark:border-amber-900/30 text-[10px] font-bold">
+                                    <Lock className="w-3 h-3 shrink-0" />
+                                    Restricted View ({currentUserAccess.centers.join(", ")})
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            <button
+                              onClick={handleDatabaseSync}
+                              disabled={isRefreshing}
+                              className="bg-white dark:bg-gray-800 hover:bg-slate-50 dark:hover:bg-gray-700 text-slate-800 dark:text-white border border-slate-200 dark:border-gray-700 text-xs font-bold py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0 select-none"
+                            >
+                              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? "animate-spin text-blue-500" : ""}`} />
+                              Force Database Sync
+                            </button>
+                          </div>
+
+                          {/* Search and Filters */}
+                          <div className="relative">
+                            <Search className="w-4 h-4 text-slate-400 dark:text-gray-500 absolute left-3.5 top-3" />
+                            <input
+                              type="text"
+                              placeholder="Filter active sheet tabs by name, source, or center..."
+                              value={debuggerFilter}
+                              onChange={(e) => setDebuggerFilter(e.target.value)}
+                              className="w-full pl-10 pr-4 py-2.5 text-xs rounded-xl border border-slate-200 dark:border-gray-800 bg-slate-50/50 dark:bg-gray-950 text-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-[#5277f7]"
+                            />
+                          </div>
+
+                          {/* Grouped Accordion List */}
+                          <div className="space-y-4">
+                            {(() => {
+                              const filtered = activeSheets.filter(s => {
+                                const query = debuggerFilter.toLowerCase();
+                                return s.name.toLowerCase().includes(query) || 
+                                       s.sourceUrl.toLowerCase().includes(query) || 
+                                       s.center.toLowerCase().includes(query);
+                              });
+
+                              if (filtered.length === 0) {
+                                return (
+                                  <div className="p-8 text-center text-slate-400 italic bg-slate-50/50 dark:bg-gray-900/30 border border-dashed border-slate-200 dark:border-gray-800 rounded-2xl">
+                                    No active sheets found matching filter criteria.
+                                  </div>
+                                );
+                              }
+
+                              const sheetsByCenter: Record<string, typeof activeSheets> = {};
+                              filtered.forEach(sheet => {
+                                const ctr = sheet.center || "Unmapped / Unknown";
+                                if (!sheetsByCenter[ctr]) {
+                                  sheetsByCenter[ctr] = [];
+                                }
+                                sheetsByCenter[ctr].push(sheet);
+                              });
+
+                              const centerNames = Object.keys(sheetsByCenter).sort();
+
+                              return centerNames.map((centerName) => {
+                                const sheets = sheetsByCenter[centerName];
+                                const isCollapsed = openCenter !== centerName;
+
+                                return (
+                                  <div key={centerName} className="border border-slate-200 dark:border-gray-800/50 rounded-2xl overflow-hidden bg-white dark:bg-gray-950 shadow-sm transition-all duration-200">
+                                    {/* Group Header */}
+                                    <button
+                                      type="button"
+                                      onClick={() => setOpenCenter(prev => prev === centerName ? null : centerName)}
+                                      className="w-full flex items-center justify-between p-4 bg-slate-50/70 dark:bg-gray-900/40 hover:bg-slate-100/50 dark:hover:bg-gray-900/60 transition-colors border-b border-slate-200 dark:border-gray-800/50 text-left select-none cursor-pointer"
+                                    >
+                                      <div className="flex items-center gap-3">
+                                        <div className={`p-2 rounded-xl border ${
+                                          centerName.toLowerCase().includes("pimpri")
+                                            ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400 border-emerald-100 dark:border-emerald-900/30"
+                                            : centerName.toLowerCase().includes("pimple")
+                                              ? "bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400 border-blue-100 dark:border-blue-800/30"
+                                              : "bg-purple-50 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400 border-purple-100 dark:border-purple-800/30"
+                                        }`}>
+                                          <MapPin className="w-4 h-4 shrink-0" />
+                                        </div>
+                                        <div>
+                                          <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">{centerName}</h4>
+                                          <p className="text-[10px] text-slate-450 dark:text-slate-400 font-mono mt-0.5">
+                                            Contains {sheets.length} resolved {sheets.length === 1 ? "sheet tab" : "sheet tabs"}
+                                          </p>
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center gap-3">
+                                        <span className="text-[10px] uppercase font-mono tracking-wider font-semibold bg-slate-200/60 dark:bg-gray-800/70 text-slate-500 dark:text-slate-450 px-2 py-0.5 rounded-md">
+                                          {sheets.length}
+                                        </span>
+                                        <ChevronDown className={`w-4 h-4 text-slate-400 dark:text-gray-500 transition-transform duration-200 ${isCollapsed ? "-rotate-90" : "rotate-0"}`} />
+                                      </div>
+                                    </button>
+
+                                    {/* Group Content */}
+                                    <AnimatePresence initial={false}>
+                                      {!isCollapsed && (
+                                        <motion.div
+                                          initial={{ height: 0 }}
+                                          animate={{ height: "auto" }}
+                                          exit={{ height: 0 }}
+                                          transition={{ duration: 0.2, ease: "easeInOut" }}
+                                          className="overflow-hidden"
+                                        >
+                                          <div className="overflow-x-auto">
+                                            <table className="w-full text-left text-xs border-collapse">
+                                              <thead>
+                                                <tr className="bg-slate-50/50 dark:bg-gray-900/10 text-slate-450 dark:text-gray-500 font-mono text-[9px] font-bold uppercase border-b border-slate-200 dark:border-gray-800/50">
+                                                  <th className="p-3 pl-4">Sheet Tab Name</th>
+                                                  <th className="p-3">Source Spreadsheet</th>
+                                                  <th className="p-3">Resolution Rule</th>
+                                                  <th className="p-3 text-right pr-4">Quick Map Action</th>
+                                                </tr>
+                                              </thead>
+                                              <tbody className="divide-y divide-slate-100 dark:divide-gray-800/30 text-slate-700 dark:text-slate-350 bg-white dark:bg-gray-950">
+                                                {sheets.map((sheet, idx) => {
+                                                  const explanation = getSheetResolutionSource(sheet.name, sheet.sourceUrl);
+                                                  const spreadsheetId = sheet.sourceUrl.match(/\/d\/([a-zA-Z0-9-_]+)/)?.[1] || "";
+                                                  const shortId = spreadsheetId ? `${spreadsheetId.slice(0, 8)}...${spreadsheetId.slice(-6)}` : "Workbook URL";
+
+                                                  return (
+                                                    <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-gray-900/10 transition-colors">
+                                                      <td className="p-3 pl-4 font-semibold text-slate-900 dark:text-slate-100 truncate max-w-[240px]">
+                                                        <div className="flex items-center gap-2">
+                                                          <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                                          <span title={sheet.name}>{sheet.name}</span>
+                                                        </div>
+                                                      </td>
+                                                      <td className="p-3 font-mono text-[10px] text-slate-450 dark:text-slate-400">
+                                                        <div className="flex items-center gap-1.5">
+                                                          <span title={sheet.sourceUrl}>{shortId}</span>
+                                                          <a
+                                                            href={sheet.sourceUrl}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="text-slate-400 hover:text-blue-500 transition-colors"
+                                                            title="Open full Google Spreadsheet"
+                                                          >
+                                                            <ExternalLink className="w-3.5 h-3.5" />
+                                                          </a>
+                                                        </div>
+                                                      </td>
+                                                      <td className="p-3">
+                                                        <div className="space-y-0.5">
+                                                          <div className="font-semibold text-slate-700 dark:text-slate-300 text-[11px]">{explanation.type}</div>
+                                                          {explanation.pattern !== "N/A" && (
+                                                            <div className="text-[9px] text-slate-400 font-mono">"{explanation.pattern}"</div>
+                                                          )}
+                                                        </div>
+                                                      </td>
+                                                      <td className="p-3 text-right pr-4">
+                                                        <select
+                                                          value=""
+                                                          onChange={(e) => handleQuickMapSheet(sheet.name, e.target.value)}
+                                                          className="p-1.5 text-[10px] rounded-lg border border-slate-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-slate-700 dark:text-slate-350 focus:outline-none focus:ring-1 focus:ring-[#5277f7] cursor-pointer"
+                                                        >
+                                                          <option value="">Move / Map to...</option>
+                                                          {allKnownCenters.map(c => (
+                                                            <option key={c} value={c}>{c}</option>
+                                                          ))}
+                                                        </select>
+                                                      </td>
+                                                    </tr>
+                                                  );
+                                                })}
+                                              </tbody>
+                                            </table>
+                                          </div>
+                                        </motion.div>
+                                      )}
+                                    </AnimatePresence>
+                                  </div>
+                                );
+                              });
+                            })()}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Setup Guide instructions */}
+                    {adminTab === "guide" && (
+                      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                        {/* Instructions documentation */}
+                        <div className="lg:col-span-7 bg-white dark:bg-[#111827] rounded-3xl border border-slate-200/50 dark:border-gray-800/40 p-6 space-y-6 shadow-sm">
+                          <div className="space-y-4">
+                            <h3 className="text-sm font-bold tracking-wider uppercase text-slate-400 font-mono">How to Add a Google Sheet</h3>
+                            <ol className="list-decimal list-inside text-xs text-slate-650 dark:text-slate-350 space-y-3.5 leading-relaxed">
+                              <li>
+                                <strong className="text-slate-900 dark:text-white">Open the workbook:</strong> Open the Google Sheet holding academic scores.
+                              </li>
+                              <li>
+                                <strong className="text-slate-900 dark:text-white">Publish to web:</strong> Go to <code className="px-1.5 py-0.5 bg-slate-100 dark:bg-gray-800 rounded font-mono text-[10px]">File &rarr; Share &rarr; Publish to web</code>.
+                              </li>
+                              <li>
+                                <strong className="text-slate-900 dark:text-white">Choose XLSX Export format:</strong> Select the <strong className="text-slate-800 dark:text-slate-200">Link</strong> tab, change the publication type dropdown from "Web Page" to <strong className="text-slate-800 dark:text-slate-200">Microsoft Excel (.xlsx)</strong>.
+                              </li>
+                              <li>
+                                <strong className="text-slate-900 dark:text-white">Copy the URL:</strong> Click <strong className="text-slate-800 dark:text-slate-200">Publish</strong> and copy the generated link.
+                              </li>
+                              <li>
+                                <strong className="text-slate-900 dark:text-white">Register in Rule Builder:</strong> Paste the copied link under Spreadsheet Sources inside the settings configurator, then click <strong className="text-slate-850 dark:text-slate-200">Add</strong>.
+                              </li>
+                            </ol>
+                          </div>
+
+                          <hr className="border-slate-100 dark:border-gray-800/30" />
+
+                          <div className="space-y-4">
+                            <h3 className="text-sm font-bold tracking-wider uppercase text-slate-400 font-mono">How Center Resolution Works</h3>
+                            <div className="space-y-3 text-xs text-slate-650 dark:text-slate-350 leading-relaxed">
+                              <p>
+                                The academic backend processes student records from multiple centers concurrently. To allocate a parsed sheet tab to its correct tuition center, the server parses configuration rules defined by administrators.
+                              </p>
+                              <p>
+                                <strong className="text-slate-900 dark:text-white">Tab-level mapping:</strong> When a center contains different tests or classrooms inside the same workbook, you define matching tab keywords. For example, if a sheet tab name includes `city test` or `milestone`, adding these patterns to a center ensures precise mapping.
+                              </p>
+                              <p>
+                                <strong className="text-slate-900 dark:text-white">File-level mapping:</strong> When a Google Sheet spreadsheet belongs entirely to a specific center, adding the workbook ID to the File-Level mappings matches all subsheets inside it to that center instantly.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Credits & Identity card */}
+                        <div className="lg:col-span-5 bg-white dark:bg-[#111827] rounded-3xl border border-slate-200/50 dark:border-gray-800/40 p-6 space-y-4 shadow-sm">
+                          <div>
+                            <h3 className="text-sm font-bold tracking-wider uppercase text-slate-400 font-mono mb-3">System Information</h3>
+                            <div className="p-4 bg-blue-500/5 border border-blue-500/10 rounded-2xl space-y-2">
+                              <span className="text-[10px] uppercase font-mono tracking-widest font-black text-[#5277f7] dark:text-blue-400 block font-bold">Identity & Credits</span>
+                              <p className="text-xs text-slate-650 dark:text-slate-350 leading-relaxed">
+                                This High-Performance Student Portal was built and is managed by:
+                                <span className="font-extrabold text-slate-900 dark:text-white block mt-1">aniket.mishra2@pw.live</span>
+                              </p>
+                              <a
+                                href="mailto:aniket.mishra2@pw.live"
+                                className="inline-flex items-center gap-1.5 text-xs text-[#5277f7] hover:underline font-semibold"
+                              >
+                                <Mail className="w-3.5 h-3.5" /> Email support
+                              </a>
+                            </div>
+                          </div>
+
+                          <div className="p-4 bg-slate-50 dark:bg-gray-900/40 rounded-2xl text-xs text-slate-500 dark:text-gray-400 space-y-1">
+                            <div>Version: <span className="font-mono font-semibold text-slate-700 dark:text-slate-300">2.1.0-release</span></div>
+                            <div>Build environment: <span className="font-mono font-semibold text-slate-700 dark:text-slate-300">production-huggingface</span></div>
+                            <div>Target database: <span className="font-mono font-semibold text-slate-700 dark:text-slate-300">Google Sheets API v4</span></div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </motion.div>
+          )}
+
         </AnimatePresence>
+
+
       </div>
 
       {/* MOBILE SPECIAL BOTTOM BAR */}
-      {!exportMode && (
-        <nav className="md:hidden flex bg-white dark:bg-[#111827] h-16 w-full border-t border-slate-200/50 dark:border-gray-800/40 shrink-0 items-center justify-around px-2 pb-safe relative z-20 shadow-lg select-none">
+      {!exportMode && loggedInUser && (
+        <nav className="md:hidden flex fixed bottom-0 left-0 right-0 z-50 bg-white/95 dark:bg-[#111827]/95 backdrop-blur-md h-[calc(4rem+env(safe-area-inset-bottom,0px))] pb-[env(safe-area-inset-bottom,0px)] border-t border-slate-200/50 dark:border-gray-800/40 items-center justify-around px-2 shadow-[0_-8px_30px_rgb(0,0,0,0.04)] select-none no-print">
           {/* Home Tab */}
           <button
             onClick={() => { setActiveView("home"); setErrorMessage(null); }}
@@ -2198,7 +4116,7 @@ export default function App() {
 
           {/* Search Tab */}
           <button
-            onClick={() => { setSearchType("name"); setActiveView("input"); setErrorMessage(null); }}
+            onClick={() => { setSearchType("reg"); setActiveView("input"); setErrorMessage(null); }}
             className={`flex flex-col items-center justify-center w-14 h-12 rounded-xl transition-all cursor-pointer outline-none ${
               activeView === "input"
                 ? "text-[#5277f7] dark:text-blue-400"
@@ -2209,7 +4127,7 @@ export default function App() {
             <span className="text-[9px] font-semibold tracking-tight font-sans">Search</span>
           </button>
 
-          {/* Batches Tab */}
+          {/* Directory Tab */}
           <button
             onClick={handleLoadAllStudents}
             className={`flex flex-col items-center justify-center w-14 h-12 rounded-xl transition-all cursor-pointer outline-none ${
@@ -2219,7 +4137,7 @@ export default function App() {
             }`}
           >
             <GraduationCap className="w-5 h-5 mb-0.5" />
-            <span className="text-[9px] font-semibold tracking-tight font-sans">Batches</span>
+            <span className="text-[9px] font-semibold tracking-tight font-sans">Directory</span>
           </button>
 
           {/* Sheets Directory Tab */}
@@ -2234,22 +4152,22 @@ export default function App() {
             <BookOpen className="w-5 h-5 mb-0.5" />
             <span className="text-[9px] font-semibold tracking-tight font-sans">Sheets</span>
           </button>
+
+          {/* Config Settings Tab */}
+          <button
+            onClick={() => { setActiveView("admin"); setErrorMessage(null); }}
+            className={`flex flex-col items-center justify-center w-14 h-12 rounded-xl transition-all cursor-pointer outline-none ${
+              activeView === "admin"
+                ? "text-[#5277f7] dark:text-blue-400"
+                : "text-slate-400 hover:text-slate-800 dark:hover:text-white"
+            }`}
+          >
+            <Settings className="w-5 h-5 mb-0.5" />
+            <span className="text-[9px] font-semibold tracking-tight font-sans">Settings</span>
+          </button>
         </nav>
       )}
     </div>
-
-      {/* FOOTER (desktop only — hidden on mobile to avoid clashing with bottom nav) */}
-      <footer className="hidden md:block w-full text-center py-6 border-t border-slate-200/60 dark:border-gray-800/60 mt-auto no-print">
-        <p className="text-slate-400 dark:text-gray-500 text-xs font-mono">
-          For technical issues contact with:{" "}
-          <a
-            href="mailto:aniket.mishra2@pw.live"
-            className="text-blue-600 dark:text-blue-400 hover:underline font-bold"
-          >
-            aniket.mishra2@pw.live
-          </a>
-        </p>
-      </footer>
-    </div>
+  </div>
   );
 }
