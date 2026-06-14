@@ -2481,8 +2481,12 @@ export default function App() {
                     </>
                   )}
                   
-                  <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 relative z-10 w-full">
-                    <div className="space-y-4 flex-1 w-full">
+                  <div className={`${
+                    exportMode
+                      ? "flex flex-row justify-between items-stretch"
+                      : "flex flex-col md:flex-row justify-between items-start md:items-center"
+                  } gap-4 relative z-10 w-full`}>
+                    <div className="space-y-4 flex-1 min-w-0 w-full">
                       <div>
                         <span className={`inline-flex gap-1.5 px-2.5 py-0.5 rounded-full border text-[9px] font-bold uppercase tracking-wider font-mono mb-1.5 ${
                           exportMode 
@@ -2492,7 +2496,7 @@ export default function App() {
                           Student Assessment Portfolio
                         </span>
                         <div className="flex items-center gap-3">
-                          <h2 className={`text-xl md:text-2xl font-black tracking-tight font-display leading-tight animate-fade-in ${
+                          <h2 className={`${exportMode ? "text-2xl" : "text-xl md:text-2xl"} font-black tracking-tight font-display leading-tight animate-fade-in ${
                             exportMode 
                               ? "text-slate-900" 
                               : "bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent"
@@ -2509,22 +2513,24 @@ export default function App() {
                         </div>
                       </div>
 
-                      <div className={`grid grid-cols-2 md:grid-cols-4 gap-y-3 gap-x-4 w-full pt-2 border-t ${
+                      <div className={`grid ${
+                        exportMode ? "grid-cols-4" : "grid-cols-2 md:grid-cols-4"
+                      } gap-y-3 gap-x-4 w-full pt-2 border-t ${
                         exportMode ? "border-slate-200" : "border-white/5"
                       }`}>
-                        <div className="space-y-0.5">
+                        <div className="space-y-0.5 min-w-0">
                           <span className={`text-[9px] uppercase tracking-widest font-mono font-bold block ${
                             exportMode ? "text-slate-500" : "text-slate-400"
                           }`}>
                             Registration ID
                           </span>
-                          <span className={`text-xs font-semibold tracking-wide font-mono ${
+                          <span className={`text-xs font-semibold tracking-wide font-mono truncate block ${
                             exportMode ? "text-slate-800" : "text-slate-200"
                           }`}>
                             {activeStudent.profile.regNo || "N/A"}
                           </span>
                         </div>
-                        <div className="space-y-0.5">
+                        <div className="space-y-0.5 min-w-0">
                           <span className={`text-[9px] uppercase tracking-widest font-mono font-bold block ${
                             exportMode ? "text-slate-500" : "text-slate-400"
                           }`}>
@@ -2538,19 +2544,19 @@ export default function App() {
                             {activeStudent.profile.stream || studentsPayload?.stream || "JEE"}
                           </span>
                         </div>
-                        <div className="space-y-0.5">
+                        <div className="space-y-0.5 min-w-0">
                           <span className={`text-[9px] uppercase tracking-widest font-mono font-bold block ${
                             exportMode ? "text-slate-500" : "text-slate-400"
                           }`}>
-                            Mapped center
+                            Mapped Center
                           </span>
-                          <span className={`text-xs font-semibold ${
+                          <span className={`text-xs font-semibold truncate block ${
                             exportMode ? "text-slate-800" : "text-slate-200"
-                          }`}>
+                          }`} title={activeStudent.profile.center || "Pimpri PW Vidyapeeth"}>
                             {activeStudent.profile.center || "Pimpri PW Vidyapeeth"}
                           </span>
                         </div>
-                        <div className="space-y-0.5">
+                        <div className="space-y-0.5 min-w-0">
                           <span className={`text-[9px] uppercase tracking-widest font-mono font-bold block ${
                             exportMode ? "text-slate-500" : "text-slate-400"
                           }`}>
@@ -2565,20 +2571,22 @@ export default function App() {
                       </div>
                     </div>
 
-                    <div className={`rounded-xl p-3 flex flex-col items-center justify-center shrink-0 w-full md:w-36 text-center ${
+                    <div className={`rounded-xl p-3 flex flex-col items-center justify-center shrink-0 text-center ${
+                      exportMode ? "w-40 self-stretch" : "w-full md:w-36"
+                    } ${
                       exportMode 
-                        ? "bg-slate-100 border border-slate-200 shadow-sm" 
+                        ? "bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 shadow-sm" 
                         : "bg-white/5 backdrop-blur-md border border-white/10 shadow-md"
                     }`}>
                       <span className={`text-[9px] uppercase tracking-widest font-mono font-bold block mb-0.5 ${
-                        exportMode ? "text-slate-500" : "text-slate-400"
+                        exportMode ? "text-amber-700" : "text-slate-400"
                       }`}>
                         Latest Rank
                       </span>
-                      <span className={`text-xl md:text-2xl font-black flex items-center gap-1 font-display tracking-tight ${
+                      <span className={`${exportMode ? "text-3xl" : "text-xl md:text-2xl"} font-black flex items-center gap-1 font-display tracking-tight ${
                         exportMode ? "text-amber-700" : "text-amber-400 drop-shadow-md"
                       }`}>
-                        <Award className={`w-5 h-5 shrink-0 ${exportMode ? "text-amber-600" : "text-yellow-400"}`} />
+                        <Award className={`${exportMode ? "w-6 h-6" : "w-5 h-5"} shrink-0 ${exportMode ? "text-amber-600" : "text-yellow-400"}`} />
                         {activeStudent.profile.latestRank !== "N/A"
                           ? `#${activeStudent.profile.latestRank}`
                           : "N/A"}
@@ -2586,7 +2594,7 @@ export default function App() {
                       {activeStudent.profile.latestRank !== "N/A" && activeStudent.profile.latestRankDate && activeStudent.profile.latestRankDate !== "N/A" && (
                         <span className={`text-[9px] font-bold font-mono uppercase tracking-wider mt-1.5 px-2.5 py-0.5 rounded-full border ${
                           exportMode 
-                            ? "bg-slate-200 text-slate-700 border-slate-300" 
+                            ? "bg-white text-amber-800 border-amber-200" 
                             : "bg-white/10 text-slate-200 border-white/10"
                         }`}>
                           {formatDateString(activeStudent.profile.latestRankDate)}
