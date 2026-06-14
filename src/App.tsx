@@ -128,7 +128,8 @@ export default function App() {
   const [showProfileModal, setShowProfileModal] = useState(false);
 
   // Role-based access control + admin notifications
-  const [userRole, setUserRole] = useState<Role>(() => (localStorage.getItem("pwUserRole") as Role) || "viewer");
+  const [userRole, setUserRole] = useState<Role>(() => (localStorage.getItem("pwUserRole") as Role) || "staff");
+  const [userCenter, setUserCenter] = useState<string>(() => localStorage.getItem("pwUserCenter") || "");
   const [notifUnread, setNotifUnread] = useState<number>(0);
   const isAdmin = userRole === "admin";
 
@@ -142,15 +143,17 @@ export default function App() {
       });
       if (res.ok) {
         const data = await res.json();
-        const role: Role = data.role || "viewer";
+        const role: Role = data.role || "staff";
         setUserRole(role);
         localStorage.setItem("pwUserRole", role);
+        setUserCenter(data.center || "");
+        localStorage.setItem("pwUserCenter", data.center || "");
         return role;
       }
     } catch (err) {
       console.error("Session establish failed:", err);
     }
-    return "viewer" as Role;
+    return "staff" as Role;
   };
 
   // Poll unread notification count for admins
@@ -375,8 +378,10 @@ export default function App() {
     localStorage.removeItem("pwUserName");
     localStorage.removeItem("pwUserPicture");
     localStorage.removeItem("pwUserRole");
+    localStorage.removeItem("pwUserCenter");
     setLoggedInUser(null);
-    setUserRole("viewer");
+    setUserRole("staff");
+    setUserCenter("");
     setNotifUnread(0);
     setActiveView("home");
     setStudentsPayload(null);
@@ -1235,7 +1240,7 @@ export default function App() {
             {activeView === "settings" && isAdmin && loggedInUser && (
               <AdminSettings
                 key="settings"
-                currentUser={{ email: loggedInUser.email, name: loggedInUser.name, role: userRole } as SessionUser}
+                currentUser={{ email: loggedInUser.email, name: loggedInUser.name, role: userRole, center: userCenter } as SessionUser}
                 onClose={() => setActiveView("home")}
                 onUnreadChange={(n) => setNotifUnread(n)}
               />

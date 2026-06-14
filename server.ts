@@ -3,6 +3,8 @@ import path from "path";
 import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import * as XLSX from "xlsx";
+import * as settingsStore from "./settingsStore";
+import type { Role } from "./settingsStore";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -23,12 +25,11 @@ let loadError: string | null = null;
    ROLE-BASED ACCESS, AUDIT LOG, NOTIFICATIONS & SYNC TRACKING
    ============================================================ */
 
-type Role = "admin" | "editor" | "viewer";
-
 interface AppUser {
   email: string;
   name?: string;
   role: Role;
+  center?: string;
   addedAt: string;
   addedBy?: string;
   lastLogin?: string;
@@ -158,10 +159,16 @@ function pushNotification(type: AppNotification["type"], title: string, message:
 
 function getRoleForEmail(email: string): Role {
   const e = (email || "").trim().toLowerCase();
-  if (!e) return "viewer";
+  if (!e) return "staff";
   if (ENV_ADMIN_EMAILS.includes(e)) return "admin";
   const user = appState.users[e];
-  return user ? user.role : "viewer";
+  return user ? user.role : "staff";
+}
+
+function getCenterForEmail(email: string): string {
+  const e = (email || "").trim().toLowerCase();
+  const user = appState.users[e];
+  return user?.center || "";
 }
 
 // Ensure a user exists. The very first user to ever sign in becomes the super-admin.
@@ -170,24 +177,28 @@ function ensureUser(email: string, name?: string): AppUser {
   let user = appState.users[e];
   if (!user) {
     const isFirstEver = Object.keys(appState.users).length === 0;
-    const role: Role = ENV_ADMIN_EMAILS.includes(e) || isFirstEver ? "admin" : "viewer";
+    const role: Role = ENV_ADMIN_EMAILS.includes(e) || isFirstEver ? "admin" : "staff";
     user = {
       email: e,
       name: name || "",
       role,
+      center: "",
       addedAt: new Date().toISOString(),
       addedBy: isFirstEver ? "system (first login)" : "self-signup",
     };
     appState.users[e] = user;
     saveAppState();
+    flushUsersToSheet();
   } else if (name && !user.name) {
     user.name = name;
     saveAppState();
+    flushUsersToSheet();
   }
   // Env admins are always elevated
   if (ENV_ADMIN_EMAILS.includes(e) && user.role !== "admin") {
     user.role = "admin";
     saveAppState();
+    flushUsersToSheet();
   }
   return user;
 }
@@ -207,7 +218,60 @@ function requireAdmin(req: express.Request, res: express.Response): AppUser | nu
   return appState.users[email] || { email, role: "admin", addedAt: new Date().toISOString() };
 }
 
+/* ---- Google Sheets settings store integration (separate from student data) ---- */
+
+let flushTimer: NodeJS.Timeout | null = null;
+
+// Push the current user roster to the settings spreadsheet (debounced, best-effort).
+function flushUsersToSheet() {
+  if (!settingsStore.isConfigured()) return;
+  if (flushTimer) clearTimeout(flushTimer);
+  flushTimer = setTimeout(async () => {
+    try {
+      const users = Object.values(appState.users).map((u) => ({
+        email: u.email,
+        name: u.name || "",
+        center: u.center || "",
+        role: u.role,
+      }));
+      await settingsStore.writeUsers(users);
+    } catch (err) {
+      console.error("Failed to flush users to settings sheet:", (err as Error).message);
+      pushNotification("warning", "Settings sheet write failed", (err as Error).message);
+    }
+  }, 400);
+}
+
+// Load the user roster FROM the settings spreadsheet (sheet is authoritative for role + center).
+async function loadUsersFromSheet() {
+  if (!settingsStore.isConfigured()) {
+    console.log("Settings sheet not configured — using local JSON persistence for roles.");
+    return;
+  }
+  try {
+    const sheetUsers = await settingsStore.readUsers();
+    sheetUsers.forEach((su) => {
+      const existing = appState.users[su.email];
+      appState.users[su.email] = {
+        email: su.email,
+        name: su.name || existing?.name || "",
+        role: su.role,
+        center: su.center || "",
+        addedAt: existing?.addedAt || new Date().toISOString(),
+        addedBy: existing?.addedBy || "settings-sheet",
+        lastLogin: existing?.lastLogin,
+      };
+    });
+    saveAppState();
+    console.log(`Loaded ${sheetUsers.length} users from settings spreadsheet.`);
+  } catch (err) {
+    console.error("Failed to load users from settings sheet:", (err as Error).message);
+    pushNotification("error", "Settings sheet read failed", (err as Error).message);
+  }
+}
+
 loadAppState();
+loadUsersFromSheet();
 
 // Normalization functions mirroring Google Apps Script
 function normalizeHeader(h: any): string {
@@ -1347,9 +1411,24 @@ app.get("/api/student", (req, res) => {
       }
     }
 
+    // Center-based access control: non-admin users with an assigned center
+    // only see students belonging to that center. Admins (and shared links
+    // with no user identity) see everything. Users without a center set are
+    // not locked out (lenient default).
+    let visibleStudents = studentsArray;
+    if (searcher) {
+      const requesterRole = getRoleForEmail(searcher);
+      const requesterCenter = getCenterForEmail(searcher).trim().toLowerCase();
+      if (requesterRole !== "admin" && requesterCenter) {
+        visibleStudents = studentsArray.filter(
+          (s) => String(s.profile.center || "").trim().toLowerCase() === requesterCenter
+        );
+      }
+    }
+
     res.json({
       stream: finalStreamType,
-      students: studentsArray,
+      students: visibleStudents,
     });
   } catch (err: any) {
     res.status(500).json({ error: "Internal Core Engine Error: " + err.toString() });
@@ -1360,7 +1439,7 @@ app.get("/api/student", (req, res) => {
 //  SESSION + ROLE + ADMIN PANEL ENDPOINTS
 // ============================================================
 
-const VALID_ROLES: Role[] = ["admin", "editor", "viewer"];
+const VALID_ROLES: Role[] = ["admin", "teacher", "staff"];
 
 // Register/refresh a login session. First ever user becomes super-admin.
 app.post("/api/auth/session", (req, res) => {
@@ -1374,31 +1453,44 @@ app.post("/api/auth/session", (req, res) => {
   user.lastLogin = new Date().toISOString();
   saveAppState();
   logActivity(email, event === "resume" ? "session_resume" : "login", name ? `as ${name}` : undefined);
-  res.json({ email: user.email, name: user.name, role: user.role });
+  res.json({ email: user.email, name: user.name, role: user.role, center: user.center || "" });
 });
 
 // Lightweight role lookup (no logging)
 app.get("/api/me", (req, res) => {
   const email = String(req.query.email || "").trim().toLowerCase();
   if (!email) return res.status(400).json({ error: "Email required." });
-  res.json({ email, role: getRoleForEmail(email) });
+  res.json({ email, role: getRoleForEmail(email), center: getCenterForEmail(email) });
 });
 
 // --- Admin: list users ---
 app.get("/api/admin/users", (req, res) => {
   if (!requireAdmin(req, res)) return;
   const users = Object.values(appState.users).sort((a, b) => a.email.localeCompare(b.email));
-  res.json({ users });
+  res.json({ users, sheetConfigured: settingsStore.isConfigured() });
 });
 
-// --- Admin: set a single user's role ---
+// --- Admin: pull the roster fresh from the settings spreadsheet ---
+app.post("/api/admin/users/reload", async (req, res) => {
+  const admin = requireAdmin(req, res);
+  if (!admin) return;
+  if (!settingsStore.isConfigured()) {
+    return res.status(400).json({ error: "Settings spreadsheet is not configured." });
+  }
+  await loadUsersFromSheet();
+  logActivity(admin.email, "users_reload", "Pulled roster from settings sheet");
+  res.json({ success: true, count: Object.keys(appState.users).length });
+});
+
+// --- Admin: set a single user's role (and optionally center) ---
 app.post("/api/admin/users/role", (req, res) => {
   const admin = requireAdmin(req, res);
   if (!admin) return;
   const email = String(req.body?.email || "").trim().toLowerCase();
   const role = String(req.body?.role || "").trim().toLowerCase() as Role;
+  const center = req.body?.center !== undefined ? String(req.body.center).trim() : undefined;
   if (!email || !VALID_ROLES.includes(role)) {
-    return res.status(400).json({ error: "Valid email and role (admin/editor/viewer) required." });
+    return res.status(400).json({ error: "Valid email and role (admin/teacher/staff) required." });
   }
   const existing = appState.users[email];
   // Prevent demoting the last remaining admin
@@ -1410,25 +1502,29 @@ app.post("/api/admin/users/role", (req, res) => {
   }
   if (existing) {
     existing.role = role;
+    if (center !== undefined) existing.center = center;
   } else {
     appState.users[email] = {
       email,
       role,
+      center: center || "",
       addedAt: new Date().toISOString(),
       addedBy: admin.email,
     };
   }
   saveAppState();
-  logActivity(admin.email, "role_change", `${email} → ${role}`);
+  flushUsersToSheet();
+  logActivity(admin.email, "role_change", `${email} → ${role}${center !== undefined ? ` @ ${center || "—"}` : ""}`);
   res.json({ success: true, user: appState.users[email] });
 });
 
-// --- Admin: bulk add emails with a role ---
+// --- Admin: bulk add emails with a role (+ optional center) ---
 app.post("/api/admin/users/bulk", (req, res) => {
   const admin = requireAdmin(req, res);
   if (!admin) return;
   const raw = String(req.body?.emails || "");
-  const role = String(req.body?.role || "viewer").trim().toLowerCase() as Role;
+  const role = String(req.body?.role || "staff").trim().toLowerCase() as Role;
+  const center = req.body?.center !== undefined ? String(req.body.center).trim() : "";
   if (!VALID_ROLES.includes(role)) {
     return res.status(400).json({ error: "Invalid role." });
   }
@@ -1450,11 +1546,13 @@ app.post("/api/admin/users/bulk", (req, res) => {
     }
     if (appState.users[email]) {
       appState.users[email].role = role;
+      if (center) appState.users[email].center = center;
       updated.push(email);
     } else {
       appState.users[email] = {
         email,
         role,
+        center,
         addedAt: new Date().toISOString(),
         addedBy: admin.email,
       };
@@ -1463,7 +1561,8 @@ app.post("/api/admin/users/bulk", (req, res) => {
   });
 
   saveAppState();
-  logActivity(admin.email, "bulk_import", `${added.length} added, ${updated.length} updated as ${role}`);
+  flushUsersToSheet();
+  logActivity(admin.email, "bulk_import", `${added.length} added, ${updated.length} updated as ${role}${center ? ` @ ${center}` : ""}`);
   res.json({ success: true, added, updated, invalid });
 });
 
@@ -1483,6 +1582,7 @@ app.delete("/api/admin/users", (req, res) => {
   }
   delete appState.users[email];
   saveAppState();
+  flushUsersToSheet();
   logActivity(admin.email, "user_removed", email);
   res.json({ success: true });
 });
