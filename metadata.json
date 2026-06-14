@@ -1,0 +1,6 @@
+{
+  "name": "Vidyapeeth Pune",
+  "description": "High-performance student tracker and ranking matrices for Vidyapeeth Pune.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
