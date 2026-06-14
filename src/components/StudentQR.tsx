@@ -103,7 +103,7 @@ export default function StudentQR({
             </div>
 
             <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-5 leading-relaxed px-2">
-              Bachcha apne phone se ye QR scan karega — sirf <span className="font-bold text-slate-700 dark:text-white">apna result</span> dikhega. Login ki zaroorat nahi.
+              The student scans this QR from their phone to view <span className="font-bold text-slate-700 dark:text-white">only their own result</span>. No login required.
             </p>
 
             <div className="flex gap-2 mt-5">
