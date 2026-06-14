@@ -8,3 +8,6 @@ coverage/
 !.env.example
 .antigravity/
 
+
+# Local runtime cache of roles/audit/notifications (sheet is source of truth)
+data/

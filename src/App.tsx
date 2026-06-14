@@ -38,8 +38,10 @@ import {
   Trash2,
   ExternalLink,
   ChevronDown,
+  Shield,
 } from "lucide-react";
 import { Student, Dropdowns, TestRecord, Profile } from "./types";
+import AdminSettings, { Role, SessionUser } from "./components/AdminSettings";
 
 function PWLogo({ size = "h-10 w-10", textSize = "text-sm", className = "" }: { size?: string, textSize?: string, className?: string }) {
   const [hasError, setHasError] = React.useState(false);
@@ -253,6 +255,66 @@ export default function App() {
   const [loginError, setLoginError] = useState<string | null>(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+
+  // ---- Admin roles / settings panel (Google Sheet-backed) ----
+  const [userRole, setUserRole] = useState<Role>(() => (localStorage.getItem("pwUserRole") as Role) || "staff");
+  const [userCenter, setUserCenter] = useState<string>(() => localStorage.getItem("pwUserCenter") || "");
+  const [notifUnread, setNotifUnread] = useState<number>(0);
+  const [showAdminPanel, setShowAdminPanel] = useState<boolean>(false);
+  const isAdmin = userRole === "admin";
+
+  const adminHeaders = (): Record<string, string> => {
+    const h: Record<string, string> = {};
+    const email = localStorage.getItem("pwUserEmail");
+    const token = localStorage.getItem("pwStaffToken");
+    if (email) h["x-user-email"] = email;
+    if (token) h["x-staff-token"] = token;
+    return h;
+  };
+
+  const refreshUnread = async () => {
+    try {
+      const res = await fetch("/api/admin/notifications", { headers: adminHeaders() });
+      if (res.ok) {
+        const d = await res.json();
+        setNotifUnread(d.unread || 0);
+      }
+    } catch (_) {}
+  };
+
+  // Register/resume session: records audit + returns the user's role + center
+  const establishSession = async (email: string, name: string | undefined, event: "login" | "resume") => {
+    try {
+      const res = await fetch("/api/auth/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...adminHeaders() },
+        body: JSON.stringify({ email, name, event }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const role: Role = data.role || "staff";
+        setUserRole(role);
+        localStorage.setItem("pwUserRole", role);
+        setUserCenter(data.center || "");
+        localStorage.setItem("pwUserCenter", data.center || "");
+        if (role === "admin") refreshUnread();
+        return role;
+      }
+    } catch (e) {
+      console.error("Session establish failed:", e);
+    }
+    return "staff" as Role;
+  };
+
+  // Resume session on mount when already logged in
+  useEffect(() => {
+    const email = localStorage.getItem("pwUserEmail");
+    const name = localStorage.getItem("pwUserName") || undefined;
+    if (email && localStorage.getItem("pwStaffToken")) {
+      establishSession(email, name, "resume");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Input fields
   const [selectedBatch, setSelectedBatch] = useState<string>("");
@@ -820,6 +882,8 @@ export default function App() {
         setActiveView("home");
         setIsLoggingIn(false);
         setLoginError(null);
+        // Register session → records audit + resolves role/center from settings sheet
+        establishSession(email, name || undefined, "login");
       } else if (event.data?.type === "GOOGLE_AUTH_FAILURE") {
         setLoginError(event.data.error || "Google authentication rejected.");
         setIsLoggingIn(false);
@@ -835,7 +899,13 @@ export default function App() {
     localStorage.removeItem("pwUserName");
     localStorage.removeItem("pwUserPicture");
     localStorage.removeItem("pwStaffToken");
+    localStorage.removeItem("pwUserRole");
+    localStorage.removeItem("pwUserCenter");
     setLoggedInUser(null);
+    setUserRole("staff");
+    setUserCenter("");
+    setNotifUnread(0);
+    setShowAdminPanel(false);
     setActiveView("home");
     setStudentsPayload(null);
     setShowProfileModal(false);
@@ -4168,6 +4238,34 @@ export default function App() {
         </nav>
       )}
     </div>
+
+      {/* ===== Admin Roles & Settings panel (Google Sheet-backed) — admins only ===== */}
+      {isAdmin && loggedInUser && !showAdminPanel && (
+        <button
+          onClick={() => { setShowAdminPanel(true); refreshUnread(); }}
+          className="fixed bottom-24 md:bottom-6 right-4 z-[60] flex items-center gap-2 bg-[#5277f7] hover:bg-[#4062dd] text-white font-bold text-xs px-4 py-3 rounded-2xl shadow-xl shadow-[#5277f7]/30 no-print cursor-pointer"
+          title="Admin Roles & Settings"
+        >
+          <Shield className="w-4 h-4" />
+          <span className="hidden sm:inline">Admin</span>
+          {notifUnread > 0 && (
+            <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[9px] font-black flex items-center justify-center leading-none">
+              {notifUnread > 9 ? "9+" : notifUnread}
+            </span>
+          )}
+        </button>
+      )}
+      {isAdmin && loggedInUser && showAdminPanel && (
+        <div className="fixed inset-0 z-[70] bg-black/40 backdrop-blur-sm overflow-y-auto p-3 sm:p-6 no-print">
+          <div className="min-h-full flex items-start justify-center py-4">
+            <AdminSettings
+              currentUser={{ email: loggedInUser.email, name: loggedInUser.name, role: userRole, center: userCenter } as SessionUser}
+              onClose={() => setShowAdminPanel(false)}
+              onUnreadChange={(n) => setNotifUnread(n)}
+            />
+          </div>
+        </div>
+      )}
   </div>
   );
 }
