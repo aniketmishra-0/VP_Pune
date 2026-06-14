@@ -42,6 +42,7 @@ import {
 } from "lucide-react";
 import { Student, Dropdowns, TestRecord, Profile } from "./types";
 import AdminSettings, { Role, SessionUser } from "./components/AdminSettings";
+import StudentQR from "./components/StudentQR";
 
 function PWLogo({ size = "h-10 w-10", textSize = "text-sm", className = "" }: { size?: string, textSize?: string, className?: string }) {
   const [hasError, setHasError] = React.useState(false);
@@ -2686,13 +2687,22 @@ export default function App() {
                         }`}>
                           Student Assessment Portfolio
                         </span>
-                        <h2 className={`text-xl md:text-2xl font-black tracking-tight font-display leading-tight animate-fade-in ${
-                          exportMode 
-                            ? "text-slate-900" 
-                            : "bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent"
-                        }`}>
-                          {activeStudent.profile.name}
-                        </h2>
+                        <div className="flex items-center gap-3">
+                          <h2 className={`text-xl md:text-2xl font-black tracking-tight font-display leading-tight animate-fade-in ${
+                            exportMode 
+                              ? "text-slate-900" 
+                              : "bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent"
+                          }`}>
+                            {activeStudent.profile.name}
+                          </h2>
+                          {!exportMode && activeStudent.profile.shareToken && (
+                            <StudentQR
+                              url={`${window.location.origin}/student/${encodeURIComponent(activeStudent.profile.regNo || "")}/${encodeURIComponent(activeStudent.profile.shareToken)}`}
+                              name={activeStudent.profile.name}
+                              regNo={activeStudent.profile.regNo}
+                            />
+                          )}
+                        </div>
                       </div>
 
                       <div className={`grid grid-cols-2 md:grid-cols-4 gap-y-3 gap-x-4 w-full pt-2 border-t ${

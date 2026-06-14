@@ -209,3 +209,49 @@ export async function writeUsers(users: SheetUser[]): Promise<void> {
     );
   }
 }
+
+/* ===== Activity Log & Notifications persistence (separate tabs) ===== */
+
+export const LOG_TAB = "ActivityLog";
+export const NOTIF_TAB = "Notifications";
+
+// Create a tab if it doesn't already exist.
+async function ensureTab(title: string): Promise<void> {
+  const meta = await apiFetch("");
+  const existing = new Set<string>((meta.sheets || []).map((s: any) => s.properties.title));
+  if (existing.has(title)) return;
+  await apiFetch(":batchUpdate", {
+    method: "POST",
+    body: JSON.stringify({ requests: [{ addSheet: { properties: { title } } }] }),
+  });
+}
+
+// Whole-tab rewrite helper (clear + write).
+async function rewriteTab(title: string, values: any[][], lastCol: string): Promise<void> {
+  await ensureTab(title);
+  await apiFetch(`/values/${encodeURIComponent(title)}!A1:${lastCol}50000:clear`, { method: "POST" });
+  await apiFetch(
+    `/values/${encodeURIComponent(title)}!A1?valueInputOption=RAW`,
+    { method: "PUT", body: JSON.stringify({ values }) }
+  );
+}
+
+export async function writeActivityLog(
+  entries: { ts: string; email: string; action: string; detail?: string }[]
+): Promise<void> {
+  const values = [
+    ["Time", "Email", "Action", "Detail"],
+    ...entries.map((e) => [e.ts, e.email, e.action, e.detail || ""]),
+  ];
+  await rewriteTab(LOG_TAB, values, "D");
+}
+
+export async function writeNotifications(
+  notifs: { ts: string; type: string; title: string; message: string; read: boolean }[]
+): Promise<void> {
+  const values = [
+    ["Time", "Type", "Title", "Message", "Read"],
+    ...notifs.map((n) => [n.ts, n.type, n.title, n.message, n.read ? "yes" : "no"]),
+  ];
+  await rewriteTab(NOTIF_TAB, values, "E");
+}

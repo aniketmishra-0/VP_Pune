@@ -7,6 +7,7 @@ export interface Profile {
   latestRankDate?: string;
   stream?: string;
   class?: string;
+  shareToken?: string;
 }
 
 export interface SubjectScore {

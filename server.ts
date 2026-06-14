@@ -964,6 +964,7 @@ function logActivity(email: string, action: string, detail?: string) {
     appState.activityLog = appState.activityLog.slice(0, MAX_LOG_ENTRIES);
   }
   saveAppState();
+  flushLogsToSheet();
 }
 
 function pushNotification(type: AppNotification["type"], title: string, message: string) {
@@ -979,6 +980,7 @@ function pushNotification(type: AppNotification["type"], title: string, message:
     appState.notifications = appState.notifications.slice(0, MAX_NOTIFICATIONS);
   }
   saveAppState();
+  flushNotificationsToSheet();
 }
 
 function getRoleForEmail(email: string): Role {
@@ -1085,6 +1087,34 @@ function flushUsersToSheet() {
       pushNotification("warning", "Settings sheet write failed", (err as Error).message);
     }
   }, 400);
+}
+
+// Debounced flush of the activity log to its own sheet tab (best-effort, capped).
+let logFlushTimer: NodeJS.Timeout | null = null;
+function flushLogsToSheet() {
+  if (!settingsStore.isConfigured()) return;
+  if (logFlushTimer) clearTimeout(logFlushTimer);
+  logFlushTimer = setTimeout(async () => {
+    try {
+      await settingsStore.writeActivityLog(appState.activityLog.slice(0, 500));
+    } catch (err) {
+      console.error("Failed to flush activity log to sheet:", (err as Error).message);
+    }
+  }, 3000);
+}
+
+// Debounced flush of notifications to their own sheet tab.
+let notifFlushTimer: NodeJS.Timeout | null = null;
+function flushNotificationsToSheet() {
+  if (!settingsStore.isConfigured()) return;
+  if (notifFlushTimer) clearTimeout(notifFlushTimer);
+  notifFlushTimer = setTimeout(async () => {
+    try {
+      await settingsStore.writeNotifications(appState.notifications.slice(0, 200));
+    } catch (err) {
+      console.error("Failed to flush notifications to sheet:", (err as Error).message);
+    }
+  }, 3000);
 }
 
 // Load the user roster FROM the settings spreadsheet (sheet is authoritative for role + center).
@@ -1676,6 +1706,12 @@ app.get("/api/student", verifyRequest, (req, res) => {
   const queryParam = req.query.query;
   if (!queryParam) {
     return res.status(400).json({ error: "Missing query parameter." });
+  }
+
+  // Audit: log staff views/searches (skip anonymous share-link views without an email)
+  const viewerEmail = String(req.headers["x-user-email"] || "").trim().toLowerCase();
+  if (viewerEmail && String(queryParam).trim().toLowerCase() !== "all") {
+    logActivity(viewerEmail, "view", `Query: "${String(queryParam).trim()}"`);
   }
 
   const exactSheetParam = req.query.exactSheet ? String(req.query.exactSheet) : undefined;
