@@ -691,6 +691,19 @@ async function loadSpreadsheetData() {
       console.log(`Attempting to fetch from: ${url}`);
       const res = await fetch(url);
       if (!res.ok) {
+        // Friendlier guidance for the most common Google Sheets permission failures
+        if (res.status === 401 || res.status === 403) {
+          throw new Error(
+            `HTTP ${res.status} ${res.statusText} — the sheet is not publicly accessible. ` +
+            `Open the sheet → Share → set "General access" to "Anyone with the link" (Viewer), ` +
+            `or use File → Share → Publish to web and paste the /pub URL in admin settings.`
+          );
+        }
+        if (res.status === 404) {
+          throw new Error(
+            `HTTP 404 Not Found — the spreadsheet ID in the URL is wrong or the sheet was deleted.`
+          );
+        }
         throw new Error(`HTTP Error Status: ${res.status} ${res.statusText}`);
       }
       
