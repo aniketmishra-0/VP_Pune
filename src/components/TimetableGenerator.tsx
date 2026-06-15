@@ -173,7 +173,11 @@ function formatDateDisplay(d: Date): string {
 }
 
 function formatDateISO(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  // Use local time, NOT UTC (toISOString() converts to UTC which shifts dates in IST!)
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 function detectSection(batchCode: string): "JEE" | "NEET" | "DROPPER" {
