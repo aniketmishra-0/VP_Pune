@@ -30,16 +30,10 @@ interface TimetableLecture {
   isExtraLecture: boolean;
 }
 
-interface TeacherCode {
-  code: string;
-  count: number;
-}
+interface TeacherCode { code: string; count: number; }
+interface TimetableViewerProps { adminHeaders: () => Record<string, string>; }
 
-interface TimetableViewerProps {
-  adminHeaders: () => Record<string, string>;
-}
-
-// ─── Demo Data ──────────────────────────────────────────────────────
+// ─── Demo ───────────────────────────────────────────────────────────
 
 const DEMO_LECTURES: TimetableLecture[] = [
   { teacherCode: "CSI", day: "MONDAY", date: "16-Jun-2026", startTime: "8:45 AM", endTime: "10:15 AM", batches: ["27-LJ151MA 2026"], rooms: ["507"], isMerged: false, isExtraLecture: false },
@@ -49,49 +43,32 @@ const DEMO_LECTURES: TimetableLecture[] = [
   { teacherCode: "PMT", day: "MONDAY", date: "16-Jun-2026", startTime: "8:45 AM", endTime: "10:15 AM", batches: ["27-LJ151MA 2026"], rooms: ["507"], isMerged: false, isExtraLecture: false },
   { teacherCode: "PQL", day: "MONDAY", date: "16-Jun-2026", startTime: "8:45 AM", endTime: "10:15 AM", batches: ["27-LJ153MA 2026"], rooms: ["505"], isMerged: false, isExtraLecture: false },
 ];
-
 const DEMO_CODES: TeacherCode[] = [
   { code: "CSI", count: 4 }, { code: "PMT", count: 1 }, { code: "PQL", count: 1 },
 ];
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
-function parseTimeToMinutes(time: string): number {
-  const match = time.match(/(\d+):(\d+)\s*(AM|PM)/i);
-  if (!match) return 0;
-  let h = parseInt(match[1]);
-  const m = parseInt(match[2]);
-  const period = match[3].toUpperCase();
-  if (period === "PM" && h !== 12) h += 12;
-  if (period === "AM" && h === 12) h = 0;
-  return h * 60 + m;
+function parseTimeMin(t: string) {
+  const m = t.match(/(\d+):(\d+)\s*(AM|PM)/i);
+  if (!m) return 0;
+  let h = +m[1]; const mn = +m[2]; const p = m[3].toUpperCase();
+  if (p === "PM" && h !== 12) h += 12;
+  if (p === "AM" && h === 12) h = 0;
+  return h * 60 + mn;
 }
-
-function calcHours(lectures: TimetableLecture[]): number {
-  let total = 0;
-  for (const l of lectures) {
-    const start = parseTimeToMinutes(l.startTime);
-    const end = parseTimeToMinutes(l.endTime);
-    if (end > start) total += (end - start);
-  }
-  return Math.round(total / 60 * 10) / 10;
+function calcHrs(lecs: TimetableLecture[]) {
+  let t = 0;
+  for (const l of lecs) { const s = parseTimeMin(l.startTime), e = parseTimeMin(l.endTime); if (e > s) t += e - s; }
+  return Math.round(t / 6) / 10;
 }
 
 const DAY_ORDER = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"];
-const DAY_SHORT: Record<string, string> = {
-  MONDAY: "MON", TUESDAY: "TUE", WEDNESDAY: "WED", THURSDAY: "THU", FRIDAY: "FRI", SATURDAY: "SAT", SUNDAY: "SUN",
+const DAY_SHORT: Record<string, string> = { MONDAY: "MON", TUESDAY: "TUE", WEDNESDAY: "WED", THURSDAY: "THU", FRIDAY: "FRI", SATURDAY: "SAT", SUNDAY: "SUN" };
+const DAY_DOT: Record<string, string> = {
+  MONDAY: "bg-blue-500", TUESDAY: "bg-emerald-500", WEDNESDAY: "bg-amber-500",
+  THURSDAY: "bg-orange-500", FRIDAY: "bg-red-500", SATURDAY: "bg-purple-500", SUNDAY: "bg-slate-400",
 };
-const DAY_COLORS: Record<string, { bg: string; text: string; border: string; dot: string }> = {
-  MONDAY:    { bg: "bg-blue-50 dark:bg-blue-950/20",   text: "text-blue-700 dark:text-blue-300",   border: "border-blue-200 dark:border-blue-900/40",   dot: "bg-blue-500" },
-  TUESDAY:   { bg: "bg-emerald-50 dark:bg-emerald-950/20", text: "text-emerald-700 dark:text-emerald-300", border: "border-emerald-200 dark:border-emerald-900/40", dot: "bg-emerald-500" },
-  WEDNESDAY: { bg: "bg-amber-50 dark:bg-amber-950/20", text: "text-amber-700 dark:text-amber-300", border: "border-amber-200 dark:border-amber-900/40", dot: "bg-amber-500" },
-  THURSDAY:  { bg: "bg-orange-50 dark:bg-orange-950/20", text: "text-orange-700 dark:text-orange-300", border: "border-orange-200 dark:border-orange-900/40", dot: "bg-orange-500" },
-  FRIDAY:    { bg: "bg-red-50 dark:bg-red-950/20",     text: "text-red-700 dark:text-red-300",     border: "border-red-200 dark:border-red-900/40",     dot: "bg-red-500" },
-  SATURDAY:  { bg: "bg-purple-50 dark:bg-purple-950/20", text: "text-purple-700 dark:text-purple-300", border: "border-purple-200 dark:border-purple-900/40", dot: "bg-purple-500" },
-  SUNDAY:    { bg: "bg-slate-50 dark:bg-slate-950/20", text: "text-slate-600 dark:text-slate-400", border: "border-slate-200 dark:border-slate-800/40", dot: "bg-slate-400" },
-};
-
-const DEFAULT_DAY_COLORS = { bg: "bg-slate-50 dark:bg-slate-950/20", text: "text-slate-600 dark:text-slate-400", border: "border-slate-200 dark:border-slate-800/40", dot: "bg-slate-400" };
 
 // ─── Component ──────────────────────────────────────────────────────
 
@@ -108,382 +85,244 @@ export default function TimetableViewer({ adminHeaders }: TimetableViewerProps) 
   const [isDemo, setIsDemo] = useState(false);
   const [lastLoaded, setLastLoaded] = useState<string | null>(null);
 
-  // ─── Data Fetching ────────────────────────────────────────────────
+  // ─── Fetch ────────────────────────────────────────────────────────
 
   const fetchCodes = useCallback(async () => {
     try {
-      const res = await fetch("/api/timetable/codes", { headers: adminHeaders() });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.codes && data.codes.length > 0) {
-          setAllCodes(data.codes);
-          setIsDemo(false);
-        } else {
-          setAllCodes(DEMO_CODES);
-          setIsDemo(true);
-        }
-      }
-    } catch {
-      setAllCodes(DEMO_CODES);
-      setIsDemo(true);
-    }
+      const r = await fetch("/api/timetable/codes", { headers: adminHeaders() });
+      if (r.ok) { const d = await r.json(); if (d.codes?.length) { setAllCodes(d.codes); setIsDemo(false); } else { setAllCodes(DEMO_CODES); setIsDemo(true); } }
+    } catch { setAllCodes(DEMO_CODES); setIsDemo(true); }
   }, [adminHeaders]);
 
   const fetchConfig = useCallback(async () => {
-    try {
-      const res = await fetch("/api/timetable/config", { headers: adminHeaders() });
-      if (res.ok) {
-        const data = await res.json();
-        setLastLoaded(data.lastLoaded || null);
-        setApiError(data.error || null);
-      }
-    } catch { /* ignore */ }
+    try { const r = await fetch("/api/timetable/config", { headers: adminHeaders() }); if (r.ok) { const d = await r.json(); setLastLoaded(d.lastLoaded || null); setApiError(d.error || null); } } catch {}
   }, [adminHeaders]);
 
   const fetchLectures = useCallback(async (code: string) => {
-    if (isDemo) {
-      setLectures(DEMO_LECTURES.filter(l => l.teacherCode === code));
-      return;
-    }
-    try {
-      const res = await fetch(`/api/timetable?code=${encodeURIComponent(code)}`, { headers: adminHeaders() });
-      if (res.ok) {
-        const data = await res.json();
-        setLectures(data.lectures || []);
-      }
-    } catch { /* ignore */ }
+    if (isDemo) { setLectures(DEMO_LECTURES.filter(l => l.teacherCode === code)); return; }
+    try { const r = await fetch(`/api/timetable?code=${encodeURIComponent(code)}`, { headers: adminHeaders() }); if (r.ok) { const d = await r.json(); setLectures(d.lectures || []); } } catch {}
   }, [adminHeaders, isDemo]);
 
   const handleRefresh = async () => {
     setIsLoading(true);
-    try {
-      await fetch("/api/timetable/refresh", { method: "POST", headers: adminHeaders() });
-      setTimeout(() => { fetchCodes(); fetchConfig(); setIsLoading(false); }, 2000);
-    } catch { setIsLoading(false); }
+    try { await fetch("/api/timetable/refresh", { method: "POST", headers: adminHeaders() }); setTimeout(() => { fetchCodes(); fetchConfig(); setIsLoading(false); }, 2000); } catch { setIsLoading(false); }
   };
 
   useEffect(() => { fetchConfig(); fetchCodes(); }, [fetchConfig, fetchCodes]);
+  useEffect(() => { if (selectedCode) fetchLectures(selectedCode); else setLectures([]); }, [selectedCode, fetchLectures]);
 
-  useEffect(() => {
-    if (selectedCode) fetchLectures(selectedCode);
-    else setLectures([]);
-  }, [selectedCode, fetchLectures]);
-
-  // ─── Search + Selection ───────────────────────────────────────────
+  // ─── Logic ────────────────────────────────────────────────────────
 
   const handleSearch = (val: string) => {
-    const upper = val.toUpperCase().replace(/[^A-Z]/g, "");
-    setSearchQuery(upper);
-    const match = allCodes.find(c => c.code === upper);
-    if (match) setSelectedCode(upper);
+    const u = val.toUpperCase().replace(/[^A-Z]/g, "");
+    setSearchQuery(u);
+    const m = allCodes.find(c => c.code === u);
+    if (m) { setSelectedCode(u); setCodesExpanded(false); }
   };
-
-  const handleChipClick = (code: string) => {
+  const handleChip = (code: string) => {
     setSelectedCode(code);
     setSearchQuery(code);
     setCollapsedDays(new Set());
+    setCodesExpanded(false);
   };
-
-  // ─── Grouped Data ─────────────────────────────────────────────────
 
   const groupedByDay = useMemo(() => {
     const map = new Map<string, { date: string; lectures: TimetableLecture[] }>();
-    for (const l of lectures) {
-      const key = l.day.toUpperCase();
-      if (!map.has(key)) map.set(key, { date: l.date, lectures: [] });
-      map.get(key)!.lectures.push(l);
-    }
-    const sorted = Array.from(map.entries()).sort(
-      (a, b) => DAY_ORDER.indexOf(a[0]) - DAY_ORDER.indexOf(b[0])
-    );
-    for (const [, v] of sorted) {
-      v.lectures.sort((a, b) => parseTimeToMinutes(a.startTime) - parseTimeToMinutes(b.startTime));
-    }
-    return sorted;
+    for (const l of lectures) { const k = l.day.toUpperCase(); if (!map.has(k)) map.set(k, { date: l.date, lectures: [] }); map.get(k)!.lectures.push(l); }
+    const s = Array.from(map.entries()).sort((a, b) => DAY_ORDER.indexOf(a[0]) - DAY_ORDER.indexOf(b[0]));
+    for (const [, v] of s) v.lectures.sort((a, b) => parseTimeMin(a.startTime) - parseTimeMin(b.startTime));
+    return s;
   }, [lectures]);
 
   const stats = useMemo(() => ({
-    totalLectures: lectures.length,
-    totalDays: groupedByDay.length,
-    totalBatches: new Set(lectures.flatMap(l => l.batches)).size,
-    totalHours: calcHours(lectures),
+    lecs: lectures.length, days: groupedByDay.length,
+    batches: new Set(lectures.flatMap(l => l.batches)).size, hrs: calcHrs(lectures),
   }), [lectures, groupedByDay]);
 
-  const filteredCodes = useMemo(() => {
-    if (!searchQuery) return allCodes;
-    return allCodes.filter(c => c.code.includes(searchQuery));
-  }, [allCodes, searchQuery]);
+  const filtered = useMemo(() => !searchQuery ? allCodes : allCodes.filter(c => c.code.includes(searchQuery)), [allCodes, searchQuery]);
+  const MAX = 14;
+  const visible = codesExpanded ? filtered : filtered.slice(0, MAX);
 
-  const MAX_VISIBLE = 12;
-  const visibleCodes = codesExpanded ? filteredCodes : filteredCodes.slice(0, MAX_VISIBLE);
-
-  const toggleDay = (day: string) => {
-    setCollapsedDays(prev => {
-      const next = new Set(prev);
-      if (next.has(day)) next.delete(day);
-      else next.add(day);
-      return next;
-    });
-  };
-
-  const expandAll = () => setCollapsedDays(new Set());
-  const collapseAll = () => setCollapsedDays(new Set(groupedByDay.map(([d]) => d)));
+  const toggleDay = (d: string) => setCollapsedDays(p => { const n = new Set(p); n.has(d) ? n.delete(d) : n.add(d); return n; });
 
   // ─── Render ───────────────────────────────────────────────────────
 
   return (
-    <div className="pb-32">
-      {/* Demo Banner */}
+    <div className="pb-28">
+      {/* Alerts */}
       {isDemo && (
-        <motion.div
-          initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
-          className="flex items-center gap-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 rounded-2xl px-4 py-3 mb-4"
-        >
-          <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
-          <p className="text-xs text-amber-700 dark:text-amber-300">
-            <span className="font-bold">Demo Mode</span> — Go to Settings → Time Table tab to configure your sheet URL.
-          </p>
-        </motion.div>
+        <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2 mb-3">
+          <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+          <p className="text-[11px] text-amber-600 dark:text-amber-400"><b>Demo</b> — Configure sheet URL in Settings → Time Table</p>
+        </div>
       )}
-
-      {/* Error Banner */}
       {apiError && !isDemo && (
-        <motion.div
-          initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
-          className="flex items-center gap-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/40 rounded-2xl px-4 py-3 mb-4"
-        >
-          <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
-          <p className="text-xs text-red-700 dark:text-red-300">{apiError}</p>
-        </motion.div>
+        <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2 mb-3">
+          <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+          <p className="text-[11px] text-red-600 dark:text-red-400 truncate">{apiError}</p>
+        </div>
       )}
 
-      {/* ═══ Header + Search ═══ */}
-      <div className="bg-white dark:bg-[#111827] rounded-3xl border border-slate-200/50 dark:border-gray-800/40 shadow-sm overflow-hidden mb-4">
-        {/* Header */}
-        <div className="p-4 md:p-5 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 md:w-11 md:h-11 rounded-2xl bg-gradient-to-br from-[#5277f7] to-[#7c3aed] flex items-center justify-center shadow-lg shadow-[#5277f7]/20">
-              <Calendar className="w-5 h-5 text-white" />
+      {/* ═══ Single Unified Card: Search + Chips + Stats ═══ */}
+      <div className="bg-white dark:bg-[#111827] rounded-2xl border border-slate-200/50 dark:border-gray-800/40 shadow-sm overflow-hidden">
+        {/* Top bar: Title + Refresh */}
+        <div className="flex items-center justify-between px-3 py-2.5 md:px-4 md:py-3 border-b border-slate-100 dark:border-gray-800/40">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#5277f7] to-[#7c3aed] flex items-center justify-center">
+              <Calendar className="w-3.5 h-3.5 text-white" />
             </div>
             <div>
-              <h2 className="text-sm md:text-base font-black text-slate-800 dark:text-white">Weekly Schedule</h2>
-              <p className="text-[10px] text-slate-400 font-mono">
-                {lastLoaded ? `Updated ${new Date(lastLoaded).toLocaleDateString()}` : "Teacher Timetable"}
-              </p>
+              <h2 className="text-xs md:text-sm font-bold text-slate-800 dark:text-white leading-tight">Weekly Schedule</h2>
+              {lastLoaded && <p className="text-[9px] text-slate-400 font-mono leading-tight">{new Date(lastLoaded).toLocaleDateString()}</p>}
             </div>
           </div>
-          <button
-            onClick={handleRefresh}
-            disabled={isLoading}
-            className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-400 hover:text-[#5277f7] hover:bg-slate-100 dark:hover:bg-gray-800 transition-all cursor-pointer"
-          >
-            <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin text-[#5277f7]" : ""}`} />
+          <button onClick={handleRefresh} disabled={isLoading} className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-[#5277f7] hover:bg-slate-100 dark:hover:bg-gray-800 transition-all cursor-pointer">
+            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin text-[#5277f7]" : ""}`} />
           </button>
         </div>
 
-        {/* Search Bar */}
-        <div className="px-4 md:px-5 pb-4">
+        {/* Search */}
+        <div className="px-3 pt-2.5 pb-2 md:px-4">
           <div className="relative">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
             <input
-              type="text"
-              value={searchQuery}
-              onChange={e => handleSearch(e.target.value)}
+              type="text" value={searchQuery} onChange={e => handleSearch(e.target.value)}
               placeholder="Search teacher code..."
-              className="w-full bg-slate-50 dark:bg-gray-900/40 rounded-xl border border-slate-200 dark:border-gray-800 pl-10 pr-10 py-2.5 md:py-3 text-sm text-slate-700 dark:text-slate-200 outline-none focus:border-[#5277f7] focus:ring-2 focus:ring-[#5277f7]/10 transition-all font-mono tracking-wide"
+              className="w-full bg-slate-50 dark:bg-gray-900/40 rounded-lg border border-slate-200 dark:border-gray-800 pl-8 pr-8 py-2 text-xs text-slate-700 dark:text-slate-200 outline-none focus:border-[#5277f7] transition-colors font-mono"
             />
             {searchQuery && (
-              <button onClick={() => { setSearchQuery(""); setSelectedCode(null); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer">
-                <X className="w-4 h-4" />
+              <button onClick={() => { setSearchQuery(""); setSelectedCode(null); }} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer">
+                <X className="w-3.5 h-3.5" />
               </button>
             )}
           </div>
         </div>
 
-        {/* Teacher Chips (collapsible) */}
-        <div className="px-4 md:px-5 pb-4">
-          <button
-            onClick={() => setCodesExpanded(!codesExpanded)}
-            className="flex items-center gap-1.5 mb-2 cursor-pointer group"
-          >
+        {/* Chips */}
+        <div className="px-3 pb-3 md:px-4">
+          <button onClick={() => setCodesExpanded(!codesExpanded)} className="flex items-center gap-1 mb-1.5 cursor-pointer group">
             <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform ${codesExpanded ? "" : "-rotate-90"}`} />
-            <span className="text-[10px] font-bold tracking-widest uppercase text-slate-400 font-mono group-hover:text-slate-600 dark:group-hover:text-slate-300 transition-colors">
-              Teachers · {allCodes.length}
-            </span>
+            <span className="text-[9px] font-bold tracking-widest uppercase text-slate-400 font-mono">{allCodes.length} teachers</span>
           </button>
-
-          <div className="flex flex-wrap gap-1.5">
-            {visibleCodes.map(c => (
-              <button
-                key={c.code}
-                onClick={() => handleChipClick(c.code)}
-                className={`inline-flex items-center gap-1 px-2 py-1 md:px-2.5 md:py-1.5 rounded-lg text-[11px] md:text-xs font-bold transition-all cursor-pointer ${
+          <div className="flex flex-wrap gap-1">
+            {visible.map(c => (
+              <button key={c.code} onClick={() => handleChip(c.code)}
+                className={`inline-flex items-center gap-0.5 px-2 py-1 rounded-md text-[10px] font-bold transition-all cursor-pointer ${
                   selectedCode === c.code
-                    ? "bg-[#5277f7] text-white shadow-md shadow-[#5277f7]/20 scale-105"
-                    : "bg-slate-100 dark:bg-gray-800/60 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-gray-700 active:scale-95"
+                    ? "bg-[#5277f7] text-white shadow-sm shadow-[#5277f7]/20"
+                    : "bg-slate-100 dark:bg-gray-800/60 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-gray-700 active:scale-95"
                 }`}
               >
                 <span className="font-mono">{c.code}</span>
-                <span className={`text-[9px] ${selectedCode === c.code ? "text-white/60" : "text-slate-400"}`}>{c.count}</span>
+                <span className={`text-[8px] ${selectedCode === c.code ? "text-white/50" : "text-slate-400/70"}`}>{c.count}</span>
               </button>
             ))}
-            {!codesExpanded && filteredCodes.length > MAX_VISIBLE && (
-              <button
-                onClick={() => setCodesExpanded(true)}
-                className="inline-flex items-center px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-[#5277f7]/10 text-[#5277f7] hover:bg-[#5277f7]/20 cursor-pointer transition-all"
-              >
-                +{filteredCodes.length - MAX_VISIBLE} more
+            {!codesExpanded && filtered.length > MAX && (
+              <button onClick={() => setCodesExpanded(true)} className="px-2 py-1 rounded-md text-[10px] font-bold bg-[#5277f7]/10 text-[#5277f7] cursor-pointer hover:bg-[#5277f7]/20 transition-all">
+                +{filtered.length - MAX}
               </button>
             )}
-            {codesExpanded && filteredCodes.length > MAX_VISIBLE && (
-              <button
-                onClick={() => setCodesExpanded(false)}
-                className="inline-flex items-center px-2.5 py-1.5 rounded-lg text-[11px] font-bold text-slate-400 hover:text-slate-600 cursor-pointer transition-all"
-              >
-                Show less
+            {codesExpanded && filtered.length > MAX && (
+              <button onClick={() => setCodesExpanded(false)} className="px-2 py-1 rounded-md text-[10px] font-bold text-slate-400 cursor-pointer hover:text-slate-600">
+                less
               </button>
             )}
           </div>
         </div>
+
+        {/* Stats Strip (only when code selected) */}
+        {selectedCode && lectures.length > 0 && (
+          <div className="border-t border-slate-100 dark:border-gray-800/40 px-3 py-2 md:px-4 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-black text-slate-800 dark:text-white font-mono">{selectedCode}</span>
+            </div>
+            <div className="flex items-center gap-3 text-[10px] text-slate-400">
+              <span className="flex items-center gap-1"><BookOpen className="w-3 h-3 text-[#5277f7]" />{stats.lecs}</span>
+              <span className="flex items-center gap-1"><Calendar className="w-3 h-3 text-emerald-500" />{stats.days}d</span>
+              <span className="flex items-center gap-1"><Layers className="w-3 h-3 text-amber-500" />{stats.batches}</span>
+              <span className="flex items-center gap-1"><Timer className="w-3 h-3 text-purple-500" />~{stats.hrs}h</span>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* ═══ Selected Teacher Section ═══ */}
+      {/* ═══ Day Cards ═══ */}
       {selectedCode && lectures.length > 0 && (
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-
-          {/* Stats Bar */}
-          <div className="bg-white dark:bg-[#111827] rounded-3xl border border-slate-200/50 dark:border-gray-800/40 shadow-sm p-4 md:p-5 mb-3">
-            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#5277f7] to-[#7c3aed] flex items-center justify-center shadow-md shadow-[#5277f7]/20">
-                  <GraduationCap className="w-4 h-4 text-white" />
-                </div>
-                <span className="text-lg font-black text-slate-800 dark:text-white font-mono tracking-wider">{selectedCode}</span>
-              </div>
-
-              {/* Stats Grid */}
-              <div className="grid grid-cols-4 gap-2 sm:flex sm:gap-4 sm:ml-auto">
-                <div className="flex flex-col items-center sm:flex-row sm:gap-1.5 text-center sm:text-left">
-                  <BookOpen className="w-3.5 h-3.5 text-[#5277f7] mx-auto sm:mx-0" />
-                  <span className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 font-medium">{stats.totalLectures}<span className="hidden sm:inline"> lectures</span></span>
-                </div>
-                <div className="flex flex-col items-center sm:flex-row sm:gap-1.5 text-center sm:text-left">
-                  <Calendar className="w-3.5 h-3.5 text-emerald-500 mx-auto sm:mx-0" />
-                  <span className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 font-medium">{stats.totalDays}<span className="hidden sm:inline"> days</span></span>
-                </div>
-                <div className="flex flex-col items-center sm:flex-row sm:gap-1.5 text-center sm:text-left">
-                  <Layers className="w-3.5 h-3.5 text-amber-500 mx-auto sm:mx-0" />
-                  <span className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 font-medium">{stats.totalBatches}<span className="hidden sm:inline"> batches</span></span>
-                </div>
-                <div className="flex flex-col items-center sm:flex-row sm:gap-1.5 text-center sm:text-left">
-                  <Timer className="w-3.5 h-3.5 text-purple-500 mx-auto sm:mx-0" />
-                  <span className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 font-medium">~{stats.totalHours}<span className="hidden sm:inline"> hrs</span></span>
-                </div>
-              </div>
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-2.5">
+          {/* Controls */}
+          {groupedByDay.length > 1 && (
+            <div className="flex gap-2 mb-2 px-1">
+              <button onClick={() => setCollapsedDays(new Set())} className="text-[10px] font-bold text-[#5277f7] cursor-pointer hover:underline">Expand All</button>
+              <span className="text-slate-300 dark:text-gray-700 text-[10px]">·</span>
+              <button onClick={() => setCollapsedDays(new Set(groupedByDay.map(([d]) => d)))} className="text-[10px] font-bold text-[#5277f7] cursor-pointer hover:underline">Collapse All</button>
             </div>
+          )}
 
-            {/* Expand/Collapse */}
-            {groupedByDay.length > 1 && (
-              <div className="flex gap-3 mt-3 pt-3 border-t border-slate-100 dark:border-gray-800/60">
-                <button onClick={expandAll} className="text-[10px] font-bold text-[#5277f7] hover:underline cursor-pointer">Expand All</button>
-                <span className="text-slate-200 dark:text-gray-700">·</span>
-                <button onClick={collapseAll} className="text-[10px] font-bold text-[#5277f7] hover:underline cursor-pointer">Collapse All</button>
-              </div>
-            )}
-          </div>
-
-          {/* ═══ Day Cards ═══ */}
-          <div className="space-y-2.5">
-            {groupedByDay.map(([day, { date, lectures: dayLectures }], dayIdx) => {
-              const isCollapsed = collapsedDays.has(day);
-              const colors = DAY_COLORS[day] || DEFAULT_DAY_COLORS;
-
+          <div className="space-y-1.5">
+            {groupedByDay.map(([day, { date, lectures: dl }], di) => {
+              const col = collapsedDays.has(day);
               return (
-                <motion.div
-                  key={day}
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: dayIdx * 0.05 }}
-                  className="bg-white dark:bg-[#111827] rounded-2xl md:rounded-3xl border border-slate-200/50 dark:border-gray-800/40 shadow-sm overflow-hidden"
+                <motion.div key={day} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: di * 0.04 }}
+                  className="bg-white dark:bg-[#111827] rounded-xl border border-slate-200/50 dark:border-gray-800/40 shadow-sm overflow-hidden"
                 >
-                  {/* Day Header */}
-                  <button
-                    onClick={() => toggleDay(day)}
-                    className="w-full flex items-center justify-between px-3.5 py-3 md:px-5 md:py-4 cursor-pointer hover:bg-slate-50/50 dark:hover:bg-gray-800/20 transition-colors group"
+                  {/* Day header */}
+                  <button onClick={() => toggleDay(day)}
+                    className="w-full flex items-center justify-between px-3 py-2 md:px-4 md:py-2.5 cursor-pointer hover:bg-slate-50/50 dark:hover:bg-gray-800/20 transition-colors"
                   >
-                    <div className="flex items-center gap-2.5 md:gap-3">
-                      <div className={`w-2 h-7 md:h-8 rounded-full ${colors.dot}`} />
-                      <div className="text-left">
-                        <div className="flex items-center gap-2">
-                          <h3 className="text-xs md:text-sm font-black tracking-wide text-slate-800 dark:text-white">
-                            <span className="sm:hidden">{DAY_SHORT[day] || day}</span>
-                            <span className="hidden sm:inline">{day}</span>
-                          </h3>
-                          <span className={`text-[9px] md:text-[10px] font-bold px-1.5 py-0.5 rounded-md ${colors.bg} ${colors.text}`}>
-                            {dayLectures.length} lec
-                          </span>
-                        </div>
-                        <p className="text-[10px] md:text-[11px] text-slate-400 font-mono">{date}</p>
-                      </div>
+                    <div className="flex items-center gap-2">
+                      <div className={`w-1.5 h-5 rounded-full ${DAY_DOT[day] || "bg-slate-400"}`} />
+                      <span className="text-[11px] md:text-xs font-black text-slate-700 dark:text-slate-200">
+                        <span className="md:hidden">{DAY_SHORT[day] || day}</span>
+                        <span className="hidden md:inline">{day}</span>
+                      </span>
+                      <span className="text-[9px] text-slate-400 font-mono">{date}</span>
                     </div>
-                    <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform group-hover:text-slate-600 ${isCollapsed ? "-rotate-90" : ""}`} />
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[9px] font-bold text-slate-400">{dl.length}</span>
+                      <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform ${col ? "-rotate-90" : ""}`} />
+                    </div>
                   </button>
 
                   {/* Lectures */}
                   <AnimatePresence>
-                    {!isCollapsed && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: "auto", opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.2 }}
-                        className="overflow-hidden"
-                      >
-                        <div className="px-3.5 md:px-5 pb-3.5 md:pb-4 space-y-2">
-                          {dayLectures.map((lecture, lIdx) => (
-                            <motion.div
-                              key={lIdx}
-                              initial={{ opacity: 0, x: -8 }}
-                              animate={{ opacity: 1, x: 0 }}
-                              transition={{ delay: lIdx * 0.03 }}
-                              className={`rounded-xl md:rounded-2xl border p-3 md:p-4 transition-colors ${colors.bg} ${colors.border} hover:shadow-sm`}
+                    {!col && (
+                      <motion.div initial={{ height: 0 }} animate={{ height: "auto" }} exit={{ height: 0 }} transition={{ duration: 0.15 }} className="overflow-hidden">
+                        <div className="px-3 pb-2.5 md:px-4 md:pb-3 space-y-1.5">
+                          {dl.map((l, li) => (
+                            <motion.div key={li} initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: li * 0.02 }}
+                              className="bg-slate-50/80 dark:bg-gray-900/30 rounded-lg border border-slate-100 dark:border-gray-800/50 px-3 py-2 md:px-3.5 md:py-2.5"
                             >
-                              {/* Time Row */}
-                              <div className="flex items-center justify-between mb-1.5">
-                                <div className="flex items-center gap-1.5">
-                                  <Clock className="w-3.5 h-3.5 text-[#5277f7]" />
-                                  <span className="text-xs md:text-sm font-bold text-slate-700 dark:text-slate-200 font-mono">
-                                    {lecture.startTime} — {lecture.endTime}
-                                  </span>
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0 flex-1">
+                                  {/* Time */}
+                                  <div className="flex items-center gap-1.5 mb-1">
+                                    <Clock className="w-3 h-3 text-[#5277f7] shrink-0" />
+                                    <span className="text-[11px] md:text-xs font-bold text-slate-700 dark:text-slate-200 font-mono">{l.startTime} — {l.endTime}</span>
+                                  </div>
+                                  {/* Batches */}
+                                  {l.batches.map((b, bi) => (
+                                    <div key={bi} className="flex items-center gap-1.5 ml-4.5">
+                                      <BookOpen className="w-2.5 h-2.5 text-slate-400 shrink-0" />
+                                      <span className="text-[10px] md:text-[11px] text-slate-500 dark:text-slate-400 truncate">{b}</span>
+                                    </div>
+                                  ))}
+                                  {/* Room */}
+                                  {l.rooms.some(r => r) && (
+                                    <div className="flex items-center gap-1.5 ml-4.5 mt-0.5">
+                                      <MapPin className="w-2.5 h-2.5 text-slate-400 shrink-0" />
+                                      <span className="text-[9px] text-slate-400 font-mono">{l.rooms.filter(Boolean).join(", ")}</span>
+                                    </div>
+                                  )}
                                 </div>
                                 {/* Badges */}
-                                <div className="flex gap-1.5">
-                                  {lecture.isMerged && (
-                                    <button
-                                      onClick={(e) => { e.stopPropagation(); setMergeModal(lecture); }}
-                                      className="text-[9px] md:text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-purple-100 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 cursor-pointer hover:bg-purple-200 transition-colors"
-                                    >🔀 Merged</button>
+                                <div className="flex gap-1 shrink-0 pt-0.5">
+                                  {l.isMerged && (
+                                    <button onClick={() => setMergeModal(l)} className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 cursor-pointer hover:bg-purple-200 transition-colors">🔀</button>
                                   )}
-                                  {lecture.isExtraLecture && (
-                                    <span className="text-[9px] md:text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400">⭐ Extra</span>
+                                  {l.isExtraLecture && (
+                                    <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400">⭐</span>
                                   )}
                                 </div>
-                              </div>
-
-                              {/* Batch + Room */}
-                              <div className="ml-5 space-y-0.5">
-                                {lecture.batches.map((batch, bIdx) => (
-                                  <div key={bIdx} className="flex items-center gap-1.5">
-                                    <BookOpen className="w-3 h-3 text-slate-400 shrink-0" />
-                                    <span className="text-[11px] md:text-xs text-slate-600 dark:text-slate-300 font-medium truncate">{batch}</span>
-                                  </div>
-                                ))}
-                                {lecture.rooms.length > 0 && lecture.rooms.some(r => r) && (
-                                  <div className="flex items-center gap-1.5">
-                                    <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
-                                    <span className="text-[10px] md:text-[11px] text-slate-400 font-mono">Room {lecture.rooms.filter(Boolean).join(", ")}</span>
-                                  </div>
-                                )}
                               </div>
                             </motion.div>
                           ))}
@@ -498,67 +337,45 @@ export default function TimetableViewer({ adminHeaders }: TimetableViewerProps) 
         </motion.div>
       )}
 
-      {/* Empty State */}
+      {/* Empty */}
       {selectedCode && lectures.length === 0 && !isDemo && (
-        <motion.div
-          initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-          className="bg-white dark:bg-[#111827] rounded-3xl border border-slate-200/50 dark:border-gray-800/40 p-10 shadow-sm text-center"
-        >
-          <Search className="w-10 h-10 text-slate-300 dark:text-gray-700 mx-auto mb-3" />
-          <p className="text-sm font-bold text-slate-500 dark:text-slate-400">No lectures found for "{selectedCode}"</p>
-          <p className="text-xs text-slate-400 mt-1">Try a different teacher code</p>
-        </motion.div>
+        <div className="mt-4 text-center py-8">
+          <Search className="w-8 h-8 text-slate-300 dark:text-gray-700 mx-auto mb-2" />
+          <p className="text-xs font-bold text-slate-400">No lectures for "{selectedCode}"</p>
+        </div>
       )}
-
-      {/* No Selection Prompt */}
       {!selectedCode && !isDemo && allCodes.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-          className="bg-white dark:bg-[#111827] rounded-3xl border border-slate-200/50 dark:border-gray-800/40 p-8 md:p-10 shadow-sm text-center"
-        >
-          <GraduationCap className="w-10 h-10 text-slate-300 dark:text-gray-700 mx-auto mb-3" />
-          <p className="text-sm font-bold text-slate-500 dark:text-slate-400">Select a teacher code</p>
-          <p className="text-xs text-slate-400 mt-1">Click on any code above or search by name</p>
-        </motion.div>
+        <div className="mt-4 text-center py-8">
+          <GraduationCap className="w-8 h-8 text-slate-300 dark:text-gray-700 mx-auto mb-2" />
+          <p className="text-xs font-bold text-slate-400">Select a teacher code above</p>
+        </div>
       )}
 
-      {/* ═══ Merge Modal ═══ */}
+      {/* Merge Modal */}
       <AnimatePresence>
         {mergeModal && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
-            onClick={() => setMergeModal(null)}
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={() => setMergeModal(null)}
           >
-            <motion.div
-              initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
-              onClick={e => e.stopPropagation()}
-              className="bg-white dark:bg-[#111827] rounded-3xl border border-slate-200/50 dark:border-gray-800/40 p-5 md:p-6 max-w-sm w-full shadow-2xl"
+            <motion.div initial={{ scale: 0.95, y: 10 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 10 }}
+              onClick={e => e.stopPropagation()} className="bg-white dark:bg-[#111827] rounded-2xl border border-slate-200/50 dark:border-gray-800/40 p-4 max-w-xs w-full shadow-2xl"
             >
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-black text-slate-800 dark:text-white flex items-center gap-2">
-                  🔀 Merged Class
-                  <span className="text-[10px] font-bold text-[#5277f7] bg-[#5277f7]/10 px-2 py-0.5 rounded-md">{mergeModal.teacherCode}</span>
-                </h3>
-                <button onClick={() => setMergeModal(null)} className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-gray-800 flex items-center justify-center text-slate-400 hover:text-slate-600 cursor-pointer">
-                  <X className="w-3.5 h-3.5" />
-                </button>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-xs font-black text-slate-800 dark:text-white">🔀 Merged — {mergeModal.teacherCode}</h3>
+                <button onClick={() => setMergeModal(null)} className="text-slate-400 hover:text-slate-600 cursor-pointer"><X className="w-3.5 h-3.5" /></button>
               </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">These batches are combined in a single lecture:</p>
-              <div className="space-y-2">
-                {mergeModal.batches.map((batch, i) => (
-                  <div key={i} className="flex items-center gap-3 bg-purple-50 dark:bg-purple-950/20 rounded-xl px-3 py-2.5 border border-purple-100 dark:border-purple-900/30">
-                    <span className="w-5 h-5 rounded-full bg-purple-500 text-white text-[10px] font-bold flex items-center justify-center shrink-0">{i + 1}</span>
+              <div className="space-y-1.5">
+                {mergeModal.batches.map((b, i) => (
+                  <div key={i} className="flex items-center gap-2 bg-purple-50 dark:bg-purple-950/20 rounded-lg px-2.5 py-2">
+                    <span className="w-4 h-4 rounded-full bg-purple-500 text-white text-[8px] font-bold flex items-center justify-center shrink-0">{i + 1}</span>
                     <div className="min-w-0">
-                      <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate">{batch}</p>
-                      {mergeModal.rooms[i] && <p className="text-[10px] text-slate-400 font-mono">Room {mergeModal.rooms[i]}</p>}
+                      <p className="text-[10px] font-bold text-slate-700 dark:text-slate-200 truncate">{b}</p>
+                      {mergeModal.rooms[i] && <p className="text-[8px] text-slate-400 font-mono">Room {mergeModal.rooms[i]}</p>}
                     </div>
                   </div>
                 ))}
               </div>
-              <p className="text-[10px] text-slate-400 mt-3 text-center font-mono">
-                {mergeModal.startTime} — {mergeModal.endTime} · {mergeModal.day} · {mergeModal.date}
-              </p>
+              <p className="text-[9px] text-slate-400 mt-2 text-center font-mono">{mergeModal.startTime} — {mergeModal.endTime} · {mergeModal.day}</p>
             </motion.div>
           </motion.div>
         )}
