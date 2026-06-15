@@ -936,6 +936,26 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
                               </th>
                             ))}
                           </tr>
+                          {/* Room Numbers Row */}
+                          <tr>
+                            <th className="sticky left-0 z-10 bg-fuchsia-500/20 px-2 py-1.5 border border-slate-200 dark:border-gray-800 font-bold text-fuchsia-600 dark:text-fuchsia-400 text-[9px]">Room</th>
+                            <th className="bg-fuchsia-500/20 px-2 py-1.5 border border-slate-200 dark:border-gray-800 text-fuchsia-600 dark:text-fuchsia-400 text-[9px]"></th>
+                            <th className="bg-fuchsia-500/20 px-1.5 py-1.5 border border-slate-200 dark:border-gray-800 text-fuchsia-600 dark:text-fuchsia-400 text-[9px] font-bold">Room No</th>
+                            <th className="bg-fuchsia-500/20 px-1.5 py-1.5 border border-slate-200 dark:border-gray-800 text-fuchsia-600 dark:text-fuchsia-400 text-[9px]"></th>
+                            {jeeBatches.map(b => (
+                              <th key={`room-jee-${b.code}`} className="bg-fuchsia-500/20 px-1 py-1.5 border border-slate-200 dark:border-gray-800 font-bold text-fuchsia-600 dark:text-fuchsia-300 text-[9px] whitespace-nowrap">
+                                {batchRooms[b.code] || b.room || "—"}
+                              </th>
+                            ))}
+                            <th className="bg-emerald-500/20 w-1 border border-slate-200 dark:border-gray-800" />
+                            <th className="bg-fuchsia-500/20 px-1.5 py-1.5 border border-slate-200 dark:border-gray-800 text-fuchsia-600 dark:text-fuchsia-400 text-[9px] font-bold">Room No</th>
+                            <th className="bg-fuchsia-500/20 px-1.5 py-1.5 border border-slate-200 dark:border-gray-800 text-fuchsia-600 dark:text-fuchsia-400 text-[9px]"></th>
+                            {neetBatches.map(b => (
+                              <th key={`room-neet-${b.code}`} className="bg-fuchsia-500/20 px-1 py-1.5 border border-slate-200 dark:border-gray-800 font-bold text-fuchsia-600 dark:text-fuchsia-300 text-[9px] whitespace-nowrap">
+                                {batchRooms[b.code] || b.room || "—"}
+                              </th>
+                            ))}
+                          </tr>
                         </thead>
                         <tbody>
                           {previewGrid.rows.map((row, ri) => {
