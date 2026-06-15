@@ -20,11 +20,11 @@ interface GeneratedSlot {
   day: string; date: string; slotNum: number;
   startTime: string; endTime: string;
   batchCode: string; teacherCode: string;
-  room: string; section: "JEE" | "NEET";
+  room: string; section: "JEE" | "NEET" | "DROPPER";
 }
 
 interface BatchInfo {
-  code: string; room: string; section: "JEE" | "NEET";
+  code: string; room: string; section: "JEE" | "NEET" | "DROPPER";
 }
 
 interface TestSlotOverride {
@@ -112,10 +112,16 @@ function formatDateISO(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-function detectSection(batchCode: string): "JEE" | "NEET" {
+function detectSection(batchCode: string): "JEE" | "NEET" | "DROPPER" {
   const upper = batchCode.toUpperCase();
-  if (/LJ|AJ|PJ/.test(upper)) return "JEE";
-  if (/LN|AN|YN|UF|NF/.test(upper)) return "NEET";
+  // Dropper codes: YA, YN = Dropper NEET; PJ = Dropper JEE
+  if (/\bYA|\bYN/.test(upper.replace(/\d/g, ''))) return "DROPPER";
+  if (/\bPJ/.test(upper.replace(/\d/g, ''))) return "DROPPER";
+  // Check with code prefix patterns
+  const codePrefix = upper.match(/\d+-([A-Z]{2})/)?.[1] || '';
+  if (['YA', 'YN', 'PJ'].includes(codePrefix)) return "DROPPER";
+  if (/LJ|AJ/.test(upper)) return "JEE";
+  if (/LN|AN|UF|NF/.test(upper)) return "NEET";
   // Fallback heuristics
   if (/J/.test(upper.replace(/JUN|JUL|JAN/g, ""))) return "JEE";
   if (/N/.test(upper.replace(/JUN|NOV|NAN/g, ""))) return "NEET";
@@ -203,15 +209,18 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
         });
       }
     }
-    // Sort: JEE first, then NEET
+    // Sort: JEE first, NEET second, DROPPER last
+    const ORDER: Record<string, number> = { JEE: 0, NEET: 1, DROPPER: 2 };
     return Array.from(batchSet.values()).sort((a, b) => {
-      if (a.section !== b.section) return a.section === "JEE" ? -1 : 1;
+      const sa = ORDER[a.section] ?? 0, sb = ORDER[b.section] ?? 0;
+      if (sa !== sb) return sa - sb;
       return a.code.localeCompare(b.code);
     });
   }, [activeFaculty, batchRooms]);
 
   const jeeBatches = useMemo(() => allBatches.filter(b => b.section === "JEE"), [allBatches]);
   const neetBatches = useMemo(() => allBatches.filter(b => b.section === "NEET"), [allBatches]);
+  const dropperBatches = useMemo(() => allBatches.filter(b => b.section === "DROPPER"), [allBatches]);
 
   // ─── Fetch Faculty ────────────────────────────────────────────────
 
@@ -327,6 +336,7 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
     const grid: TimetableGridCell[][] = [];
     const jb = jeeBatches;
     const nb = neetBatches;
+    const db = dropperBatches;
 
     // Row 0: Header — empty | empty | JEE section header | ... | separator | NEET section header | ...
     const headerRow: TimetableGridCell[] = [
@@ -340,6 +350,11 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
     headerRow.push({ value: "Start", color: "HEADER" });
     headerRow.push({ value: "End", color: "HEADER" });
     for (const b of nb) headerRow.push({ value: b.code, color: "HEADER" });
+    // DROPPER separator + headers
+    headerRow.push({ value: "", color: "SEP" });
+    headerRow.push({ value: "Start", color: "HEADER" });
+    headerRow.push({ value: "End", color: "HEADER" });
+    for (const b of db) headerRow.push({ value: b.code, color: "HEADER" });
     grid.push(headerRow);
 
     // Row 1: Room numbers
@@ -354,6 +369,11 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
     roomRow.push({ value: "", color: "ROOM" });
     roomRow.push({ value: "", color: "ROOM" });
     for (const b of nb) roomRow.push({ value: batchRooms[b.code] || b.room || "", color: "ROOM" });
+    // DROPPER separator + rooms
+    roomRow.push({ value: "", color: "SEP" });
+    roomRow.push({ value: "", color: "ROOM" });
+    roomRow.push({ value: "", color: "ROOM" });
+    for (const b of db) roomRow.push({ value: batchRooms[b.code] || b.room || "", color: "ROOM" });
     grid.push(roomRow);
 
     // Data rows
@@ -382,6 +402,11 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
         gridRow.push({ value: "", color: "HOLIDAY" });
         gridRow.push({ value: "", color: "HOLIDAY" });
         for (const b of nb) gridRow.push({ value: isFirstSlot ? "HOLIDAY" : "", color: "HOLIDAY" });
+        // DROPPER holiday
+        gridRow.push({ value: "", color: "SEP" });
+        gridRow.push({ value: "", color: "HOLIDAY" });
+        gridRow.push({ value: "", color: "HOLIDAY" });
+        for (const b of db) gridRow.push({ value: isFirstSlot ? "HOLIDAY" : "", color: "HOLIDAY" });
       } else {
         // JEE Start/End
         gridRow.push({ value: row.slot.start, color: "WHITE" });
@@ -401,13 +426,21 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
           const teacher = previewGrid.lookup.get(`${row.day}-${row.slot.id}-${b.code}`) || "";
           gridRow.push({ value: teacher, color: "WHITE" });
         }
+        // DROPPER Separator + Start/End + batches
+        gridRow.push({ value: "", color: "SEP" });
+        gridRow.push({ value: row.slot.start, color: "WHITE" });
+        gridRow.push({ value: row.slot.end, color: "WHITE" });
+        for (const b of db) {
+          const teacher = previewGrid.lookup.get(`${row.day}-${row.slot.id}-${b.code}`) || "";
+          gridRow.push({ value: teacher, color: "WHITE" });
+        }
       }
 
       grid.push(gridRow);
     }
 
     return grid;
-  }, [previewGrid, jeeBatches, neetBatches, batchRooms]);
+  }, [previewGrid, jeeBatches, neetBatches, dropperBatches, batchRooms]);
 
   // ─── Export to Sheet ──────────────────────────────────────────────
 
@@ -749,6 +782,23 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
                         </div>
                       </div>
                     )}
+                    {/* DROPPER section */}
+                    {dropperBatches.length > 0 && (
+                      <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-[9px] font-black tracking-widest uppercase text-orange-500 font-mono bg-orange-500/10 px-2 py-0.5 rounded">DROPPER — {dropperBatches.length}</span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {dropperBatches.map(b => (
+                            <BatchRoomRow
+                              batch={b}
+                              room={batchRooms[b.code] || ""}
+                              onRoomChange={room => setBatchRooms(prev => ({ ...prev, [b.code]: room }))}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </GlassCard>
@@ -884,11 +934,12 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
               {!generating && generatedSlots.length > 0 && previewGrid && (
                 <>
                   {/* Stats */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                     <SummaryPill label="Total Slots" value={generatedSlots.length.toString()} color="blue" />
                     <SummaryPill label="Days" value={previewGrid.workDays.length.toString()} color="green" />
                     <SummaryPill label="JEE Batches" value={jeeBatches.length.toString()} color="purple" />
                     <SummaryPill label="NEET Batches" value={neetBatches.length.toString()} color="cyan" />
+                    <SummaryPill label="Dropper" value={dropperBatches.length.toString()} color="amber" />
                   </div>
 
                   {/* Warnings */}
@@ -981,6 +1032,10 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
                             <th colSpan={2 + neetBatches.length} className="bg-emerald-500/10 text-emerald-500 font-black tracking-widest uppercase px-2 py-1.5 border border-slate-200 dark:border-gray-800 text-center">
                               NEET ({neetBatches.length})
                             </th>
+                            <th className="bg-orange-500/20 w-1 border border-slate-200 dark:border-gray-800" />
+                            <th colSpan={2 + dropperBatches.length} className="bg-orange-500/10 text-orange-500 font-black tracking-widest uppercase px-2 py-1.5 border border-slate-200 dark:border-gray-800 text-center">
+                              DROPPER ({dropperBatches.length})
+                            </th>
                           </tr>
                           {/* Column Headers */}
                           <tr>
@@ -997,6 +1052,14 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
                             <th className="bg-slate-50 dark:bg-[#111827] px-1.5 py-2 border border-slate-200 dark:border-gray-800 font-bold text-slate-500">Start</th>
                             <th className="bg-slate-50 dark:bg-[#111827] px-1.5 py-2 border border-slate-200 dark:border-gray-800 font-bold text-slate-500">End</th>
                             {neetBatches.map(b => (
+                              <th key={b.code} className="bg-slate-50 dark:bg-[#111827] px-1 py-2 border border-slate-200 dark:border-gray-800 font-bold text-slate-500 whitespace-nowrap max-w-[60px] truncate" title={b.code}>
+                                {b.code.length > 12 ? b.code.slice(0, 12) + "…" : b.code}
+                              </th>
+                            ))}
+                            <th className="bg-orange-500/20 w-1 border border-slate-200 dark:border-gray-800" />
+                            <th className="bg-slate-50 dark:bg-[#111827] px-1.5 py-2 border border-slate-200 dark:border-gray-800 font-bold text-slate-500">Start</th>
+                            <th className="bg-slate-50 dark:bg-[#111827] px-1.5 py-2 border border-slate-200 dark:border-gray-800 font-bold text-slate-500">End</th>
+                            {dropperBatches.map(b => (
                               <th key={b.code} className="bg-slate-50 dark:bg-[#111827] px-1 py-2 border border-slate-200 dark:border-gray-800 font-bold text-slate-500 whitespace-nowrap max-w-[60px] truncate" title={b.code}>
                                 {b.code.length > 12 ? b.code.slice(0, 12) + "…" : b.code}
                               </th>
@@ -1018,6 +1081,14 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
                             <th className="bg-fuchsia-500/20 px-1.5 py-1.5 border border-slate-200 dark:border-gray-800 text-fuchsia-600 dark:text-fuchsia-400 text-[9px]"></th>
                             {neetBatches.map(b => (
                               <th key={`room-neet-${b.code}`} className="bg-fuchsia-500/20 px-1 py-1.5 border border-slate-200 dark:border-gray-800 font-bold text-fuchsia-600 dark:text-fuchsia-300 text-[9px] whitespace-nowrap">
+                                {batchRooms[b.code] || b.room || "—"}
+                              </th>
+                            ))}
+                            <th className="bg-orange-500/20 w-1 border border-slate-200 dark:border-gray-800" />
+                            <th className="bg-fuchsia-500/20 px-1.5 py-1.5 border border-slate-200 dark:border-gray-800 text-fuchsia-600 dark:text-fuchsia-400 text-[9px] font-bold">Room No</th>
+                            <th className="bg-fuchsia-500/20 px-1.5 py-1.5 border border-slate-200 dark:border-gray-800 text-fuchsia-600 dark:text-fuchsia-400 text-[9px]"></th>
+                            {dropperBatches.map(b => (
+                              <th key={`room-dropper-${b.code}`} className="bg-fuchsia-500/20 px-1 py-1.5 border border-slate-200 dark:border-gray-800 font-bold text-fuchsia-600 dark:text-fuchsia-300 text-[9px] whitespace-nowrap">
                                 {batchRooms[b.code] || b.room || "—"}
                               </th>
                             ))}
@@ -1080,6 +1151,29 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
                                 </td>
                                 {/* NEET batch cells */}
                                 {neetBatches.map(b => {
+                                  const teacher = row.isHoliday ? "" : (previewGrid.lookup.get(`${row.day}-${row.slot.id}-${b.code}`) || "");
+                                  return (
+                                    <td
+                                      key={b.code}
+                                      className={`px-1 py-1 border border-slate-200 dark:border-gray-800 text-center font-bold font-mono ${
+                                        teacher ? `${dayTextColor}` : "text-slate-300 dark:text-gray-700"
+                                      }`}
+                                    >
+                                      {teacher || "—"}
+                                    </td>
+                                  );
+                                })}
+                                {/* DROPPER Separator */}
+                                <td className="bg-orange-500/10 w-1 border border-slate-200 dark:border-gray-800" />
+                                {/* DROPPER Start/End */}
+                                <td className="px-1 py-1 border border-slate-200 dark:border-gray-800 font-mono text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                                  {row.isHoliday ? "" : row.slot.start}
+                                </td>
+                                <td className="px-1 py-1 border border-slate-200 dark:border-gray-800 font-mono text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                                  {row.isHoliday ? "" : row.slot.end}
+                                </td>
+                                {/* DROPPER batch cells */}
+                                {dropperBatches.map(b => {
                                   const teacher = row.isHoliday ? "" : (previewGrid.lookup.get(`${row.day}-${row.slot.id}-${b.code}`) || "");
                                   return (
                                     <td
@@ -1269,7 +1363,7 @@ function BatchRoomRow({
   return (
     <div className="flex items-center gap-2 bg-slate-50/80 dark:bg-gray-900/30 rounded-xl border border-slate-100 dark:border-gray-800/50 px-3 py-2.5">
       <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${
-        batch.section === "JEE" ? "bg-blue-500/10 text-blue-500" : "bg-emerald-500/10 text-emerald-500"
+        batch.section === "JEE" ? "bg-blue-500/10 text-blue-500" : batch.section === "NEET" ? "bg-emerald-500/10 text-emerald-500" : "bg-orange-500/10 text-orange-500"
       }`}>
         {batch.section}
       </span>

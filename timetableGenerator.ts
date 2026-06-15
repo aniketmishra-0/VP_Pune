@@ -45,13 +45,13 @@ export interface GeneratedSlot {
   batchCode: string;
   teacherCode: string;
   room: string;
-  section: "JEE" | "NEET";
+  section: "JEE" | "NEET" | "DROPPER";
 }
 
 export interface BatchInfo {
   code: string;
   room: string;
-  section: "JEE" | "NEET";
+  section: "JEE" | "NEET" | "DROPPER";
 }
 
 export interface GenerationResult {

@@ -3179,7 +3179,7 @@ app.post("/api/timetable/generate", verifyRequest, superAdminOnly, async (req, r
     const batchInfos: BatchInfo[] = batches.map((b: any) => ({
       code: String(b.code || "").trim(),
       room: String(b.room || "").trim(),
-      section: b.section === "NEET" ? "NEET" : "JEE",
+      section: b.section === "NEET" ? "NEET" : b.section === "DROPPER" ? "DROPPER" : "JEE",
     }));
 
     const result = generateTimetable(faculty, batchInfos, genConfig);
