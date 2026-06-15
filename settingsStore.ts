@@ -541,8 +541,9 @@ export async function readFacultyDetails(
 
 /**
  * Read batch → room mappings from the latest (most recent) timetable tab.
- * Reads rows 1-2: header row has batch codes, row 2 has "Room No" and room values.
- * Returns: Record<batchCode, roomNumber>
+ * Reads first few rows: header row has batch codes, next row has room numbers.
+ * Returns rooms keyed by BOTH raw batch code and normalized variants
+ * (with/without year suffix) to handle inconsistent formatting.
  */
 export async function readLatestSheetRooms(
   spreadsheetId: string = TIMETABLE_SPREADSHEET_ID,
@@ -551,20 +552,21 @@ export async function readLatestSheetRooms(
   const metaRes = await timetableApiFetch(spreadsheetId, "?fields=sheets.properties.title");
   const sheets: { properties: { title: string } }[] = metaRes.sheets || [];
   
-  // Filter out system tabs (Faculty Details, Settings, etc.)
+  // Filter out system tabs
+  const SYSTEM_TABS = new Set(["Faculty Details", "Settings", "Activity Log", "Notifications", "Timetable Config"]);
   const timetableTabs = sheets
     .map(s => s.properties.title)
-    .filter(t => !["Faculty Details", "Settings", "Activity Log", "Notifications", "Timetable Config"].includes(t));
+    .filter(t => !SYSTEM_TABS.has(t));
   
   if (timetableTabs.length === 0) return {};
   
   // Pick the LAST tab (most recent timetable)
   const latestTab = timetableTabs[timetableTabs.length - 1];
   
-  // 2. Read first 2 rows (header + rooms)
+  // 2. Read first 5 rows (cover different sheet layouts)
   const dataRes = await timetableApiFetch(
     spreadsheetId,
-    `/values/${encodeURIComponent(latestTab)}!A1:BZ3?majorDimension=ROWS`,
+    `/values/${encodeURIComponent(latestTab)}!A1:CZ5?majorDimension=ROWS`,
   );
   const rows: string[][] = dataRes.values || [];
   if (rows.length < 2) return {};
@@ -573,7 +575,7 @@ export async function readLatestSheetRooms(
   let headerRow: string[] = [];
   let roomRow: string[] = [];
   
-  for (let i = 0; i < Math.min(rows.length, 3); i++) {
+  for (let i = 0; i < Math.min(rows.length, 5); i++) {
     if (rows[i].some(c => (c || "").trim().startsWith("27-"))) {
       headerRow = rows[i];
       // Room row is the next one
@@ -584,16 +586,31 @@ export async function readLatestSheetRooms(
   
   if (headerRow.length === 0) return {};
 
-  // 3. Build batch → room map
+  // 3. Build batch → room map with NORMALIZED keys
+  // Store under: raw key, with year, without year
   const rooms: Record<string, string> = {};
+  const currentYear = new Date().getFullYear().toString(); // "2026"
+  
   for (let c = 0; c < headerRow.length; c++) {
     const batch = (headerRow[c] || "").trim();
     if (!batch.startsWith("27-")) continue;
     
     const room = (roomRow[c] || "").trim();
-    if (!room || room.toLowerCase() === "room no" || room.toLowerCase() === "room no.") continue;
+    if (!room || room.toLowerCase().startsWith("room")) continue;
     
+    // Store under the raw key as-is
     rooms[batch] = room;
+    
+    // Also store under normalized variants
+    const hasYear = / \d{4}$/.test(batch);
+    if (hasYear) {
+      // "27-LJ151MA 2026" → also store as "27-LJ151MA"
+      const withoutYear = batch.replace(/ \d{4}$/, "");
+      rooms[withoutYear] = room;
+    } else {
+      // "27-LJ151NA" → also store as "27-LJ151NA 2026"
+      rooms[`${batch} ${currentYear}`] = room;
+    }
   }
   
   return rooms;

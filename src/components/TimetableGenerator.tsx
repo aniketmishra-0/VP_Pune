@@ -867,7 +867,7 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
                           {jeeBatches.map(b => (
                             <BatchRoomRow
                               batch={b}
-                              room={batchRooms[b.code] || ""}
+                              room={batchRooms[b.code] || getDefaultRoom(b.code) || ""}
                               onRoomChange={room => setBatchRooms(prev => ({ ...prev, [b.code]: room }))}
                             />
                           ))}
@@ -884,7 +884,7 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
                           {neetBatches.map(b => (
                             <BatchRoomRow
                               batch={b}
-                              room={batchRooms[b.code] || ""}
+                              room={batchRooms[b.code] || getDefaultRoom(b.code) || ""}
                               onRoomChange={room => setBatchRooms(prev => ({ ...prev, [b.code]: room }))}
                             />
                           ))}
@@ -901,7 +901,7 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
                           {dropperBatches.map(b => (
                             <BatchRoomRow
                               batch={b}
-                              room={batchRooms[b.code] || ""}
+                              room={batchRooms[b.code] || getDefaultRoom(b.code) || ""}
                               onRoomChange={room => setBatchRooms(prev => ({ ...prev, [b.code]: room }))}
                             />
                           ))}
