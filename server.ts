@@ -2535,10 +2535,29 @@ let timetableLastLoaded: string | null = null;
 let timetableLoading: boolean = false;
 let timetableError: string | null = null;
 
-/** Read the timetable URL from config.json or env */
+/** Cached timetable URL loaded from sheet (survives deploys) */
+let cachedTimetableUrl: string = "";
+
+/** Read the timetable URL — priority: cached (from sheet) > config.json > env */
 function getTimetableUrl(): string {
+  if (cachedTimetableUrl) return cachedTimetableUrl;
   const config = getAppConfig();
   return (config as any).TIMETABLE_URL || process.env.TIMETABLE_URL || "";
+}
+
+/** Load timetable URL from Google Sheet's TimetableConfig tab (runs on startup) */
+async function loadTimetableUrlFromSheet() {
+  if (!settingsStore.isConfigured()) return;
+  try {
+    await settingsStore.ensureTimetableConfigHeader();
+    const entries = await settingsStore.readTimetableConfig();
+    if (entries.length > 0 && entries[0].sheetLink) {
+      cachedTimetableUrl = entries[0].sheetLink;
+      console.log(`[TimetableConfig] Loaded URL from sheet: ${entries[0].sheetName || "(unnamed)"}`);
+    }
+  } catch (err) {
+    console.error("[TimetableConfig] Failed to read from sheet:", (err as Error).message);
+  }
 }
 
 /** Convert Excel time serial (0-1 fraction of day) to "H:MM AM/PM" string */
@@ -2968,10 +2987,26 @@ app.post("/api/timetable/config", verifyRequest, superAdminOnly, async (req, res
       return res.status(400).json({ error: "A valid 'url' string is required." });
     }
 
+    const trimmedUrl = url.trim();
+
     // Persist to config.json alongside existing keys
     const currentConfig = getAppConfig() as any;
-    currentConfig.TIMETABLE_URL = url.trim();
+    currentConfig.TIMETABLE_URL = trimmedUrl;
     fs.writeFileSync(CONFIG_PATH, JSON.stringify(currentConfig, null, 2), "utf-8");
+
+    // Update cached URL
+    cachedTimetableUrl = trimmedUrl;
+
+    // Also persist to Google Sheet (survives deploys)
+    if (settingsStore.isConfigured()) {
+      try {
+        await settingsStore.writeTimetableConfig([
+          { sheetName: "Weekly Timetable", sheetLink: trimmedUrl },
+        ]);
+      } catch (e) {
+        console.error("[TimetableConfig] Failed to write to sheet:", (e as Error).message);
+      }
+    }
 
     const admin = String(req.headers["x-user-email"] || "").trim().toLowerCase();
     if (admin) logActivity(admin, "timetable_config", `URL updated`);
@@ -3052,7 +3087,8 @@ app.post("/api/timetable/teachers", verifyRequest, superAdminOnly, (req, res) =>
 });
 
 // Auto-load timetable on startup if a URL is configured
-loadTimetableData();
+// Load timetable URL from sheet first, THEN load data
+loadTimetableUrlFromSheet().then(() => loadTimetableData()).catch(() => loadTimetableData());
 
 
 // Configure Vite integration or static file server
