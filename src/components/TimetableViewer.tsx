@@ -78,7 +78,7 @@ export default function TimetableViewer({ adminHeaders }: TimetableViewerProps) 
   const [allCodes, setAllCodes] = useState<TeacherCode[]>([]);
   const [lectures, setLectures] = useState<TimetableLecture[]>([]);
   const [codesExpanded, setCodesExpanded] = useState(false);
-  const [collapsedDays, setCollapsedDays] = useState<Set<string>>(new Set());
+  const [expandedDay, setExpandedDay] = useState<string | null>(null);
   const [mergeModal, setMergeModal] = useState<TimetableLecture | null>(null);
   const [isDemo, setIsDemo] = useState(false);
   const [lastLoaded, setLastLoaded] = useState<string | null>(null);
@@ -159,7 +159,7 @@ export default function TimetableViewer({ adminHeaders }: TimetableViewerProps) 
     setSearchQuery("");
     setShowSuggestions(false);
     setInputFocused(false);
-    setCollapsedDays(new Set());
+    setExpandedDay(null);
     setCodesExpanded(false);
     inputRef.current?.blur();
   };
@@ -170,7 +170,7 @@ export default function TimetableViewer({ adminHeaders }: TimetableViewerProps) 
     setLectures([]);
     setShowSuggestions(false);
     setCodesExpanded(false);
-    setCollapsedDays(new Set());
+    setExpandedDay(null);
   };
 
   const groupedByDay = useMemo(() => {
@@ -203,7 +203,7 @@ export default function TimetableViewer({ adminHeaders }: TimetableViewerProps) 
 
   const MAX = 14;
   const chipList = codesExpanded ? allCodes : allCodes.slice(0, MAX);
-  const toggleDay = (d: string) => setCollapsedDays(p => { const n = new Set(p); n.has(d) ? n.delete(d) : n.add(d); return n; });
+  const toggleDay = (d: string) => setExpandedDay(prev => prev === d ? null : d);
 
   // ─── Render ───────────────────────────────────────────────────────
 
@@ -226,23 +226,23 @@ export default function TimetableViewer({ adminHeaders }: TimetableViewerProps) 
       {/* ═══ Main Card ═══ */}
       <div className="bg-white dark:bg-[#111827] rounded-2xl border border-slate-200/50 dark:border-gray-800/40 shadow-sm overflow-visible">
         {/* Title */}
-        <div className="flex items-center justify-between px-3 py-2 md:px-4 md:py-2.5 border-b border-slate-100 dark:border-gray-800/40">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#5277f7] to-[#7c3aed] flex items-center justify-center">
-              <Calendar className="w-3.5 h-3.5 text-white" />
+        <div className="flex items-center justify-between px-4 py-3 md:px-5 md:py-3.5 border-b border-slate-100 dark:border-gray-800/40">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#5277f7] to-[#7c3aed] flex items-center justify-center">
+              <Calendar className="w-4.5 h-4.5 text-white" />
             </div>
-            <h2 className="text-xs md:text-sm font-bold text-slate-800 dark:text-white">Weekly Schedule</h2>
-            {lastLoaded && <span className="text-[8px] text-slate-400 font-mono hidden sm:inline">· {new Date(lastLoaded).toLocaleDateString()}</span>}
+            <h2 className="text-sm md:text-base font-bold text-slate-800 dark:text-white">Weekly Schedule</h2>
+            {lastLoaded && <span className="text-[9px] text-slate-400 font-mono hidden sm:inline">· {new Date(lastLoaded).toLocaleDateString()}</span>}
           </div>
-          <button onClick={handleRefresh} disabled={isLoading} className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-[#5277f7] hover:bg-slate-100 dark:hover:bg-gray-800 transition-all cursor-pointer">
-            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin text-[#5277f7]" : ""}`} />
+          <button onClick={handleRefresh} disabled={isLoading} className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-400 hover:text-[#5277f7] hover:bg-slate-100 dark:hover:bg-gray-800 transition-all cursor-pointer">
+            <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin text-[#5277f7]" : ""}`} />
           </button>
         </div>
 
         {/* Search + Suggestions */}
-        <div className="px-3 pt-2 pb-1.5 md:px-4 relative" ref={searchRef}>
+        <div className="px-4 pt-3 pb-2 md:px-5 relative" ref={searchRef}>
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
             <input
               ref={inputRef}
               type="text"
@@ -250,11 +250,11 @@ export default function TimetableViewer({ adminHeaders }: TimetableViewerProps) 
               onChange={e => handleSearchInput(e.target.value)}
               onFocus={() => { setInputFocused(true); if (searchQuery) setShowSuggestions(true); }}
               placeholder={selectedCode ? `${selectedCode} — ${getName(selectedCode) || "Selected"}` : "Search by name or code..."}
-              className="w-full bg-slate-50 dark:bg-gray-900/40 rounded-lg border border-slate-200 dark:border-gray-800 pl-8 pr-8 py-2 text-xs text-slate-700 dark:text-slate-200 outline-none focus:border-[#5277f7] transition-colors"
+              className="w-full bg-slate-50 dark:bg-gray-900/40 rounded-xl border border-slate-200 dark:border-gray-800 pl-10 pr-10 py-2.5 text-sm text-slate-700 dark:text-slate-200 outline-none focus:border-[#5277f7] transition-colors"
             />
             {(searchQuery || selectedCode) && (
-              <button onClick={handleClear} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer p-1.5 -mr-1">
-                <X className="w-3.5 h-3.5" />
+              <button onClick={handleClear} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer p-1.5 -mr-1">
+                <X className="w-4 h-4" />
               </button>
             )}
           </div>
@@ -265,8 +265,8 @@ export default function TimetableViewer({ adminHeaders }: TimetableViewerProps) 
               <motion.div
                 initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}
                 transition={{ duration: 0.12 }}
-                className="absolute left-3 right-3 md:left-4 md:right-4 top-full mt-0.5 bg-white dark:bg-[#1a2332] rounded-xl border border-slate-200 dark:border-gray-700/80 shadow-2xl z-50 overflow-hidden"
-                style={{ maxHeight: "300px", overflowY: "auto" }}
+                className="absolute left-4 right-4 md:left-5 md:right-5 top-full mt-1 bg-white dark:bg-[#1a2332] rounded-xl border border-slate-200 dark:border-gray-700/80 shadow-2xl z-50 overflow-hidden"
+                style={{ maxHeight: "320px", overflowY: "auto" }}
               >
                 {suggestions.map((c, i) => {
                   const name = getName(c.code);
@@ -275,22 +275,22 @@ export default function TimetableViewer({ adminHeaders }: TimetableViewerProps) 
                   const nameMatch = name.toLowerCase().includes(q);
                   return (
                     <button key={c.code} onClick={() => selectTeacher(c.code)}
-                      className={`w-full flex items-center gap-3 px-3 py-2.5 text-left cursor-pointer hover:bg-[#5277f7]/5 dark:hover:bg-[#5277f7]/10 active:bg-[#5277f7]/10 transition-colors ${
+                      className={`w-full flex items-center gap-3 px-4 py-3 text-left cursor-pointer hover:bg-[#5277f7]/5 dark:hover:bg-[#5277f7]/10 active:bg-[#5277f7]/10 transition-colors ${
                         i !== suggestions.length - 1 ? "border-b border-slate-100 dark:border-gray-800/40" : ""
                       }`}
                     >
-                      <div className="w-8 h-8 rounded-lg bg-[#5277f7]/10 dark:bg-[#5277f7]/20 flex items-center justify-center shrink-0">
-                        <span className="text-[10px] font-black text-[#5277f7] font-mono">{c.code}</span>
+                      <div className="w-9 h-9 rounded-lg bg-[#5277f7]/10 dark:bg-[#5277f7]/20 flex items-center justify-center shrink-0">
+                        <span className="text-xs font-black text-[#5277f7] font-mono">{c.code}</span>
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5">
-                          <span className={`text-xs font-bold ${codeMatch ? "text-[#5277f7]" : "text-slate-700 dark:text-slate-200"}`}>{c.code}</span>
-                          {name && <span className="text-[10px] text-slate-400">·</span>}
-                          {name && <span className={`text-[11px] truncate ${nameMatch ? "text-[#5277f7] font-medium" : "text-slate-500 dark:text-slate-400"}`}>{name}</span>}
+                          <span className={`text-sm font-bold ${codeMatch ? "text-[#5277f7]" : "text-slate-700 dark:text-slate-200"}`}>{c.code}</span>
+                          {name && <span className="text-xs text-slate-400">·</span>}
+                          {name && <span className={`text-xs truncate ${nameMatch ? "text-[#5277f7] font-medium" : "text-slate-500 dark:text-slate-400"}`}>{name}</span>}
                         </div>
-                        <p className="text-[9px] text-slate-400">{c.count} lecture{c.count !== 1 ? "s" : ""} this week</p>
+                        <p className="text-[10px] text-slate-400">{c.count} lecture{c.count !== 1 ? "s" : ""} this week</p>
                       </div>
-                      <ChevronDown className="w-3 h-3 text-slate-300 dark:text-gray-600 -rotate-90 shrink-0" />
+                      <ChevronDown className="w-4 h-4 text-slate-300 dark:text-gray-600 -rotate-90 shrink-0" />
                     </button>
                   );
                 })}
@@ -301,26 +301,26 @@ export default function TimetableViewer({ adminHeaders }: TimetableViewerProps) 
 
         {/* Chips — hidden when a code is selected */}
         {!selectedCode && !inputFocused && (
-          <div className="px-3 pb-2.5 md:px-4">
-            <button onClick={() => setCodesExpanded(!codesExpanded)} className="flex items-center gap-1 mb-1.5 cursor-pointer">
-              <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform ${codesExpanded ? "" : "-rotate-90"}`} />
-              <span className="text-[9px] font-bold tracking-widest uppercase text-slate-400 font-mono">{allCodes.length} teachers</span>
+          <div className="px-4 pb-3 md:px-5">
+            <button onClick={() => setCodesExpanded(!codesExpanded)} className="flex items-center gap-1.5 mb-2 cursor-pointer">
+              <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${codesExpanded ? "" : "-rotate-90"}`} />
+              <span className="text-[10px] font-bold tracking-widest uppercase text-slate-400 font-mono">{allCodes.length} teachers</span>
             </button>
-            <div className="flex flex-wrap gap-1">
+            <div className="flex flex-wrap gap-1.5">
               {chipList.map(c => (
                 <button key={c.code} onClick={() => selectTeacher(c.code)}
                   title={getName(c.code) ? `${getName(c.code)}` : c.code}
-                  className="inline-flex items-center gap-0.5 px-2 py-1 rounded-md text-[10px] font-bold bg-slate-100 dark:bg-gray-800/60 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-gray-700 active:scale-95 cursor-pointer transition-all"
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-slate-100 dark:bg-gray-800/60 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-gray-700 active:scale-95 cursor-pointer transition-all"
                 >
                   <span className="font-mono">{c.code}</span>
-                  <span className="text-[8px] text-slate-400/70">{c.count}</span>
+                  <span className="text-[9px] text-slate-400/70">{c.count}</span>
                 </button>
               ))}
               {!codesExpanded && allCodes.length > MAX && (
-                <button onClick={() => setCodesExpanded(true)} className="px-2 py-1 rounded-md text-[10px] font-bold bg-[#5277f7]/10 text-[#5277f7] cursor-pointer hover:bg-[#5277f7]/20 transition-all">+{allCodes.length - MAX}</button>
+                <button onClick={() => setCodesExpanded(true)} className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-[#5277f7]/10 text-[#5277f7] cursor-pointer hover:bg-[#5277f7]/20 transition-all">+{allCodes.length - MAX}</button>
               )}
               {codesExpanded && allCodes.length > MAX && (
-                <button onClick={() => setCodesExpanded(false)} className="px-2 py-1 rounded-md text-[10px] font-bold text-slate-400 cursor-pointer hover:text-slate-600">show less</button>
+                <button onClick={() => setCodesExpanded(false)} className="px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-400 cursor-pointer hover:text-slate-600">show less</button>
               )}
             </div>
           </div>
@@ -328,23 +328,23 @@ export default function TimetableViewer({ adminHeaders }: TimetableViewerProps) 
 
         {/* ═══ Selected Teacher Info Strip ═══ */}
         {selectedCode && lectures.length > 0 && (
-          <div className="px-3 py-2.5 md:px-4 border-t border-slate-100 dark:border-gray-800/40">
+          <div className="px-4 py-3 md:px-5 border-t border-slate-100 dark:border-gray-800/40">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#5277f7] to-[#7c3aed] flex items-center justify-center shrink-0 shadow-md shadow-[#5277f7]/20">
-                <span className="text-[10px] font-black text-white font-mono">{selectedCode}</span>
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#5277f7] to-[#7c3aed] flex items-center justify-center shrink-0 shadow-md shadow-[#5277f7]/20">
+                <span className="text-xs font-black text-white font-mono">{selectedCode}</span>
               </div>
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-sm font-black text-slate-800 dark:text-white font-mono">{selectedCode}</span>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-base font-black text-slate-800 dark:text-white font-mono">{selectedCode}</span>
                   {getName(selectedCode) && (
-                    <span className="text-xs text-slate-500 dark:text-slate-400 truncate">— {getName(selectedCode)}</span>
+                    <span className="text-sm text-slate-500 dark:text-slate-400 truncate">— {getName(selectedCode)}</span>
                   )}
                 </div>
-                <div className="flex items-center gap-3 mt-0.5 text-[10px] text-slate-400">
-                  <span className="flex items-center gap-0.5"><BookOpen className="w-3 h-3 text-[#5277f7]" />{stats.lecs} lectures</span>
-                  <span className="flex items-center gap-0.5"><Calendar className="w-3 h-3 text-emerald-500" />{stats.days} days</span>
-                  <span className="flex items-center gap-0.5 hidden sm:flex"><Layers className="w-3 h-3 text-amber-500" />{stats.batches} batches</span>
-                  <span className="flex items-center gap-0.5"><Timer className="w-3 h-3 text-purple-500" />~{stats.hrs}h</span>
+                <div className="flex items-center gap-3 mt-1 text-xs text-slate-400">
+                  <span className="flex items-center gap-1"><BookOpen className="w-3.5 h-3.5 text-[#5277f7]" />{stats.lecs}</span>
+                  <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5 text-emerald-500" />{stats.days}d</span>
+                  <span className="flex items-center gap-1 hidden sm:flex"><Layers className="w-3.5 h-3.5 text-amber-500" />{stats.batches}</span>
+                  <span className="flex items-center gap-1"><Timer className="w-3.5 h-3.5 text-purple-500" />~{stats.hrs}h</span>
                 </div>
               </div>
             </div>
@@ -356,80 +356,80 @@ export default function TimetableViewer({ adminHeaders }: TimetableViewerProps) 
       {selectedCode && lectures.length > 0 && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-3">
           {groupedByDay.length > 1 && (
-            <div className="flex gap-3 mb-2 px-0.5">
-              <button onClick={() => setCollapsedDays(new Set())} className="text-[10px] font-bold text-[#5277f7] cursor-pointer hover:underline">Expand All</button>
-              <span className="text-slate-300 dark:text-gray-700 text-[10px]">·</span>
-              <button onClick={() => setCollapsedDays(new Set(groupedByDay.map(([d]) => d)))} className="text-[10px] font-bold text-[#5277f7] cursor-pointer hover:underline">Collapse All</button>
+            <div className="flex gap-3 mb-2.5 px-0.5">
+              <button onClick={() => setExpandedDay(groupedByDay[0]?.[0] || null)} className="text-xs font-bold text-[#5277f7] cursor-pointer hover:underline">Expand All</button>
+              <span className="text-slate-300 dark:text-gray-700 text-xs">·</span>
+              <button onClick={() => setExpandedDay(null)} className="text-xs font-bold text-[#5277f7] cursor-pointer hover:underline">Collapse All</button>
             </div>
           )}
 
-          <div className="space-y-2">
+          <div className="space-y-2.5">
             {groupedByDay.map(([day, { date, lectures: dl }], di) => {
-              const col = collapsedDays.has(day);
+              const isExpanded = expandedDay === day;
               const colors = DAY_COLORS[day] || { dot: "bg-slate-400", bg: "border-l-slate-400" };
               return (
                 <motion.div key={day} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: di * 0.05 }}
                   className={`bg-white dark:bg-[#111827] rounded-xl border border-slate-200/50 dark:border-gray-800/40 shadow-sm overflow-hidden border-l-[3px] ${colors.bg}`}
                 >
                   <button onClick={() => toggleDay(day)}
-                    className="w-full flex items-center justify-between px-3 py-2.5 md:px-4 md:py-3 cursor-pointer hover:bg-slate-50/50 dark:hover:bg-gray-800/20 transition-colors"
+                    className="w-full flex items-center justify-between px-4 py-3 md:px-5 md:py-3.5 cursor-pointer hover:bg-slate-50/50 dark:hover:bg-gray-800/20 transition-colors"
                   >
                     <div className="flex items-center gap-2.5">
-                      <span className="text-xs md:text-sm font-black text-slate-700 dark:text-slate-200">
+                      <span className="text-sm md:text-base font-black text-slate-700 dark:text-slate-200">
                         <span className="md:hidden">{DAY_SHORT[day] || day}</span>
                         <span className="hidden md:inline">{day}</span>
                       </span>
-                      <span className="text-[9px] text-slate-400 font-mono bg-slate-100 dark:bg-gray-800/50 px-1.5 py-0.5 rounded">{date}</span>
+                      <span className="text-[10px] text-slate-400 font-mono bg-slate-100 dark:bg-gray-800/50 px-2 py-0.5 rounded">{date}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-bold text-slate-400 bg-slate-100 dark:bg-gray-800/50 px-1.5 py-0.5 rounded-md">{dl.length} lec</span>
-                      <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${col ? "-rotate-90" : ""}`} />
+                      <span className="text-xs font-bold text-slate-400 bg-slate-100 dark:bg-gray-800/50 px-2 py-0.5 rounded-md">{dl.length}</span>
+                      <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isExpanded ? "" : "-rotate-90"}`} />
                     </div>
                   </button>
 
                   <AnimatePresence>
-                    {!col && (
-                      <motion.div initial={{ height: 0 }} animate={{ height: "auto" }} exit={{ height: 0 }} transition={{ duration: 0.15 }} className="overflow-hidden">
-                        <div className="px-3 pb-3 md:px-4 space-y-2">
+                    {isExpanded && (
+                      <motion.div initial={{ height: 0 }} animate={{ height: "auto" }} exit={{ height: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden">
+                        <div className="px-4 pb-3.5 md:px-5 space-y-2.5">
                           {dl.map((l, li) => (
-                            <motion.div key={li} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: li * 0.03 }}
-                              className="bg-slate-50/80 dark:bg-gray-900/30 rounded-xl border border-slate-100 dark:border-gray-800/50 p-3 md:p-3.5"
+                            <motion.div key={li} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: li * 0.04 }}
+                              className="bg-slate-50/80 dark:bg-gray-900/30 rounded-xl border border-slate-100 dark:border-gray-800/50 p-3.5 md:p-4"
                             >
                               <div className="flex items-start justify-between gap-2">
                                 <div className="min-w-0 flex-1">
                                   {/* Time */}
-                                  <div className="flex items-center gap-2 mb-1.5">
-                                    <div className="flex items-center gap-1 bg-[#5277f7]/10 rounded-md px-2 py-0.5">
-                                      <Clock className="w-3 h-3 text-[#5277f7]" />
-                                      <span className="text-[11px] md:text-xs font-bold text-[#5277f7] font-mono">{l.startTime}</span>
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <div className="flex items-center gap-1.5 bg-[#5277f7]/10 rounded-lg px-2.5 py-1">
+                                      <Clock className="w-3.5 h-3.5 text-[#5277f7]" />
+                                      <span className="text-xs md:text-sm font-bold text-[#5277f7] font-mono">{l.startTime}</span>
                                     </div>
-                                    <span className="text-[9px] text-slate-400">→</span>
-                                    <div className="flex items-center gap-1 bg-slate-200/50 dark:bg-gray-800/50 rounded-md px-2 py-0.5">
-                                      <span className="text-[11px] md:text-xs font-bold text-slate-600 dark:text-slate-300 font-mono">{l.endTime}</span>
+                                    <span className="text-xs text-slate-400">→</span>
+                                    <div className="flex items-center gap-1.5 bg-slate-200/50 dark:bg-gray-800/50 rounded-lg px-2.5 py-1">
+                                      <span className="text-xs md:text-sm font-bold text-slate-600 dark:text-slate-300 font-mono">{l.endTime}</span>
                                     </div>
                                   </div>
                                   {/* Batches */}
                                   {l.batches.map((b, bi) => (
-                                    <div key={bi} className="flex items-center gap-1.5 mb-0.5">
-                                      <BookOpen className="w-3 h-3 text-emerald-500 shrink-0" />
-                                      <span className="text-[11px] text-slate-600 dark:text-slate-300">{b}</span>
+                                    <div key={bi} className="flex items-center gap-2 mb-1">
+                                      <BookOpen className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                      <span className="text-xs text-slate-600 dark:text-slate-300">{b}</span>
                                     </div>
                                   ))}
                                   {/* Room */}
                                   {l.rooms.some(r => r) && (
-                                    <div className="flex items-center gap-1.5 mt-0.5">
-                                      <MapPin className="w-3 h-3 text-orange-400 shrink-0" />
-                                      <span className="text-[10px] text-slate-400 font-mono">Room {l.rooms.filter(Boolean).join(", ")}</span>
+                                    <div className="flex items-center gap-2 mt-1">
+                                      <MapPin className="w-3.5 h-3.5 text-orange-400 shrink-0" />
+                                      <span className="text-xs text-slate-400 font-mono">Room {l.rooms.filter(Boolean).join(", ")}</span>
                                     </div>
                                   )}
                                 </div>
                                 {/* Badges */}
-                                <div className="flex flex-col gap-1 shrink-0">
+                                <div className="flex flex-col gap-1.5 shrink-0">
                                   {l.isMerged && (
-                                    <button onClick={() => setMergeModal(l)} className="text-[8px] font-bold px-2 py-1 rounded-lg bg-purple-100 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 cursor-pointer hover:bg-purple-200 transition-colors">🔀 Merged</button>
+                                    <button onClick={() => setMergeModal(l)} className="text-[9px] font-bold px-2.5 py-1 rounded-lg bg-purple-100 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 cursor-pointer hover:bg-purple-200 transition-colors">🔀 Merged</button>
                                   )}
                                   {l.isExtraLecture && (
-                                    <span className="text-[8px] font-bold px-2 py-1 rounded-lg bg-amber-100 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400">⭐ Extra</span>
+                                    <span className="text-[9px] font-bold px-2.5 py-1 rounded-lg bg-amber-100 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400">⭐ Extra</span>
                                   )}
                                 </div>
                               </div>
