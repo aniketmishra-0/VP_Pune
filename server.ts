@@ -2544,12 +2544,14 @@ function getTimetableUrl(): string {
 /**
  * Fully-dynamic timetable sheet parser.
  *
- * Expected sheet layout (rows are 0-indexed in `sheetData`):
- *   Row 0 : Header row 1 — columns A-D have DAY / DATE / Start Time / End Time,
- *           columns E+ have the first part of batch info.
- *   Row 1 : Header row 2 — columns E+ have batch names (or second part).
- *   Row 2 : Header row 3 — columns E+ have room / classroom numbers.
- *   Row 3+: Data rows with time-slot entries; teacher codes in the batch columns.
+ * The sheet can have MULTIPLE "Start Time" / "End Time" column pairs.
+ * Different batch groups may use different time columns.
+ *
+ * Strategy:
+ *   1. Scan header rows for ALL "Start Time" / "End Time" pairs.
+ *   2. Identify batch columns (anything that is not Day/Date/Time/Room metadata).
+ *   3. Assign each batch column to the nearest time-pair to its LEFT.
+ *   4. Parse data rows using the correct time for each batch group.
  *
  * Merged cells (DAY / DATE spanning multiple time rows) are handled by
  * carrying forward the last non-empty value.
@@ -2560,36 +2562,132 @@ function parseTimetableSheet(sheetData: any[][]): TimetableLecture[] {
   const row0 = sheetData[0] || [];
   const row1 = sheetData[1] || [];
   const row2 = sheetData[2] || [];
+  const maxCols = Math.max(row0.length, row1.length, row2.length);
 
-  // --- Discover batch columns (index 4+) dynamically ---
+  // --- Helper label detectors ---
+  const isStartLabel = (val: string) => {
+    const v = (val || "").toLowerCase().replace(/[^a-z]/g, "");
+    return v === "starttime" || v === "start";
+  };
+  const isEndLabel = (val: string) => {
+    const v = (val || "").toLowerCase().replace(/[^a-z]/g, "");
+    return v === "endtime" || v === "end";
+  };
+  const isDayLabel = (val: string) => /^day$/i.test((val || "").trim());
+  const isDateLabel = (val: string) => /^date$/i.test((val || "").trim());
+  const isRoomLabel = (val: string) => /room/i.test((val || "").trim());
+
+  // Helper: get cell string from all 3 header rows
+  const getHeaderVals = (col: number): string[] => [
+    String(row0[col] ?? "").trim(),
+    String(row1[col] ?? "").trim(),
+    String(row2[col] ?? "").trim(),
+  ];
+
+  // --- Step 1: Find all metadata columns (Day, Date, Start Time, End Time, Room) ---
+  const metadataCols = new Set<number>();
+  const startCols: number[] = [];
+  const endCols: number[] = [];
+
+  for (let col = 0; col < maxCols; col++) {
+    const vals = getHeaderVals(col);
+    const any = vals.join(" ");
+
+    if (vals.some(v => isDayLabel(v)))   metadataCols.add(col);
+    if (vals.some(v => isDateLabel(v)))  metadataCols.add(col);
+    if (vals.some(v => isRoomLabel(v)))  metadataCols.add(col);
+
+    if (vals.some(v => isStartLabel(v)) || isStartLabel(any)) {
+      startCols.push(col);
+      metadataCols.add(col);
+    }
+    if (vals.some(v => isEndLabel(v)) || isEndLabel(any)) {
+      endCols.push(col);
+      metadataCols.add(col);
+    }
+  }
+
+  // --- Step 2: Pair Start and End columns ---
+  interface TimePair { startCol: number; endCol: number; }
+  const timePairs: TimePair[] = [];
+
+  for (const sc of startCols) {
+    // Find closest End Time column to the right (within 3 columns)
+    const matchEnd = endCols.find(ec => ec > sc && ec <= sc + 3);
+    if (matchEnd !== undefined) {
+      timePairs.push({ startCol: sc, endCol: matchEnd });
+    }
+  }
+
+  // Fallback: if no pairs detected, assume cols 2-3
+  if (timePairs.length === 0) {
+    timePairs.push({ startCol: 2, endCol: 3 });
+  }
+
+  console.log(`Timetable parser: detected ${timePairs.length} time group(s): ${JSON.stringify(timePairs)}`);
+
+  // --- Step 3: Find Day and Date columns ---
+  let dayCol = 0;
+  let dateCol = 1;
+  for (let col = 0; col < Math.min(maxCols, 10); col++) {
+    const vals = getHeaderVals(col);
+    if (vals.some(v => isDayLabel(v)))  dayCol = col;
+    if (vals.some(v => isDateLabel(v))) dateCol = col;
+  }
+
+  // --- Step 4: Discover batch columns (everything not metadata) ---
   interface BatchColumn {
     index: number;
     batchName: string;
     room: string;
     isExtra: boolean;
+    timePairIndex: number;
   }
 
   const batchColumns: BatchColumn[] = [];
-  const maxCols = Math.max(row0.length, row1.length, row2.length);
 
-  for (let col = 4; col < maxCols; col++) {
+  for (let col = 0; col < maxCols; col++) {
+    if (metadataCols.has(col)) continue;
+
     const part0 = String(row0[col] ?? "").trim();
     const part1 = String(row1[col] ?? "").trim();
     const room  = String(row2[col] ?? "").trim();
 
-    // Combine row-0 and row-1 parts into a single batch name
     const parts = [part0, part1].filter(Boolean);
     const batchName = parts.join(" ");
-    if (!batchName) continue; // skip entirely empty header columns
+    if (!batchName) continue;
+
+    // Skip purely numeric columns (e.g., "152", "4")
+    if (/^\d+$/.test(batchName) && batchName.length <= 4) {
+      metadataCols.add(col);
+      continue;
+    }
+
+    // Skip room-only headers
+    if (isRoomLabel(batchName)) {
+      metadataCols.add(col);
+      continue;
+    }
 
     const isExtra = /\b(EXTRA|EL|SPECIAL)\b/i.test(batchName);
 
-    batchColumns.push({ index: col, batchName, room, isExtra });
+    // Assign to nearest time-pair to the LEFT
+    let timePairIndex = 0;
+    for (let tp = timePairs.length - 1; tp >= 0; tp--) {
+      if (timePairs[tp].startCol < col) {
+        timePairIndex = tp;
+        break;
+      }
+    }
+
+    batchColumns.push({ index: col, batchName, room, isExtra, timePairIndex });
   }
 
   if (batchColumns.length === 0) return [];
 
-  // --- Parse data rows ---
+  console.log(`Timetable parser: ${batchColumns.length} batch column(s) across ${timePairs.length} time group(s)`);
+
+  // --- Step 5: Parse data rows ---
   const lectures: TimetableLecture[] = [];
   let lastDay = "";
   let lastDate = "";
@@ -2598,43 +2696,56 @@ function parseTimetableSheet(sheetData: any[][]): TimetableLecture[] {
     const row = sheetData[r] || [];
 
     // Handle merged cells for Day & Date
-    const rawDay  = String(row[0] ?? "").trim();
-    const rawDate = String(row[1] ?? "").trim();
+    const rawDay  = String(row[dayCol] ?? "").trim();
+    const rawDate = String(row[dateCol] ?? "").trim();
     if (rawDay)  lastDay  = rawDay;
     if (rawDate) lastDate = rawDate;
 
-    const startTime = String(row[2] ?? "").trim();
-    const endTime   = String(row[3] ?? "").trim();
-    if (!startTime || !endTime) continue; // skip rows with no time info
+    // Check if at least one time pair has valid data
+    const rowHasTime = timePairs.some(tp => {
+      const st = String(row[tp.startCol] ?? "").trim();
+      return st.length > 0;
+    });
+    if (!rowHasTime) continue;
 
-    // Collect teacher codes from all batch columns for this row
-    // Key = teacherCode, Value = { batches[], rooms[], isExtra }
-    const codeMap = new Map<string, { batches: string[]; rooms: string[]; isExtra: boolean }>();
+    // Group by teacherCode + time → combine batches/rooms
+    const codeMap = new Map<string, {
+      batches: string[];
+      rooms: string[];
+      isExtra: boolean;
+      startTime: string;
+      endTime: string;
+    }>();
 
     for (const bc of batchColumns) {
       const cellVal = String(row[bc.index] ?? "").trim();
       if (!cellVal) continue;
 
-      // Teacher codes are typically 2-4 uppercase letters; allow broader matches too
-      const teacherCode = cellVal;
+      const tp = timePairs[bc.timePairIndex];
+      const startTime = String(row[tp.startCol] ?? "").trim();
+      const endTime   = String(row[tp.endCol] ?? "").trim();
+      if (!startTime || !endTime) continue;
 
-      if (!codeMap.has(teacherCode)) {
-        codeMap.set(teacherCode, { batches: [], rooms: [], isExtra: bc.isExtra });
+      const teacherCode = cellVal;
+      const mapKey = `${teacherCode}||${startTime}||${endTime}`;
+
+      if (!codeMap.has(mapKey)) {
+        codeMap.set(mapKey, { batches: [], rooms: [], isExtra: bc.isExtra, startTime, endTime });
       }
-      const entry = codeMap.get(teacherCode)!;
+      const entry = codeMap.get(mapKey)!;
       if (!entry.batches.includes(bc.batchName)) entry.batches.push(bc.batchName);
       if (bc.room && !entry.rooms.includes(bc.room)) entry.rooms.push(bc.room);
       if (bc.isExtra) entry.isExtra = true;
     }
 
-    // Emit one TimetableLecture per unique teacher code in this time slot
-    for (const [code, info] of Array.from(codeMap.entries())) {
+    for (const [mapKey, info] of Array.from(codeMap.entries())) {
+      const teacherCode = mapKey.split("||")[0];
       lectures.push({
-        teacherCode: code,
+        teacherCode,
         day: lastDay,
         date: lastDate,
-        startTime,
-        endTime,
+        startTime: info.startTime,
+        endTime: info.endTime,
         batches: info.batches,
         rooms: info.rooms,
         isMerged: info.batches.length > 1,
@@ -2646,7 +2757,7 @@ function parseTimetableSheet(sheetData: any[][]): TimetableLecture[] {
   return lectures;
 }
 
-/** Download and parse the timetable spreadsheet */
+/** Download and parse the timetable spreadsheet (ALL sheets/tabs) */
 async function loadTimetableData() {
   if (timetableLoading) return;
   const url = getTimetableUrl();
@@ -2659,16 +2770,36 @@ async function loadTimetableData() {
   try {
     const normalized = normalizeSpreadsheetUrl(url);
     const res = await fetch(normalized);
-    if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+    if (!res.ok) {
+      if (res.status === 401 || res.status === 403) {
+        throw new Error(
+          `HTTP ${res.status} Unauthorized — sheet is not publicly accessible. ` +
+          `Open the sheet → Share → "Anyone with the link" → Viewer.`
+        );
+      }
+      throw new Error(`HTTP ${res.status} ${res.statusText}`);
+    }
     const buffer = await res.arrayBuffer();
     const wb = XLSX.read(new Uint8Array(buffer), { type: "array" });
-    const firstSheet = wb.Sheets[wb.SheetNames[0]];
-    const data = XLSX.utils.sheet_to_json<any[]>(firstSheet, { header: 1 });
-    timetableData = parseTimetableSheet(data as any[][]);
+
+    // Parse ALL sheets (each tab may be a different week's timetable)
+    const allLectures: TimetableLecture[] = [];
+    for (const sheetName of wb.SheetNames) {
+      const worksheet = wb.Sheets[sheetName];
+      const data = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1 }) as any[][];
+      if (data.length < 4) continue; // skip sheets with too few rows
+      const lectures = parseTimetableSheet(data);
+      if (lectures.length > 0) {
+        console.log(`  Sheet "${sheetName}": ${lectures.length} lectures parsed`);
+        allLectures.push(...lectures);
+      }
+    }
+
+    timetableData = allLectures;
     timetableSheetUrl = url;
     timetableLastLoaded = new Date().toISOString();
     console.log(
-      `Timetable loaded: ${timetableData.length} lectures, ` +
+      `Timetable loaded: ${timetableData.length} total lectures from ${wb.SheetNames.length} sheet(s), ` +
       `${new Set(timetableData.map(l => l.teacherCode)).size} teachers`
     );
   } catch (err: any) {
