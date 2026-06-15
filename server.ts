@@ -3203,15 +3203,15 @@ app.post("/api/timetable/generate", verifyRequest, superAdminOnly, async (req, r
 
 /**
  * POST /api/timetable/ai-resolve
- * Resolve timetable conflicts using embedded 14-week historical patterns.
- * No external API — all intelligence is local from pattern analysis.
+ * DUAL AI: Pattern AI (local, instant) + HuggingFace AI (cloud, deep analysis)
+ * Pattern AI always works. HuggingFace is bonus layer if HF_TOKEN is set.
  */
 app.post("/api/timetable/ai-resolve", verifyRequest, superAdminOnly, async (req, res) => {
   try {
-    const { warnings, faculty: clientFaculty, currentSlots } = req.body;
+    const { warnings, faculty: clientFaculty, currentSlots, config } = req.body;
     
     if (!warnings || !Array.isArray(warnings) || warnings.length === 0) {
-      return res.json({ success: true, suggestions: [], message: "No conflicts to resolve" });
+      return res.json({ success: true, patternSuggestions: [], hfSuggestions: [], message: "No conflicts to resolve" });
     }
 
     // Load faculty from server (more reliable than client data)
@@ -3221,24 +3221,120 @@ app.post("/api/timetable/ai-resolve", verifyRequest, superAdminOnly, async (req,
       if (serverFaculty.length > 0) facultyList = serverFaculty;
     } catch { /* use client data */ }
 
-    const suggestions = aiResolveConflicts(
+    // ── LAYER 1: Pattern AI (instant, always works) ──
+    const patternSuggestions = aiResolveConflicts(
       warnings,
       facultyList || [],
       currentSlots || [],
     );
 
+    // ── LAYER 2: HuggingFace AI (cloud, deep analysis) ──
+    let hfSuggestions: any[] = [];
+    let hfModel = "";
+    let hfError = "";
+
+    const HF_TOKEN = process.env.HF_TOKEN || "";
+    if (HF_TOKEN) {
+      try {
+        const activeTeachers = (facultyList || [])
+          .filter((f: any) => f.status?.toLowerCase() === "active")
+          .map((t: any) => `${t.code}: ${t.name} (${t.subject}, ${t.division}) → [${t.batches?.join(", ")}]`)
+          .join("\n");
+
+        const teacherLoad: Record<string, number> = {};
+        for (const s of (currentSlots || [])) {
+          teacherLoad[s.teacherCode] = (teacherLoad[s.teacherCode] || 0) + 1;
+        }
+        const loadInfo = Object.entries(teacherLoad)
+          .sort((a, b) => b[1] - a[1])
+          .map(([t, c]) => `${t}: ${c}`)
+          .join(", ");
+
+        // Include pattern AI suggestions as context for HuggingFace
+        const patternContext = patternSuggestions
+          .map(s => `Pattern AI suggests ${s.teacher || "none"} for: ${s.conflict} (${s.confidence}% confidence)`)
+          .join("\n");
+
+        const prompt = `You are an expert school timetable scheduler. Our Pattern AI has already analyzed these conflicts using 14 weeks of historical data. Review and improve the suggestions.
+
+RULES:
+- Max ${config?.maxConsecutive || 3} consecutive lectures per teacher
+- Max ${config?.maxSlotsPerDay || 4} slots per teacher per day
+- Batch suffix: MA=morning(slots 1-2), NA=afternoon(3-4), EA=evening(5-6)
+- Teacher cannot teach 2 batches at same time
+
+TEACHER WORKLOAD: ${loadInfo}
+
+TEACHERS:
+${activeTeachers}
+
+PATTERN AI SUGGESTIONS:
+${patternContext}
+
+CONFLICTS:
+${warnings.join("\n")}
+
+For each conflict, confirm or improve the Pattern AI suggestion. If you agree, say "Agree with Pattern AI". If not, suggest a better teacher and explain why.
+
+Respond ONLY in JSON: {"suggestions":[{"conflict":"...","teacher":"CODE","reason":"...","agrees_with_pattern":true/false}]}`;
+
+        hfModel = "mistralai/Mistral-7B-Instruct-v0.3";
+        const hfRes = await fetch(`https://api-inference.huggingface.co/models/${hfModel}`, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${HF_TOKEN}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            inputs: prompt,
+            parameters: { max_new_tokens: 1024, temperature: 0.3, return_full_text: false },
+          }),
+        });
+
+        if (hfRes.ok) {
+          const hfData = await hfRes.json();
+          let aiText = "";
+          if (Array.isArray(hfData) && hfData[0]?.generated_text) {
+            aiText = hfData[0].generated_text;
+          } else if (typeof hfData === "string") {
+            aiText = hfData;
+          }
+
+          try {
+            const jsonMatch = aiText.match(/\{[\s\S]*"suggestions"[\s\S]*\}/);
+            if (jsonMatch) {
+              const parsed = JSON.parse(jsonMatch[0]);
+              hfSuggestions = parsed.suggestions || [];
+            }
+          } catch {
+            if (aiText.trim()) {
+              hfSuggestions = [{ conflict: "HF Analysis", teacher: "", reason: aiText.trim() }];
+            }
+          }
+        } else {
+          hfError = `HF API ${hfRes.status}`;
+        }
+      } catch (e: any) {
+        hfError = e.message || "HF API failed";
+        console.warn("[ai-resolve] HF error:", hfError);
+      }
+    }
+
     const admin = String(req.headers["x-user-email"] || "").trim().toLowerCase();
-    if (admin) logActivity(admin, "timetable_ai_resolve", `Pattern AI resolved ${suggestions.length} conflicts`);
+    if (admin) logActivity(admin, "timetable_ai_resolve", `Dual AI: ${patternSuggestions.length} pattern + ${hfSuggestions.length} HF suggestions`);
 
     res.json({
       success: true,
-      suggestions,
-      model: "14-Week Pattern AI (Local)",
+      patternSuggestions,
+      hfSuggestions,
+      hfModel: hfModel || null,
+      hfError: hfError || null,
+      hfAvailable: !!HF_TOKEN,
       totalPatterns: "377 slot patterns, 35 batches, 36 teachers",
     });
   } catch (err: any) {
     console.error("[/api/timetable/ai-resolve] Error:", err.message);
-    res.status(500).json({ error: "AI resolution failed: " + err.message, suggestions: [] });
+    res.status(500).json({ error: "AI resolution failed: " + err.message, patternSuggestions: [], hfSuggestions: [] });
   }
 });
 

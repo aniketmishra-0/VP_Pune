@@ -244,9 +244,12 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
   const [exporting, setExporting] = useState(false);
   const [exportResult, setExportResult] = useState<{ success: boolean; message: string } | null>(null);
 
-  // AI Resolve
+  // AI Resolve (dual: pattern + HF)
   const [aiResolving, setAiResolving] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState<any[]>([]);
+  const [hfSuggestions, setHfSuggestions] = useState<any[]>([]);
+  const [hfAvailable, setHfAvailable] = useState(false);
+  const [hfError, setHfError] = useState<string | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
 
   // ─── Derived data ──────────────────────────────────────────────────
@@ -1050,6 +1053,8 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
                           setAiResolving(true);
                           setAiError(null);
                           setAiSuggestions([]);
+                          setHfSuggestions([]);
+                          setHfError(null);
                           try {
                             const r = await fetch("/api/timetable/ai-resolve", {
                               method: "POST",
@@ -1062,8 +1067,13 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
                               }),
                             });
                             const d = await r.json();
-                            if (d.suggestions) setAiSuggestions(d.suggestions);
+                            if (d.patternSuggestions) setAiSuggestions(d.patternSuggestions);
+                            if (d.hfSuggestions) setHfSuggestions(d.hfSuggestions);
+                            if (d.hfAvailable != null) setHfAvailable(d.hfAvailable);
+                            if (d.hfError) setHfError(d.hfError);
                             if (d.error) setAiError(d.error);
+                            // Backward compat: old single suggestions field
+                            if (d.suggestions && !d.patternSuggestions) setAiSuggestions(d.suggestions);
                           } catch (err: any) {
                             setAiError(err.message);
                           } finally {
@@ -1087,8 +1097,8 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
                       )}
 
                       {aiSuggestions.length > 0 && (
-                        <GlassCard title={`🧠 Pattern AI Suggestions (14-Week Data)`} icon={<Sparkles className="w-3.5 h-3.5 text-purple-500" />}>
-                          <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                        <GlassCard title={`🧠 Pattern AI — 14-Week Historical Data`} icon={<Sparkles className="w-3.5 h-3.5 text-purple-500" />}>
+                          <div className="space-y-2 max-h-[250px] overflow-y-auto">
                             {aiSuggestions.map((s: any, i: number) => (
                               <div key={i} className="bg-purple-500/5 border border-purple-500/10 rounded-xl px-3 py-2.5">
                                 <div className="flex items-center justify-between mb-1">
@@ -1114,6 +1124,38 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
                             ))}
                           </div>
                         </GlassCard>
+                      )}
+
+                      {/* HuggingFace AI Section */}
+                      {hfSuggestions.length > 0 && (
+                        <GlassCard title={`🤗 HuggingFace AI — Mistral-7B Analysis`} icon={<Sparkles className="w-3.5 h-3.5 text-teal-500" />}>
+                          <div className="space-y-2 max-h-[250px] overflow-y-auto">
+                            {hfSuggestions.map((s: any, i: number) => (
+                              <div key={i} className="bg-teal-500/5 border border-teal-500/10 rounded-xl px-3 py-2.5">
+                                <div className="flex items-center justify-between mb-1">
+                                  <p className="text-[11px] font-bold text-teal-400">
+                                    {s.teacher ? `→ ${s.teacher}` : "Analysis"}
+                                    {s.agrees_with_pattern && <span className="ml-1.5 text-[9px] bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded-full">✓ Agrees</span>}
+                                    {s.agrees_with_pattern === false && <span className="ml-1.5 text-[9px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-full">↻ Different</span>}
+                                  </p>
+                                </div>
+                                <p className="text-[10px] text-slate-500 dark:text-slate-400">{s.reason}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </GlassCard>
+                      )}
+
+                      {/* HF Status */}
+                      {!aiResolving && aiSuggestions.length > 0 && !hfAvailable && (
+                        <div className="text-[10px] text-slate-600 bg-slate-800/30 rounded-lg px-3 py-2 border border-slate-700/30">
+                          💡 <strong>Tip:</strong> Add <code className="bg-slate-700/50 px-1 rounded text-teal-400">HF_TOKEN</code> in HuggingFace Space secrets to enable Mistral-7B AI analysis alongside Pattern AI.
+                        </div>
+                      )}
+                      {hfError && (
+                        <div className="text-[10px] text-amber-500/80 bg-amber-500/5 rounded-lg px-3 py-2 border border-amber-500/10">
+                          ⚠ HuggingFace AI: {hfError} — Pattern AI suggestions are still available above.
+                        </div>
                       )}
                     </div>
                   )}
