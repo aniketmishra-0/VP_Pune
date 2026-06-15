@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { motion, AnimatePresence } from "motion/react";
 import {
   Search, RefreshCw, Clock, Calendar, MapPin, BookOpen, X,
-  ChevronDown, Sparkles, Layers, GraduationCap, Timer, AlertCircle, User,
+  ChevronDown, Layers, GraduationCap, Timer, AlertCircle,
 } from "lucide-react";
 
 // ─── Types ──────────────────────────────────────────────────────────
@@ -33,14 +33,6 @@ const DEFAULT_NAMES: Record<string, string> = {
   CTG: "Tushar Goel",
 };
 
-// ─── Demo ───────────────────────────────────────────────────────────
-
-const DEMO_LECTURES: TimetableLecture[] = [
-  { teacherCode: "CSI", day: "MONDAY", date: "16-Jun-2026", startTime: "8:45 AM", endTime: "10:15 AM", batches: ["27-LJ151MA 2026"], rooms: ["507"], isMerged: false, isExtraLecture: false },
-  { teacherCode: "CSI", day: "TUESDAY", date: "17-Jun-2026", startTime: "10:30 AM", endTime: "12:00 PM", batches: ["27-LJ152MA 2026"], rooms: ["601"], isMerged: false, isExtraLecture: false },
-  { teacherCode: "PMT", day: "MONDAY", date: "16-Jun-2026", startTime: "8:45 AM", endTime: "10:15 AM", batches: ["27-LJ151MA 2026"], rooms: ["507"], isMerged: false, isExtraLecture: false },
-];
-const DEMO_CODES: TeacherCode[] = [{ code: "CSI", count: 2 }, { code: "PMT", count: 1 }];
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -80,7 +72,7 @@ export default function TimetableViewer({ adminHeaders }: TimetableViewerProps) 
   const [codesExpanded, setCodesExpanded] = useState(false);
   const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set());
   const [mergeModal, setMergeModal] = useState<TimetableLecture | null>(null);
-  const [isDemo, setIsDemo] = useState(false);
+
   const [lastLoaded, setLastLoaded] = useState<string | null>(null);
   const [teacherNames, setTeacherNames] = useState<Record<string, string>>(DEFAULT_NAMES);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -96,8 +88,8 @@ export default function TimetableViewer({ adminHeaders }: TimetableViewerProps) 
   const fetchCodes = useCallback(async () => {
     try {
       const r = await fetch("/api/timetable/codes", { headers: adminHeaders() });
-      if (r.ok) { const d = await r.json(); if (d.codes?.length) { setAllCodes(d.codes); setIsDemo(false); } else { setAllCodes(DEMO_CODES); setIsDemo(true); } }
-    } catch { setAllCodes(DEMO_CODES); setIsDemo(true); }
+      if (r.ok) { const d = await r.json(); setAllCodes(d.codes || []); }
+    } catch {}
   }, [adminHeaders]);
 
   const fetchConfig = useCallback(async () => {
@@ -117,9 +109,8 @@ export default function TimetableViewer({ adminHeaders }: TimetableViewerProps) 
   }, [adminHeaders]);
 
   const fetchLectures = useCallback(async (code: string) => {
-    if (isDemo) { setLectures(DEMO_LECTURES.filter(l => l.teacherCode === code)); return; }
     try { const r = await fetch(`/api/timetable?code=${encodeURIComponent(code)}`, { headers: adminHeaders() }); if (r.ok) { const d = await r.json(); setLectures(d.lectures || []); } } catch {}
-  }, [adminHeaders, isDemo]);
+  }, [adminHeaders]);
 
   const handleRefresh = async () => {
     setIsLoading(true);
@@ -214,13 +205,8 @@ export default function TimetableViewer({ adminHeaders }: TimetableViewerProps) 
   return (
     <div className="pb-28">
       {/* Alerts */}
-      {isDemo && (
-        <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2 mb-3">
-          <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-          <p className="text-[11px] text-amber-600 dark:text-amber-400"><b>Demo</b> — Settings → Time Table to configure</p>
-        </div>
-      )}
-      {apiError && !isDemo && (
+
+      {apiError && (
         <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2 mb-3">
           <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
           <p className="text-[11px] text-red-600 dark:text-red-400 truncate">{apiError}</p>
@@ -451,14 +437,14 @@ export default function TimetableViewer({ adminHeaders }: TimetableViewerProps) 
       )}
 
       {/* Empty states */}
-      {selectedCode && lectures.length === 0 && !isDemo && (
+      {selectedCode && lectures.length === 0 && (
         <div className="mt-6 text-center py-8">
           <Search className="w-8 h-8 text-slate-300 dark:text-gray-700 mx-auto mb-2" />
           <p className="text-xs font-bold text-slate-400">No lectures for "{selectedCode}"</p>
           <p className="text-[10px] text-slate-400 mt-0.5">{getName(selectedCode) ? getName(selectedCode) : "Unknown teacher"}</p>
         </div>
       )}
-      {!selectedCode && !isDemo && allCodes.length > 0 && !inputFocused && (
+      {!selectedCode && allCodes.length > 0 && !inputFocused && (
         <div className="mt-6 text-center py-8">
           <GraduationCap className="w-8 h-8 text-slate-300 dark:text-gray-700 mx-auto mb-2" />
           <p className="text-xs text-slate-400">Search or select a teacher above</p>
