@@ -354,7 +354,7 @@ export default function App() {
   const [subsheetCenters, setSubsheetCenters] = useState<Array<{ center: string; patterns: string[] }>>([]);
   const [staffAccess, setStaffAccess] = useState<Array<{ email: string; centers: string[] }>>([]);
   const [activeSheets, setActiveSheets] = useState<Array<{ name: string; sourceUrl: string; center: string }>>([]);
-  const [adminTab, setAdminTab] = useState<"config" | "debugger" | "guide">("config");
+  const [adminTab, setAdminTab] = useState<"config" | "debugger" | "guide" | "timetable">("config");
   const [newUrlInput, setNewUrlInput] = useState<string>("");
   const [debuggerFilter, setDebuggerFilter] = useState<string>("");
   const [openCenter, setOpenCenter] = useState<string | null>(null);
@@ -3148,10 +3148,10 @@ export default function App() {
                 return (
                   <div className="space-y-6">
                     {/* Visual Tab Selection */}
-                    <div className="flex bg-slate-100 dark:bg-gray-900/60 p-1.5 rounded-2xl max-w-md border border-slate-200/40 dark:border-gray-800/30">
+                    <div className="flex bg-slate-100 dark:bg-gray-900/60 p-1.5 rounded-2xl max-w-2xl border border-slate-200/40 dark:border-gray-800/30 overflow-x-auto">
                       <button
                         onClick={() => setAdminTab("config")}
-                        className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                        className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap ${
                           adminTab === "config"
                             ? "bg-white dark:bg-gray-800 text-[#5277f7] dark:text-white shadow-sm"
                             : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white"
@@ -3162,7 +3162,7 @@ export default function App() {
                       </button>
                       <button
                         onClick={() => setAdminTab("debugger")}
-                        className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                        className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap ${
                           adminTab === "debugger"
                             ? "bg-white dark:bg-gray-800 text-[#5277f7] dark:text-white shadow-sm"
                             : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white"
@@ -3173,7 +3173,7 @@ export default function App() {
                       </button>
                       <button
                         onClick={() => setAdminTab("guide")}
-                        className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                        className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap ${
                           adminTab === "guide"
                             ? "bg-white dark:bg-gray-800 text-[#5277f7] dark:text-white shadow-sm"
                             : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white"
@@ -3181,6 +3181,17 @@ export default function App() {
                       >
                         <BookOpen className="w-3.5 h-3.5" />
                         Setup Guide
+                      </button>
+                      <button
+                        onClick={() => setAdminTab("timetable")}
+                        className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap ${
+                          adminTab === "timetable"
+                            ? "bg-white dark:bg-gray-800 text-[#5277f7] dark:text-white shadow-sm"
+                            : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white"
+                        }`}
+                      >
+                        <Calendar className="w-3.5 h-3.5" />
+                        Time Table
                       </button>
                     </div>
 
@@ -3998,6 +4009,90 @@ export default function App() {
                             <div>Version: <span className="font-mono font-semibold text-slate-700 dark:text-slate-300">2.1.0-release</span></div>
                             <div>Build environment: <span className="font-mono font-semibold text-slate-700 dark:text-slate-300">production-huggingface</span></div>
                             <div>Target database: <span className="font-mono font-semibold text-slate-700 dark:text-slate-300">Google Sheets API v4</span></div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Timetable Config Tab */}
+                    {adminTab === "timetable" && (
+                      <div className="bg-white dark:bg-[#111827] rounded-3xl border border-slate-200/50 dark:border-gray-800/40 p-6 shadow-sm space-y-6 max-w-2xl">
+                        <div>
+                          <div className="flex items-center gap-3 mb-4">
+                            <div className="w-10 h-10 rounded-2xl bg-[#5277f7]/10 dark:bg-[#5277f7]/20 flex items-center justify-center">
+                              <Calendar className="w-5 h-5 text-[#5277f7]" />
+                            </div>
+                            <div>
+                              <h3 className="text-sm font-bold tracking-wider uppercase text-slate-400 font-mono">Timetable Sheet Configuration</h3>
+                              <p className="text-[10px] text-slate-400 mt-0.5">Configure the Google Sheet URL for the teacher timetable. Use ?gid= to specify a specific tab.</p>
+                            </div>
+                          </div>
+
+                          <div className="space-y-4">
+                            <div>
+                              <label className="text-[10px] font-bold tracking-widest uppercase text-slate-400 font-mono mb-1.5 block">Google Sheet URL</label>
+                              <div className="flex gap-2">
+                                <input
+                                  type="text"
+                                  id="timetable-url-input"
+                                  placeholder="https://docs.google.com/spreadsheets/d/.../edit?gid=..."
+                                  className="flex-1 bg-slate-50 dark:bg-gray-900/40 rounded-xl border border-slate-200 dark:border-gray-800 px-4 py-3 text-xs text-slate-700 dark:text-slate-200 outline-none focus:border-[#5277f7] transition-colors font-mono"
+                                  defaultValue=""
+                                  onFocus={async (e) => {
+                                    try {
+                                      const res = await fetch("/api/timetable/config", { headers: adminHeaders() });
+                                      if (res.ok) { const d = await res.json(); if (d.url) e.target.value = d.url; }
+                                    } catch {}
+                                  }}
+                                />
+                                <button
+                                  onClick={async () => {
+                                    const input = document.getElementById("timetable-url-input") as HTMLInputElement;
+                                    const url = input?.value || "";
+                                    try {
+                                      const res = await fetch("/api/timetable/config", {
+                                        method: "POST",
+                                        headers: { "Content-Type": "application/json", ...adminHeaders() },
+                                        body: JSON.stringify({ url }),
+                                      });
+                                      const data = await res.json();
+                                      setConfigSaveMessage(data.message || "Timetable URL saved!");
+                                      setConfigSaveError(null);
+                                    } catch (e: any) {
+                                      setConfigSaveError(e.message);
+                                    }
+                                  }}
+                                  className="bg-[#5277f7] hover:bg-[#4062dd] text-white font-bold text-xs px-5 py-3 rounded-xl transition-colors cursor-pointer flex items-center gap-1.5 shrink-0"
+                                >
+                                  <Check className="w-3.5 h-3.5" /> Save URL
+                                </button>
+                              </div>
+                            </div>
+
+                            <button
+                              onClick={async () => {
+                                try {
+                                  await fetch("/api/timetable/refresh", { method: "POST", headers: adminHeaders() });
+                                  setConfigSaveMessage("Timetable data is reloading in background...");
+                                  setConfigSaveError(null);
+                                } catch (e: any) { setConfigSaveError(e.message); }
+                              }}
+                              className="flex items-center gap-2 text-xs font-bold text-[#5277f7] hover:text-[#4062dd] cursor-pointer transition-colors"
+                            >
+                              <RefreshCw className="w-3.5 h-3.5" /> Refresh Timetable Data
+                            </button>
+
+                            <div className="p-4 bg-slate-50 dark:bg-gray-900/40 rounded-2xl space-y-2">
+                              <p className="text-[10px] font-bold tracking-widest uppercase text-slate-400 font-mono">How to use</p>
+                              <ol className="text-xs text-slate-500 dark:text-slate-400 space-y-1.5 list-decimal list-inside">
+                                <li>Open the timetable Google Sheet</li>
+                                <li>Select the <strong className="text-slate-700 dark:text-slate-200">specific tab</strong> (e.g., "15th-20th June 2026")</li>
+                                <li>Copy the URL — it will include <code className="bg-slate-200 dark:bg-gray-800 px-1 py-0.5 rounded text-[10px] font-mono">gid=282013146</code></li>
+                                <li>Share the sheet: <strong className="text-slate-700 dark:text-slate-200">Anyone with the link → Viewer</strong></li>
+                                <li>Paste the URL above and click Save</li>
+                                <li>Go to the <strong className="text-[#5277f7]">Timetable</strong> tab in the sidebar to view schedules</li>
+                              </ol>
+                            </div>
                           </div>
                         </div>
                       </div>
