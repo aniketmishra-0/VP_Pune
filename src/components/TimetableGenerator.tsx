@@ -73,6 +73,68 @@ const DAY_BG_LIGHT: Record<string, string> = {
   FRIDAY: "bg-pink-500/10",
 };
 
+// Default room assignments from 14-week historical data (latest week 14)
+// Key: partial batch code (e.g., "LJ151MA"), Value: room number
+const DEFAULT_BATCH_ROOMS: Record<string, string> = {
+  // JEE Morning
+  "LJE51MP":  "S-03",
+  "LJ151MA":  "507",
+  "LJ152MA":  "601",
+  "LJ153MA":  "505",
+  "LJE51MA":  "501",
+  "LJE52MA":  "502",
+  "AJ151MA":  "602",
+  "AJ253MA":  "604",
+  "AJ254MA":  "603",
+  "AJ251MA":  "605",
+  "AJ252MA":  "202",
+  "AJ351MA":  "201",
+  // JEE Afternoon
+  "AJ251NA":  "603",
+  "AJ351NA":  "203",
+  "LJ151NA":  "503",
+  "AJ451NA":  "504",
+  "AJ251NP":  "S-04",
+  // JEE Evening
+  "AJ251EA":  "605",
+  "LJ151EA":  "603",
+  "LJ152EA":  "604",
+  // NEET Morning
+  "LNE51MP":  "S-01",
+  "LN151MA":  "503",
+  "LN152MA":  "506",
+  "LN153MA":  "101",
+  "AN151MA":  "504",
+  "AN251MA":  "606",
+  "AN351MA":  "203",
+  // NEET Afternoon
+  "AN251NA":  "604",
+  "LN151NA":  "506",
+  // NEET Evening
+  "LN151EA":  "504",
+  "AN351EA":  "602",
+  // Dropper
+  "YN351NA":  "101",
+  "PJ451NA":  "S-02",
+};
+
+/** Extract short batch code (e.g., "LJ151MA") from full code like "27-LJ151MA 2026" */
+function extractShortCode(fullCode: string): string {
+  const m = fullCode.match(/\d+-([A-Z0-9]+)/i);
+  return m ? m[1].toUpperCase() : fullCode.toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+/** Look up default room for a batch code */
+function getDefaultRoom(batchCode: string): string {
+  const short = extractShortCode(batchCode);
+  if (DEFAULT_BATCH_ROOMS[short]) return DEFAULT_BATCH_ROOMS[short];
+  // Try partial match (batch code might have different year suffix)
+  for (const [key, room] of Object.entries(DEFAULT_BATCH_ROOMS)) {
+    if (short.includes(key) || key.includes(short)) return room;
+  }
+  return "";
+}
+
 const STEPS = [
   { num: 1, label: "Week", icon: Calendar },
   { num: 2, label: "Faculty", icon: Users },
@@ -232,6 +294,30 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const d = await r.json();
       setFaculty(d.faculty || []);
+
+      // Auto-populate room numbers from historical data
+      const autoRooms: Record<string, string> = {};
+      const allBatchCodes = new Set<string>();
+      for (const f of (d.faculty || [])) {
+        if (f.status?.toLowerCase() !== "active" || !f.code) continue;
+        for (const b of (f.batches || [])) {
+          const code = b.trim();
+          if (code && !allBatchCodes.has(code)) {
+            allBatchCodes.add(code);
+            const room = getDefaultRoom(code);
+            if (room) autoRooms[code] = room;
+          }
+        }
+      }
+      // Only set rooms that aren't already manually set
+      setBatchRooms(prev => {
+        const merged = { ...autoRooms };
+        // Keep any manual overrides
+        for (const [k, v] of Object.entries(prev)) {
+          if (v) merged[k] = v as string;
+        }
+        return merged;
+      });
     } catch (e: any) {
       setFacultyError(e.message || "Failed to fetch faculty");
     } finally {
