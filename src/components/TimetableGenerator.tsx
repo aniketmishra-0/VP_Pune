@@ -185,7 +185,7 @@ function detectSection(batchCode: string): "JEE" | "NEET" | "DROPPER" {
   const codePrefix = upper.match(/\d+-([A-Z]{2})/)?.[1] || '';
   if (['YA', 'YN', 'PJ'].includes(codePrefix)) return "DROPPER";
   if (/LJ|AJ/.test(upper)) return "JEE";
-  if (/LN|AN|UF|NF/.test(upper)) return "NEET";
+  if (/LN|AN/.test(upper)) return "NEET";
   // Fallback heuristics
   if (/J/.test(upper.replace(/JUN|JUL|JAN/g, ""))) return "JEE";
   if (/N/.test(upper.replace(/JUN|NOV|NAN/g, ""))) return "NEET";
@@ -265,10 +265,16 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
 
   const allBatches = useMemo(() => {
     const batchSet = new Map<string, BatchInfo>();
+    // Foundation batch prefixes — NOT in timetable sheet, must be excluded
+    const FOUNDATION_PREFIXES = ['UP', 'UF', 'NF'];
+    const isFoundation = (code: string) => {
+      const prefix = code.toUpperCase().match(/\d+-([A-Z]{2})/)?.[1] || '';
+      return FOUNDATION_PREFIXES.includes(prefix);
+    };
     for (const f of activeFaculty) {
       for (const b of f.batches) {
         const code = b.trim();
-        if (!code || batchSet.has(code)) continue;
+        if (!code || batchSet.has(code) || isFoundation(code)) continue;
         batchSet.set(code, {
           code,
           room: batchRooms[code] || getDefaultRoom(code) || "",
