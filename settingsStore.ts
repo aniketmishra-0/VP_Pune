@@ -673,6 +673,23 @@ export async function writeTimetableToSheet(
   tabName: string,
   grid: TimetableGridCell[][],
 ): Promise<{ sheetId: number }> {
+  // 0. If a tab with this name already exists, delete it first
+  try {
+    const metaRes = await timetableApiFetch(spreadsheetId, "?fields=sheets.properties");
+    const existingSheets: { properties: { sheetId: number; title: string } }[] = metaRes.sheets || [];
+    const existing = existingSheets.find(s => s.properties.title === tabName);
+    if (existing) {
+      await timetableApiFetch(spreadsheetId, ":batchUpdate", {
+        method: "POST",
+        body: JSON.stringify({
+          requests: [{ deleteSheet: { sheetId: existing.properties.sheetId } }],
+        }),
+      });
+    }
+  } catch {
+    // If metadata fetch fails, just try creating — worst case we get the old error
+  }
+
   // 1. Create the new tab
   const createRes = await timetableApiFetch(spreadsheetId, ":batchUpdate", {
     method: "POST",
