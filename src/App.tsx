@@ -40,6 +40,7 @@ import {
   ChevronDown,
   Shield,
   Users,
+  Zap,
 } from "lucide-react";
 import { Student, Dropdowns, TestRecord, Profile } from "./types";
 import AdminSettings, { Role, SessionUser } from "./components/AdminSettings";
@@ -47,6 +48,7 @@ import StudentQR from "./components/StudentQR";
 import FloatingEducationBg from "./components/FloatingEducationBg";
 import InstallPrompt from "./components/InstallPrompt";
 import TimetableViewer from "./components/TimetableViewer";
+import TimetableGenerator from "./components/TimetableGenerator";
 import TimetableConfig from "./components/TimetableConfig";
 
 function PWLogo({ size = "h-10 w-10", textSize = "text-sm", className = "" }: { size?: string, textSize?: string, className?: string }) {
@@ -1775,6 +1777,21 @@ export default function App() {
                 title="System Configuration & Guide"
               >
                 <Settings className="w-5 h-5" />
+              </button>
+              )}
+
+              {/* Auto Timetable Generator Tab — super-admin only */}
+              {isSuperAdmin && (
+              <button
+                onClick={() => { setActiveView("timetableGen"); setErrorMessage(null); }}
+                className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all cursor-pointer ${
+                  activeView === "timetableGen"
+                    ? "bg-[#5277f7] text-white shadow-lg shadow-[#5277f7]/20"
+                    : "text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-gray-800/60"
+                }`}
+                title="Auto Generate Timetable"
+              >
+                <Zap className="w-5 h-5" />
               </button>
               )}
 
@@ -4034,6 +4051,18 @@ export default function App() {
               className="space-y-6 max-w-6xl mx-auto py-2 w-full text-slate-800 dark:text-slate-100"
             >
               <TimetableViewer adminHeaders={adminHeaders} />
+            </motion.div>
+          )}
+
+          {activeView === "timetableGen" && isSuperAdmin && (
+            <motion.div
+              key="timetableGen"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              className="space-y-6 max-w-7xl mx-auto py-2 w-full text-slate-800 dark:text-slate-100"
+            >
+              <TimetableGenerator adminHeaders={adminHeaders} />
             </motion.div>
           )}
 

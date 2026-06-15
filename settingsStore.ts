@@ -425,3 +425,256 @@ export async function ensureTimetableConfigHeader(): Promise<void> {
   }
 }
 
+/* ===== Timetable Spreadsheet helpers (separate sheet) ===== */
+
+/**
+ * The timetable data lives in a DIFFERENT spreadsheet than the settings one.
+ * This spreadsheet ID is the one containing Faculty Details, weekly grids, etc.
+ */
+const TIMETABLE_SPREADSHEET_ID = "1EChiZIoa53KhaZSELkBrIpuTgyBqJf1PVl28y2BcS7g";
+
+/**
+ * Like apiFetch, but targets an arbitrary spreadsheet by ID rather than
+ * the default settings spreadsheet.
+ */
+async function timetableApiFetch(
+  spreadsheetId: string,
+  pathAndQuery: string,
+  init?: RequestInit,
+): Promise<any> {
+  const token = await getAccessToken();
+  const res = await fetch(`${SHEETS_API}/${spreadsheetId}${pathAndQuery}`, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      ...(init?.headers || {}),
+    },
+  });
+  if (!res.ok) {
+    throw new Error(`Sheets API ${res.status}: ${await res.text()}`);
+  }
+  return res.status === 204 ? null : res.json();
+}
+
+// ── Faculty Details ─────────────────────────────────────────────────────
+
+export interface FacultyMember {
+  pwId: string;
+  name: string;
+  email: string;
+  code: string;         // e.g., CRA, MBH
+  division: string;     // JEE, NEET, Foundation
+  subject: string;      // Physics, Chemistry, etc.
+  designation: string;
+  status: string;       // Active / Inactive
+  teacherId: string;
+  qualification: string;
+  photoUrl: string;
+  batches: string[];    // Up to 6 assigned batches
+}
+
+/**
+ * Read the "Faculty Details" tab (GID 891757177) from the timetable spreadsheet.
+ *
+ * CSV columns (A-Q):
+ *   PWID, Faculty Name, Official Email, Faculty Code, Division, Subject,
+ *   Designation, Status, Teacher_ID, Highest Qualification, Photo URL,
+ *   Batch 1, Batch 2, Batch 3, Batch 4, Batch 5, Batch 6
+ */
+export async function readFacultyDetails(
+  spreadsheetId: string = TIMETABLE_SPREADSHEET_ID,
+): Promise<FacultyMember[]> {
+  const tab = "Faculty Details";
+  let data: any;
+  try {
+    data = await timetableApiFetch(
+      spreadsheetId,
+      `/values/${encodeURIComponent(tab)}!A1:Q500`,
+    );
+  } catch (err) {
+    console.error(`[readFacultyDetails] Failed to read tab "${tab}":`, (err as Error).message);
+    throw err;
+  }
+
+  const rows: any[][] = data.values || [];
+  // Skip header row if present
+  let start = 0;
+  if (rows.length > 0 && /pw\s*id|faculty/i.test(String(rows[0][0] || ""))) start = 1;
+
+  const members: FacultyMember[] = [];
+  for (let i = start; i < rows.length; i++) {
+    const r = rows[i] || [];
+    const pwId = String(r[0] || "").trim();
+    const name = String(r[1] || "").trim();
+    if (!pwId && !name) continue; // skip empty rows
+
+    // Collect up to 6 batches (columns L through Q, indices 11-16)
+    const batches: string[] = [];
+    for (let b = 11; b <= 16; b++) {
+      const val = String(r[b] || "").trim();
+      if (val) batches.push(val);
+    }
+
+    members.push({
+      pwId,
+      name,
+      email: String(r[2] || "").trim(),
+      code: String(r[3] || "").trim(),
+      division: String(r[4] || "").trim(),
+      subject: String(r[5] || "").trim(),
+      designation: String(r[6] || "").trim(),
+      status: String(r[7] || "").trim(),
+      teacherId: String(r[8] || "").trim(),
+      qualification: String(r[9] || "").trim(),
+      photoUrl: String(r[10] || "").trim(),
+      batches,
+    });
+  }
+
+  return members;
+}
+
+// ── Write timetable to sheet ────────────────────────────────────────────
+
+/**
+ * Colour constants for timetable formatting (RGB 0-1 scale for Sheets API).
+ */
+function hexToRgb(hex: string): { red: number; green: number; blue: number } {
+  const h = hex.replace("#", "");
+  return {
+    red: parseInt(h.substring(0, 2), 16) / 255,
+    green: parseInt(h.substring(2, 4), 16) / 255,
+    blue: parseInt(h.substring(4, 6), 16) / 255,
+  };
+}
+
+const COLORS = {
+  HEADER:  hexToRgb("#FFFF00"),  // Yellow — batch name row
+  ROOM:    hexToRgb("#FF00FF"),  // Magenta — room row
+  MON:     hexToRgb("#FF8C00"),  // Orange
+  TUE:     hexToRgb("#9933FF"),  // Purple
+  WED:     hexToRgb("#00CC00"),  // Green
+  THU:     hexToRgb("#00BFFF"),  // Cyan
+  FRI:     hexToRgb("#FF3366"),  // Pink
+  SAT:     hexToRgb("#CC0000"),  // Red
+  SEP:     hexToRgb("#00FF00"),  // Green — JEE/NEET separator
+  HOLIDAY: hexToRgb("#FFFF00"),  // Yellow
+  WHITE:   hexToRgb("#FFFFFF"),  // Normal cells
+} as const;
+
+const DAY_COLORS: Record<string, typeof COLORS.MON> = {
+  MONDAY:    COLORS.MON,
+  TUESDAY:   COLORS.TUE,
+  WEDNESDAY: COLORS.WED,
+  THURSDAY:  COLORS.THU,
+  FRIDAY:    COLORS.FRI,
+  SATURDAY:  COLORS.SAT,
+};
+
+/**
+ * Grid cell for writing to the sheet.
+ */
+export interface TimetableGridCell {
+  value: string;
+  color?: "HEADER" | "ROOM" | "DAY" | "SEP" | "HOLIDAY" | "WHITE";
+  day?: string; // used to look up the actual day colour when color === "DAY"
+}
+
+/**
+ * Write a generated timetable to the timetable spreadsheet as a new tab
+ * with full colour formatting.
+ *
+ * @param spreadsheetId  The timetable spreadsheet ID
+ * @param tabName        The new tab name, e.g. "15th-20th June 2026"
+ * @param grid           2D array of grid cells (rows × columns)
+ */
+export async function writeTimetableToSheet(
+  spreadsheetId: string = TIMETABLE_SPREADSHEET_ID,
+  tabName: string,
+  grid: TimetableGridCell[][],
+): Promise<{ sheetId: number }> {
+  // 1. Create the new tab
+  const createRes = await timetableApiFetch(spreadsheetId, ":batchUpdate", {
+    method: "POST",
+    body: JSON.stringify({
+      requests: [
+        {
+          addSheet: {
+            properties: {
+              title: tabName,
+              gridProperties: {
+                rowCount: Math.max(grid.length, 1),
+                columnCount: Math.max(grid[0]?.length || 1, 1),
+              },
+            },
+          },
+        },
+      ],
+    }),
+  });
+
+  const newSheetId: number = createRes.replies[0].addSheet.properties.sheetId;
+
+  // 2. Write cell values
+  const values = grid.map((row) => row.map((cell) => cell.value));
+  await timetableApiFetch(
+    spreadsheetId,
+    `/values/${encodeURIComponent(tabName)}!A1?valueInputOption=RAW`,
+    { method: "PUT", body: JSON.stringify({ values }) },
+  );
+
+  // 3. Build formatting requests (one repeatCell per cell that needs colour)
+  const formatRequests: any[] = [];
+
+  for (let r = 0; r < grid.length; r++) {
+    for (let c = 0; c < grid[r].length; c++) {
+      const cell = grid[r][c];
+      let bgColor = COLORS.WHITE;
+
+      if (cell.color === "HEADER")       bgColor = COLORS.HEADER;
+      else if (cell.color === "ROOM")    bgColor = COLORS.ROOM;
+      else if (cell.color === "SEP")     bgColor = COLORS.SEP;
+      else if (cell.color === "HOLIDAY") bgColor = COLORS.HOLIDAY;
+      else if (cell.color === "DAY" && cell.day) {
+        bgColor = DAY_COLORS[cell.day] || COLORS.WHITE;
+      }
+
+      // Only emit a request if the colour isn't plain white (optimisation)
+      if (bgColor !== COLORS.WHITE) {
+        formatRequests.push({
+          repeatCell: {
+            range: {
+              sheetId: newSheetId,
+              startRowIndex: r,
+              endRowIndex: r + 1,
+              startColumnIndex: c,
+              endColumnIndex: c + 1,
+            },
+            cell: {
+              userEnteredFormat: {
+                backgroundColor: bgColor,
+              },
+            },
+            fields: "userEnteredFormat.backgroundColor",
+          },
+        });
+      }
+    }
+  }
+
+  // Send formatting in a single batchUpdate (Sheets API allows up to 100k requests)
+  if (formatRequests.length > 0) {
+    // Batch in chunks of 5000 to stay well within limits
+    for (let i = 0; i < formatRequests.length; i += 5000) {
+      const chunk = formatRequests.slice(i, i + 5000);
+      await timetableApiFetch(spreadsheetId, ":batchUpdate", {
+        method: "POST",
+        body: JSON.stringify({ requests: chunk }),
+      });
+    }
+  }
+
+  return { sheetId: newSheetId };
+}
+

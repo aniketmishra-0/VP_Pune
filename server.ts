@@ -7,6 +7,7 @@ import fs from "fs";
 import "dotenv/config";
 import * as settingsStore from "./settingsStore";
 import type { Role } from "./settingsStore";
+import { generateTimetable, type GeneratorConfig, type GeneratedSlot, type BatchInfo } from "./timetableGenerator";
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
@@ -3083,6 +3084,125 @@ app.post("/api/timetable/teachers", verifyRequest, superAdminOnly, (req, res) =>
     });
   } catch (err: any) {
     res.status(500).json({ error: "Failed to save: " + err.toString() });
+  }
+});
+
+// ===== Auto Timetable Generator (super-admin only) =====
+
+/**
+ * GET /api/timetable/faculty
+ * Read Faculty Details from the timetable spreadsheet.
+ * Returns the full list of active faculty with their assigned batches.
+ */
+app.get("/api/timetable/faculty", verifyRequest, superAdminOnly, async (_req, res) => {
+  try {
+    const faculty = await settingsStore.readFacultyDetails();
+    res.json({
+      faculty,
+      total: faculty.length,
+      active: faculty.filter((f) => f.status.toLowerCase() === "active").length,
+    });
+  } catch (err: any) {
+    console.error("[/api/timetable/faculty] Error:", err.message);
+    res.status(500).json({ error: "Failed to read faculty details: " + err.message });
+  }
+});
+
+/**
+ * POST /api/timetable/generate
+ * Run the auto-generation algorithm and return a preview (does NOT write to sheet).
+ *
+ * Body: {
+ *   batches: [{ code, room, section }],
+ *   config: { weekStartDate, maxConsecutive?, maxSlotsPerDay?, holidays?, testSlots? }
+ * }
+ */
+app.post("/api/timetable/generate", verifyRequest, superAdminOnly, async (req, res) => {
+  try {
+    const { batches, config: rawConfig } = req.body;
+
+    if (!batches || !Array.isArray(batches) || batches.length === 0) {
+      return res.status(400).json({ error: "'batches' array is required and must not be empty." });
+    }
+    if (!rawConfig || !rawConfig.weekStartDate) {
+      return res.status(400).json({ error: "'config.weekStartDate' is required (e.g. '2026-06-15')." });
+    }
+
+    // Read faculty from timetable sheet
+    const faculty = await settingsStore.readFacultyDetails();
+
+    // Build config with defaults
+    const genConfig: GeneratorConfig = {
+      weekStartDate: rawConfig.weekStartDate,
+      maxConsecutive: rawConfig.maxConsecutive ?? 3,
+      maxSlotsPerDay: rawConfig.maxSlotsPerDay ?? 4,
+      holidays: rawConfig.holidays ?? [],
+      testSlots: rawConfig.testSlots ?? [],
+    };
+
+    const batchInfos: BatchInfo[] = batches.map((b: any) => ({
+      code: String(b.code || "").trim(),
+      room: String(b.room || "").trim(),
+      section: b.section === "NEET" ? "NEET" : "JEE",
+    }));
+
+    const result = generateTimetable(faculty, batchInfos, genConfig);
+
+    const admin = String(req.headers["x-user-email"] || "").trim().toLowerCase();
+    if (admin) logActivity(admin, "timetable_generate", `Generated ${result.slots.length} slots, ${result.warnings.length} warnings`);
+
+    res.json({
+      success: true,
+      slots: result.slots,
+      totalSlots: result.slots.length,
+      warnings: result.warnings,
+      config: genConfig,
+    });
+  } catch (err: any) {
+    console.error("[/api/timetable/generate] Error:", err.message);
+    res.status(500).json({ error: "Timetable generation failed: " + err.message });
+  }
+});
+
+/**
+ * POST /api/timetable/write-sheet
+ * Write a previously-generated timetable to the Google Sheet as a new tab
+ * with full colour formatting.
+ *
+ * Body: {
+ *   tabName: string,              // e.g. "15th-20th June 2026"
+ *   grid: TimetableGridCell[][],   // 2D array of { value, color?, day? }
+ *   spreadsheetId?: string         // optional override
+ * }
+ */
+app.post("/api/timetable/write-sheet", verifyRequest, superAdminOnly, async (req, res) => {
+  try {
+    const { tabName, grid, spreadsheetId } = req.body;
+
+    if (!tabName || typeof tabName !== "string") {
+      return res.status(400).json({ error: "'tabName' string is required." });
+    }
+    if (!grid || !Array.isArray(grid) || grid.length === 0) {
+      return res.status(400).json({ error: "'grid' 2D array is required." });
+    }
+
+    const result = await settingsStore.writeTimetableToSheet(
+      spreadsheetId || undefined,
+      tabName.trim(),
+      grid,
+    );
+
+    const admin = String(req.headers["x-user-email"] || "").trim().toLowerCase();
+    if (admin) logActivity(admin, "timetable_write_sheet", `Wrote tab "${tabName}"`);
+
+    res.json({
+      success: true,
+      message: `Timetable written to tab "${tabName}" with formatting.`,
+      sheetId: result.sheetId,
+    });
+  } catch (err: any) {
+    console.error("[/api/timetable/write-sheet] Error:", err.message);
+    res.status(500).json({ error: "Failed to write timetable to sheet: " + err.message });
   }
 });
 
