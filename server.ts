@@ -2801,7 +2801,7 @@ function parseTimetableSheet(sheetData: any[][]): TimetableLecture[] {
   return lectures;
 }
 
-/** Download and parse the timetable spreadsheet (ALL sheets/tabs) */
+/** Download and parse the timetable spreadsheet */
 async function loadTimetableData() {
   if (timetableLoading) return;
   const url = getTimetableUrl();
@@ -2826,21 +2826,51 @@ async function loadTimetableData() {
     const buffer = await res.arrayBuffer();
     const wb = XLSX.read(new Uint8Array(buffer), { type: "array" });
 
-    // Parse ALL sheets but only if they look like timetable sheets
-    const allLectures: TimetableLecture[] = [];
-    for (const sheetName of wb.SheetNames) {
-      const worksheet = wb.Sheets[sheetName];
-      const data = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1 }) as any[][];
-      if (data.length < 4) continue; // skip sheets with too few rows
+    // Extract GID from URL if present (e.g., #gid=282013146 or ?gid=282013146)
+    const gidMatch = url.match(/gid=(\d+)/);
+    const targetGid = gidMatch ? gidMatch[1] : null;
 
-      // Validate: sheet must have "Start Time" or "End Time" somewhere in first 3 rows
-      const headerText = (data[0] || []).concat(data[1] || []).concat(data[2] || [])
-        .map(c => String(c ?? "").toLowerCase().replace(/[^a-z]/g, ""))
-        .join(" ");
-      if (!headerText.includes("starttime") && !headerText.includes("endtime")) {
-        console.log(`  Skipping sheet "${sheetName}" — no time headers found`);
-        continue;
+    // Determine which sheet(s) to parse:
+    // 1. If URL has gid → find that specific sheet
+    // 2. Otherwise → parse only the FIRST sheet
+    let sheetsToProcess: string[] = [];
+
+    if (targetGid) {
+      // Try to match GID to a sheet — XLSX.js stores sheet metadata
+      // The GID maps to the sheet index in most cases
+      // Google Sheets assigns GID per tab; the first tab is usually gid=0
+      // We'll fetch the GID mapping from the HTML page
+      const gidsMap = await fetchSheetGids(url);
+      let foundSheet: string | null = null;
+
+      for (const [name, gid] of Object.entries(gidsMap)) {
+        if (gid === targetGid) {
+          foundSheet = name;
+          break;
+        }
       }
+
+      if (foundSheet && wb.SheetNames.includes(foundSheet)) {
+        sheetsToProcess = [foundSheet];
+        console.log(`Timetable: using specific sheet "${foundSheet}" (gid=${targetGid})`);
+      } else {
+        // Fallback: if GID mapping failed, use the first sheet
+        sheetsToProcess = [wb.SheetNames[0]];
+        console.log(`Timetable: GID ${targetGid} not found in mapping, using first sheet "${wb.SheetNames[0]}"`);
+      }
+    } else {
+      // No GID specified → first sheet only
+      sheetsToProcess = [wb.SheetNames[0]];
+      console.log(`Timetable: no GID in URL, using first sheet "${wb.SheetNames[0]}"`);
+    }
+
+    // Parse selected sheet(s)
+    const allLectures: TimetableLecture[] = [];
+    for (const sheetName of sheetsToProcess) {
+      const worksheet = wb.Sheets[sheetName];
+      if (!worksheet) continue;
+      const data = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1 }) as any[][];
+      if (data.length < 4) continue;
 
       const lectures = parseTimetableSheet(data);
       if (lectures.length > 0) {
@@ -2853,7 +2883,7 @@ async function loadTimetableData() {
     timetableSheetUrl = url;
     timetableLastLoaded = new Date().toISOString();
     console.log(
-      `Timetable loaded: ${timetableData.length} total lectures from ${wb.SheetNames.length} sheet(s), ` +
+      `Timetable loaded: ${timetableData.length} lectures from sheet "${sheetsToProcess.join(", ")}", ` +
       `${new Set(timetableData.map(l => l.teacherCode)).size} teachers`
     );
   } catch (err: any) {
