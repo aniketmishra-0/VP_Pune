@@ -23,7 +23,186 @@
  */
 
 import type { FacultyMember } from "./settingsStore";
-import { HISTORICAL_PATTERNS } from "./historicalPatterns";
+import { HISTORICAL_PATTERNS as STATIC_PATTERNS } from "./historicalPatterns";
+
+// Dynamic patterns — starts with static 14-week data, can be updated at runtime
+let HISTORICAL_PATTERNS: {
+  bt: Record<string, string[]>;
+  sh: Record<string, string[]>;
+  tp: Record<string, number[]>;
+} = STATIC_PATTERNS;
+
+/** Update historical patterns at runtime (e.g. from fetching all subsheets) */
+export function setHistoricalPatterns(newPatterns: typeof HISTORICAL_PATTERNS): void {
+  HISTORICAL_PATTERNS = newPatterns;
+  console.log(`[Pattern AI] Updated: ${Object.keys(newPatterns.sh).length} slot patterns, ${Object.keys(newPatterns.bt).length} batches, ${Object.keys(newPatterns.tp).length} teachers`);
+}
+
+/** Get current pattern stats */
+export function getPatternStats(): { slotPatterns: number; batches: number; teachers: number } {
+  return {
+    slotPatterns: Object.keys(HISTORICAL_PATTERNS.sh).length,
+    batches: Object.keys(HISTORICAL_PATTERNS.bt).length,
+    teachers: Object.keys(HISTORICAL_PATTERNS.tp).length,
+  };
+}
+
+// ── Pattern Builder from Sheet Data ──────────────────────────────────────
+
+const SLOT_TIME_MAP: Record<string, number> = {
+  '8:45 AM': 1, '10:15 AM': 1,
+  '10:30 AM': 2, '12:00 PM': 2,
+  '12:25 PM': 3, '12:26 PM': 3, '1:55 PM': 3, '1:56 PM': 3,
+  '2:15 PM': 4, '2:16 PM': 4, '3:45 PM': 4, '3:46 PM': 4,
+  '4:00 PM': 5, '4:10 PM': 5, '5:30 PM': 5, '5:40 PM': 5,
+  '5:55 PM': 6, '7:20 PM': 6, '7:25 PM': 6,
+};
+
+const DAY_NAMES_MAP = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+
+function extractShortBatch(fullCode: string): string {
+  const m = fullCode.match(/\d+-([A-Z0-9]+)/i);
+  return m ? m[1].toUpperCase() : '';
+}
+
+function isTeacherCode(val: string): boolean {
+  if (!val || val.length < 2 || val.length > 5) return false;
+  if (/^\d/.test(val)) return false;
+  if (/^(Room|Start|End|DAY|DATE|MHT|HOLIDAY|VP|PRACTICE|No|PM|AM)/i.test(val)) return false;
+  if (/^[A-Z]{2,5}$/.test(val)) return true;
+  return false;
+}
+
+/**
+ * Build pattern data from raw sheet tab data (fetched from Google Sheets API).
+ * Each tab = 1 week of timetable data.
+ */
+export function buildPatternsFromSheetData(
+  tabs: { tabName: string; rows: string[][] }[]
+): typeof HISTORICAL_PATTERNS {
+  const teacherBatchFreq: Record<string, Record<string, number>> = {};
+  const teacherSlotFreq: Record<string, Record<string, number>> = {};
+  const batchTeacherHistory: Record<string, Record<string, number>> = {};
+
+  for (const tab of tabs) {
+    const { rows } = tab;
+    if (rows.length < 3) continue;
+
+    // Find header row (contains batch codes starting with "27-")
+    let headerIdx = -1;
+    for (let i = 0; i < Math.min(rows.length, 5); i++) {
+      if (rows[i].some(c => (c || '').trim().startsWith('27-'))) {
+        headerIdx = i;
+        break;
+      }
+    }
+    if (headerIdx < 0) continue;
+
+    // Build column → batch mapping
+    const colBatch: Record<number, string> = {};
+    for (let c = 0; c < rows[headerIdx].length; c++) {
+      const val = (rows[headerIdx][c] || '').trim();
+      if (val.startsWith('27-')) {
+        colBatch[c] = extractShortBatch(val);
+      }
+    }
+
+    // Find DAY, Start Time columns
+    let dayCol = -1, startCol = -1;
+    for (let c = 0; c < Math.min(rows[headerIdx].length, 10); c++) {
+      const h = (rows[headerIdx][c] || '').trim().toUpperCase();
+      if (h === 'DAY') dayCol = c;
+      if (h.includes('START')) startCol = c;
+    }
+    // Fallback: try row above header
+    if (dayCol < 0 && headerIdx > 0) {
+      for (let c = 0; c < Math.min(rows[headerIdx - 1].length, 10); c++) {
+        const h = (rows[headerIdx - 1][c] || '').trim().toUpperCase();
+        if (h === 'DAY') dayCol = c;
+        if (h.includes('START')) startCol = c;
+      }
+    }
+
+    // Parse data rows
+    let currentDay = '';
+    for (let r = headerIdx + 1; r < rows.length; r++) {
+      const row = rows[r] || [];
+      
+      // Get day
+      if (dayCol >= 0 && row[dayCol]) {
+        const d = row[dayCol].trim().toUpperCase();
+        if (DAY_NAMES_MAP.includes(d)) currentDay = d;
+      }
+      if (!currentDay) continue;
+
+      // Get start time → slot
+      let slotNum = 0;
+      if (startCol >= 0 && row[startCol]) {
+        const t = row[startCol].trim();
+        slotNum = SLOT_TIME_MAP[t] || 0;
+      }
+      if (!slotNum) continue;
+
+      // Parse teacher codes from batch columns
+      for (const [colStr, batchShort] of Object.entries(colBatch)) {
+        const col = parseInt(colStr);
+        const cellVal = (row[col] || '').trim();
+        if (!isTeacherCode(cellVal)) continue;
+
+        const teacher = cellVal.toUpperCase();
+        const slotKey = `${batchShort}_${currentDay}_${slotNum}`;
+
+        // Track batch→teacher history for slot
+        if (!batchTeacherHistory[slotKey]) batchTeacherHistory[slotKey] = {};
+        batchTeacherHistory[slotKey][teacher] = (batchTeacherHistory[slotKey][teacher] || 0) + 1;
+
+        // Track teacher→batch frequency
+        if (!teacherBatchFreq[teacher]) teacherBatchFreq[teacher] = {};
+        teacherBatchFreq[teacher][batchShort] = (teacherBatchFreq[teacher][batchShort] || 0) + 1;
+
+        // Track teacher slot preferences
+        if (!teacherSlotFreq[teacher]) teacherSlotFreq[teacher] = {};
+        teacherSlotFreq[teacher][String(slotNum)] = (teacherSlotFreq[teacher][String(slotNum)] || 0) + 1;
+      }
+    }
+  }
+
+  // Build output format
+  // bt: batch → [teacher1, teacher2, ...] ordered by frequency
+  const bt: Record<string, string[]> = {};
+  const batchTotals: Record<string, Record<string, number>> = {};
+  for (const [teacher, batches] of Object.entries(teacherBatchFreq)) {
+    for (const [batch, count] of Object.entries(batches)) {
+      if (!batchTotals[batch]) batchTotals[batch] = {};
+      batchTotals[batch][teacher] = (batchTotals[batch][teacher] || 0) + count;
+    }
+  }
+  for (const [batch, teachers] of Object.entries(batchTotals)) {
+    bt[batch] = Object.entries(teachers)
+      .sort((a, b) => b[1] - a[1])
+      .map(([t]) => t);
+  }
+
+  // sh: batch_DAY_SLOT → [teacher1, teacher2] ordered by frequency
+  const sh: Record<string, string[]> = {};
+  for (const [key, teachers] of Object.entries(batchTeacherHistory)) {
+    sh[key] = Object.entries(teachers)
+      .sort((a, b) => b[1] - a[1])
+      .map(([t]) => t);
+  }
+
+  // tp: teacher → [slot1, slot2, ...] ordered by frequency
+  const tp: Record<string, number[]> = {};
+  for (const [teacher, slots] of Object.entries(teacherSlotFreq)) {
+    tp[teacher] = Object.entries(slots)
+      .sort((a, b) => b[1] - a[1])
+      .map(([s]) => parseInt(s));
+  }
+
+  console.log(`[buildPatterns] Built from ${tabs.length} tabs: ${Object.keys(sh).length} slot patterns, ${Object.keys(bt).length} batches, ${Object.keys(tp).length} teachers`);
+  
+  return { bt, sh, tp };
+}
 
 // ── Public types ────────────────────────────────────────────────────────
 
@@ -287,9 +466,13 @@ export function generateTimetable(
   // Track total weekly assignments for load balancing
   const weeklyLoad = new Map<string, number>();
 
-  // Track teacher variety per batch (avoid same teacher all week)
+  // Track teacher variety per batch ACROSS THE ENTIRE WEEK
   // batchWeekTeachers[batchCode] = Map<teacherCode, count>
   const batchWeekTeachers = new Map<string, Map<string, number>>();
+  
+  // Track which teacher was assigned to each batch on PREVIOUS day
+  // This persists across days to prevent "PKK all week" issue
+  const batchPrevDayTeacher = new Map<string, string>();
 
   const collisions = new SlotCollisionTracker();
 
@@ -299,7 +482,7 @@ export function generateTimetable(
     const dateStr = dayDates.get(day) || "";
     const dayTracker = new DayTracker();
     
-    // Track last assigned teacher per batch THIS day (for variety within a day)
+    // Track last assigned teacher per batch THIS day (for variety within day)
     const batchDayLastTeacher = new Map<string, string>();
 
     for (const batch of batches) {
@@ -329,7 +512,8 @@ export function generateTimetable(
         // ── BUILD RANKED CANDIDATE LIST ──
         const patternSuggestions = getPatternSuggestions(batch.code, day, slot);
         const runtimeTeacher = runtimeHistLookup.get(`${day}-${slot}-${batch.code}`);
-        const lastTeacherForBatch = batchDayLastTeacher.get(batch.code);
+        const lastTeacherToday = batchDayLastTeacher.get(batch.code);
+        const yesterdayTeacher = batchPrevDayTeacher.get(batch.code);
 
         // Get weekly usage for this batch
         if (!batchWeekTeachers.has(batch.code)) {
@@ -337,83 +521,75 @@ export function generateTimetable(
         }
         const batchWeekUsage = batchWeekTeachers.get(batch.code)!;
 
-        const candidateOrder: string[] = [];
-        const seen = new Set<string>();
+        // Teachers to AVOID (same-day repeat + yesterday's teacher)
+        const avoidSet = new Set<string>();
+        if (lastTeacherToday) avoidSet.add(lastTeacherToday);
+        if (yesterdayTeacher && eligible.length > 1) avoidSet.add(yesterdayTeacher);
 
-        // Layer 1: Runtime historical (last week) — but NOT if same as last slot
-        if (runtimeTeacher && eligible.includes(runtimeTeacher) && activeTeachers.has(runtimeTeacher)) {
-          if (runtimeTeacher !== lastTeacherForBatch) {
-            candidateOrder.push(runtimeTeacher);
-          }
-          seen.add(runtimeTeacher);
+        // Build candidate list with ALL eligible teachers, sorted by priority
+        const allCandidates: { code: string; score: number; reason: string }[] = [];
+        
+        for (const t of eligible) {
+          if (!activeTeachers.has(t)) continue;
+          
+          let score = 0;
+          
+          // HIGHEST PRIORITY: Variety across the week (lower usage = better)
+          const weekUse = batchWeekUsage.get(t) || 0;
+          score -= weekUse * 1000; // Each weekly use costs 1000 points
+          
+          // HIGH PRIORITY: Don't repeat yesterday's teacher
+          if (t === yesterdayTeacher) score -= 500;
+          
+          // HIGH PRIORITY: Don't repeat same-day teacher  
+          if (t === lastTeacherToday) score -= 500;
+          
+          // MEDIUM: Pattern AI match (slot-specific history)
+          const slotKey = `${extractShort(batch.code)}_${day}_${slot}`;
+          const slotHist = (HISTORICAL_PATTERNS.sh as Record<string, string[]>)[slotKey] || [];
+          const slotIdx = slotHist.indexOf(t);
+          if (slotIdx === 0) score += 200;      // Most common historical teacher for this exact slot
+          else if (slotIdx > 0) score += 100;   // In historical list
+          
+          // MEDIUM: Runtime historical match (last week's actual)
+          if (t === runtimeTeacher) score += 150;
+          
+          // LOWER: Pattern AI batch frequency
+          const batchHist = (HISTORICAL_PATTERNS.bt as Record<string, string[]>)[extractShort(batch.code)] || [];
+          const batchIdx = batchHist.indexOf(t);
+          if (batchIdx >= 0) score += (50 - batchIdx * 10);
+          
+          // LOWER: Slot preference
+          if (teacherPrefersSlot(t, slot)) score += 30;
+          
+          // LOWEST: Overall load balancing
+          const load = weeklyLoad.get(t) || 0;
+          score -= load * 5;
+          
+          allCandidates.push({ code: t, score, reason: `score=${score}` });
         }
-
-        // Layer 2: Pattern AI suggestions — filter out last-used teacher
-        for (const t of patternSuggestions) {
-          if (!seen.has(t) && eligible.includes(t) && activeTeachers.has(t)) {
-            if (t !== lastTeacherForBatch) {
-              candidateOrder.push(t);
-            }
-            seen.add(t);
-          }
-        }
-
-        // Layer 3: Remaining eligible, sorted by:
-        //   a) NOT the teacher from previous slot (variety within day)
-        //   b) Fewer weekly usages for THIS batch (variety across week)
-        //   c) Slot preference match
-        //   d) Lower overall weekly load
-        const remaining = eligible
-          .filter(t => !seen.has(t) && activeTeachers.has(t))
-          .map(t => ({
-            code: t,
-            load: weeklyLoad.get(t) || 0,
-            prefersSlot: teacherPrefersSlot(t, slot),
-            batchUse: batchWeekUsage.get(t) || 0,
-            isRepeat: t === lastTeacherForBatch,
-          }))
-          .sort((a, b) => {
-            // Don't repeat same teacher in consecutive slots
-            if (a.isRepeat !== b.isRepeat) return a.isRepeat ? 1 : -1;
-            // Prefer teachers less-used for THIS batch this week
-            if (a.batchUse !== b.batchUse) return a.batchUse - b.batchUse;
-            // Prefer teachers who like this slot
-            if (a.prefersSlot !== b.prefersSlot) return a.prefersSlot ? -1 : 1;
-            // Then by lower overall load
-            return a.load - b.load;
-          });
-
-        for (const r of remaining) {
-          candidateOrder.push(r.code);
-        }
-
-        // If all candidates were filtered (only 1 teacher available), add back the repeat
-        if (candidateOrder.length === 0 && lastTeacherForBatch && eligible.includes(lastTeacherForBatch)) {
-          candidateOrder.push(lastTeacherForBatch);
-        }
-        // Also add runtime teacher back if it was skipped
-        if (candidateOrder.length === 0 && runtimeTeacher && eligible.includes(runtimeTeacher)) {
-          candidateOrder.push(runtimeTeacher);
-        }
+        
+        // Sort by score (highest first)
+        allCandidates.sort((a, b) => b.score - a.score);
 
         // ── TRY CANDIDATES ──
         let assigned = false;
-        for (const teacher of candidateOrder) {
-          if (collisions.isBooked(day, slot, teacher)) continue;
-          if (dayTracker.slotCount(teacher) >= maxSlotsPerDay) continue;
-          if (dayTracker.wouldExceedConsecutive(teacher, slot, maxConsecutive)) continue;
+        for (const candidate of allCandidates) {
+          if (collisions.isBooked(day, slot, candidate.code)) continue;
+          if (dayTracker.slotCount(candidate.code) >= maxSlotsPerDay) continue;
+          if (dayTracker.wouldExceedConsecutive(candidate.code, slot, maxConsecutive)) continue;
 
           result.push({
             day, date: dateStr, slotNum: slot,
             startTime: SLOT_TIMES[slot].start, endTime: SLOT_TIMES[slot].end,
-            batchCode: batch.code, teacherCode: teacher,
+            batchCode: batch.code, teacherCode: candidate.code,
             room: batch.room, section: batch.section,
           });
-          collisions.book(day, slot, teacher);
-          dayTracker.assign(teacher, slot);
-          weeklyLoad.set(teacher, (weeklyLoad.get(teacher) || 0) + 1);
-          batchDayLastTeacher.set(batch.code, teacher);
-          batchWeekUsage.set(teacher, (batchWeekUsage.get(teacher) || 0) + 1);
+          collisions.book(day, slot, candidate.code);
+          dayTracker.assign(candidate.code, slot);
+          weeklyLoad.set(candidate.code, (weeklyLoad.get(candidate.code) || 0) + 1);
+          batchDayLastTeacher.set(batch.code, candidate.code);
+          batchWeekUsage.set(candidate.code, (batchWeekUsage.get(candidate.code) || 0) + 1);
           assigned = true;
           break;
         }
@@ -421,10 +597,15 @@ export function generateTimetable(
         if (!assigned) {
           warnings.push(
             `${day} Slot ${slot}: No available teacher for batch ${batch.code} ` +
-            `(${candidateOrder.length} candidates all conflicted)`,
+            `(${allCandidates.length} candidates all conflicted)`,
           );
         }
       }
+    }
+    
+    // At end of each day, save today's teachers as "yesterday" for next day
+    for (const [batchCode, teacher] of batchDayLastTeacher) {
+      batchPrevDayTeacher.set(batchCode, teacher);
     }
   }
 

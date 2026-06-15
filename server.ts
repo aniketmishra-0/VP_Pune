@@ -7,7 +7,7 @@ import fs from "fs";
 import "dotenv/config";
 import * as settingsStore from "./settingsStore";
 import type { Role } from "./settingsStore";
-import { generateTimetable, aiResolveConflicts, type GeneratorConfig, type GeneratedSlot, type BatchInfo } from "./timetableGenerator";
+import { generateTimetable, aiResolveConflicts, setHistoricalPatterns, getPatternStats, buildPatternsFromSheetData, type GeneratorConfig, type GeneratedSlot, type BatchInfo } from "./timetableGenerator";
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
@@ -3396,9 +3396,67 @@ app.post("/api/timetable/write-sheet", verifyRequest, superAdminOnly, async (req
 });
 
 
+/**
+ * POST /api/timetable/rebuild-patterns
+ * Rebuild historical patterns from ALL subsheets in the timetable spreadsheet.
+ * This fetches every tab dynamically — no manual CSV download needed.
+ */
+app.post("/api/timetable/rebuild-patterns", verifyRequest, superAdminOnly, async (req, res) => {
+  try {
+    console.log("[rebuild-patterns] Fetching ALL timetable tabs...");
+    const allTabs = await settingsStore.readAllTimetableTabs();
+    
+    if (allTabs.length === 0) {
+      return res.status(400).json({ error: "No timetable tabs found in spreadsheet" });
+    }
+
+    const patterns = buildPatternsFromSheetData(allTabs);
+    setHistoricalPatterns(patterns);
+
+    const stats = getPatternStats();
+    const admin = String(req.headers["x-user-email"] || "").trim().toLowerCase();
+    if (admin) logActivity(admin, "rebuild_patterns", `Rebuilt from ${allTabs.length} tabs: ${stats.slotPatterns} slot patterns, ${stats.batches} batches, ${stats.teachers} teachers`);
+
+    res.json({
+      success: true,
+      tabsProcessed: allTabs.length,
+      tabNames: allTabs.map(t => t.tabName),
+      ...stats,
+    });
+  } catch (err: any) {
+    console.error("[rebuild-patterns] Error:", err.message);
+    res.status(500).json({ error: "Pattern rebuild failed: " + err.message });
+  }
+});
+
+/**
+ * GET /api/timetable/pattern-stats
+ * Get current pattern AI statistics
+ */
+app.get("/api/timetable/pattern-stats", verifyRequest, (req, res) => {
+  const stats = getPatternStats();
+  res.json({ success: true, ...stats });
+});
+
+
 // Auto-load timetable on startup if a URL is configured
 // Load timetable URL from sheet first, THEN load data
 loadTimetableUrlFromSheet().then(() => loadTimetableData()).catch(() => loadTimetableData());
+
+// Auto-rebuild patterns from ALL subsheets on startup
+setTimeout(async () => {
+  try {
+    console.log("[startup] Auto-rebuilding patterns from ALL subsheets...");
+    const allTabs = await settingsStore.readAllTimetableTabs();
+    if (allTabs.length > 0) {
+      const patterns = buildPatternsFromSheetData(allTabs);
+      setHistoricalPatterns(patterns);
+      console.log(`[startup] Pattern AI updated from ${allTabs.length} tabs`);
+    }
+  } catch (err: any) {
+    console.warn("[startup] Pattern auto-rebuild failed (using static 14-week data):", err.message);
+  }
+}, 5000); // Wait 5s after startup for auth to initialize
 
 
 // Configure Vite integration or static file server

@@ -535,6 +535,76 @@ export async function readFacultyDetails(
   return members;
 }
 
+// ── Read ALL timetable tabs for pattern building ───────────────────────
+
+/**
+ * Read ALL timetable subsheet tabs (excluding system tabs like Faculty Details, Settings, etc.)
+ * Returns raw data for each tab to build historical patterns from ALL weeks.
+ */
+export async function readAllTimetableTabs(
+  spreadsheetId: string = TIMETABLE_SPREADSHEET_ID,
+): Promise<{ tabName: string; rows: string[][] }[]> {
+  // 1. Get all sheet names
+  const metaRes = await timetableApiFetch(spreadsheetId, "?fields=sheets.properties.title");
+  const sheets: { properties: { title: string } }[] = metaRes.sheets || [];
+  
+  const SYSTEM_TABS = new Set([
+    "Faculty Details", "Settings", "Activity Log", "Notifications", 
+    "Timetable Config", "Template", "MHT-CET"
+  ]);
+  
+  const timetableTabs = sheets
+    .map(s => s.properties.title)
+    .filter(t => !SYSTEM_TABS.has(t) && !t.toLowerCase().startsWith("sheet"));
+  
+  console.log(`[readAllTimetableTabs] Found ${timetableTabs.length} timetable tabs: ${timetableTabs.join(", ")}`);
+  
+  // 2. Fetch data from each tab (batch requests for efficiency)
+  const results: { tabName: string; rows: string[][] }[] = [];
+  
+  // Use batch get to fetch all tabs at once
+  const ranges = timetableTabs.map(t => `${t}!A1:CZ100`);
+  if (ranges.length === 0) return results;
+  
+  try {
+    const batchRes = await timetableApiFetch(
+      spreadsheetId,
+      `/values:batchGet?${ranges.map(r => `ranges=${encodeURIComponent(r)}`).join("&")}&majorDimension=ROWS`,
+    );
+    
+    const valueRanges = batchRes.valueRanges || [];
+    for (let i = 0; i < valueRanges.length; i++) {
+      const rows = valueRanges[i].values || [];
+      if (rows.length > 0) {
+        results.push({
+          tabName: timetableTabs[i],
+          rows,
+        });
+      }
+    }
+  } catch (err: any) {
+    console.error("[readAllTimetableTabs] Batch fetch failed, trying one-by-one:", err.message);
+    // Fallback: fetch tabs one by one
+    for (const tab of timetableTabs) {
+      try {
+        const data = await timetableApiFetch(
+          spreadsheetId,
+          `/values/${encodeURIComponent(tab)}!A1:CZ100?majorDimension=ROWS`,
+        );
+        const rows = data.values || [];
+        if (rows.length > 0) {
+          results.push({ tabName: tab, rows });
+        }
+      } catch (tabErr: any) {
+        console.warn(`[readAllTimetableTabs] Skipping tab "${tab}":`, tabErr.message);
+      }
+    }
+  }
+  
+  console.log(`[readAllTimetableTabs] Loaded data from ${results.length} tabs`);
+  return results;
+}
+
 // ── Write timetable to sheet ────────────────────────────────────────────
 
 // ── Room Number Lookup from Latest Sheet ─────────────────────────────────
