@@ -14,6 +14,8 @@ RUN npm ci
 COPY . .
 
 # Build Vite frontend and esbuild server backend
+# ARG CACHEBUST ensures fresh build on each deploy
+ARG CACHEBUST=1
 RUN npm run build
 
 # Expose port (Hugging Face expects port 7860 by default)
