@@ -493,9 +493,9 @@ export function generateTimetable(
   // batchWeekTeachers[batchCode] = Map<teacherCode, count>
   const batchWeekTeachers = new Map<string, Map<string, number>>();
   
-  // Track which teacher was assigned to each batch on PREVIOUS day
-  // This persists across days to prevent "PKK all week" issue
-  const batchPrevDayTeacher = new Map<string, string>();
+  // Track ALL teachers assigned to each batch on PREVIOUS day (not just last one!)
+  // This prevents "PKK slot 1, CAA slot 2" → next day PKK again
+  const batchPrevDayTeachers = new Map<string, Set<string>>();
 
   const collisions = new SlotCollisionTracker();
 
@@ -505,7 +505,9 @@ export function generateTimetable(
     const dateStr = dayDates.get(day) || "";
     const dayTracker = new DayTracker();
     
-    // Track last assigned teacher per batch THIS day (for variety within day)
+    // Track ALL teachers assigned to this batch TODAY
+    const batchDayTeachers = new Map<string, Set<string>>();
+    // Track last assigned teacher per batch THIS day (for consecutive slot variety)
     const batchDayLastTeacher = new Map<string, string>();
 
     for (const batch of batches) {
@@ -536,7 +538,7 @@ export function generateTimetable(
         const patternSuggestions = getPatternSuggestions(batch.code, day, slot);
         const runtimeTeacher = runtimeHistLookup.get(`${day}-${slot}-${batch.code}`);
         const lastTeacherToday = batchDayLastTeacher.get(batch.code);
-        const yesterdayTeacher = batchPrevDayTeacher.get(batch.code);
+        const yesterdayTeachers = batchPrevDayTeachers.get(batch.code) || new Set<string>();
 
         // Get weekly usage for this batch
         if (!batchWeekTeachers.has(batch.code)) {
@@ -544,13 +546,8 @@ export function generateTimetable(
         }
         const batchWeekUsage = batchWeekTeachers.get(batch.code)!;
 
-        // Teachers to AVOID (same-day repeat + yesterday's teacher)
-        const avoidSet = new Set<string>();
-        if (lastTeacherToday) avoidSet.add(lastTeacherToday);
-        if (yesterdayTeacher && eligible.length > 1) avoidSet.add(yesterdayTeacher);
-
-        // Build candidate list with ALL eligible teachers, sorted by priority
-        const allCandidates: { code: string; score: number; reason: string }[] = [];
+        // Build candidate list with ALL eligible teachers, sorted by score
+        const allCandidates: { code: string; score: number }[] = [];
         
         for (const t of eligible) {
           if (!activeTeachers.has(t)) continue;
@@ -561,10 +558,10 @@ export function generateTimetable(
           const weekUse = batchWeekUsage.get(t) || 0;
           score -= weekUse * 1000; // Each weekly use costs 1000 points
           
-          // HIGH PRIORITY: Don't repeat yesterday's teacher
-          if (t === yesterdayTeacher) score -= 500;
+          // HIGH PRIORITY: Don't repeat ANY of yesterday's teachers (not just last!)
+          if (yesterdayTeachers.has(t)) score -= 800;
           
-          // HIGH PRIORITY: Don't repeat same-day teacher  
+          // HIGH PRIORITY: Don't repeat same-day teacher (consecutive slots)
           if (t === lastTeacherToday) score -= 500;
           
           // MEDIUM: Pattern AI match (slot-specific history)
@@ -589,7 +586,7 @@ export function generateTimetable(
           const load = weeklyLoad.get(t) || 0;
           score -= load * 5;
           
-          allCandidates.push({ code: t, score, reason: `score=${score}` });
+          allCandidates.push({ code: t, score });
         }
         
         // Sort by score (highest first)
@@ -612,6 +609,9 @@ export function generateTimetable(
           dayTracker.assign(candidate.code, slot);
           weeklyLoad.set(candidate.code, (weeklyLoad.get(candidate.code) || 0) + 1);
           batchDayLastTeacher.set(batch.code, candidate.code);
+          // Track ALL teachers for this batch today
+          if (!batchDayTeachers.has(batch.code)) batchDayTeachers.set(batch.code, new Set());
+          batchDayTeachers.get(batch.code)!.add(candidate.code);
           batchWeekUsage.set(candidate.code, (batchWeekUsage.get(candidate.code) || 0) + 1);
           assigned = true;
           break;
@@ -626,9 +626,9 @@ export function generateTimetable(
       }
     }
     
-    // At end of each day, save today's teachers as "yesterday" for next day
-    for (const [batchCode, teacher] of batchDayLastTeacher) {
-      batchPrevDayTeacher.set(batchCode, teacher);
+    // At end of each day, save ALL of today's teachers as "yesterday" for next day
+    for (const [batchCode, teachers] of batchDayTeachers) {
+      batchPrevDayTeachers.set(batchCode, new Set(teachers));
     }
   }
 
