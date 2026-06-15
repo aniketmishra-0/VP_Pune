@@ -3001,6 +3001,56 @@ app.post("/api/timetable/refresh", verifyRequest, superAdminOnly, async (req, re
   res.json({ success: true, message: "Timetable refresh started in background." });
 });
 
+/**
+ * GET /api/timetable/teachers
+ * Return teacher code → name mapping from config.
+ */
+app.get("/api/timetable/teachers", verifyRequest, superAdminOnly, (_req, res) => {
+  const config = getAppConfig() as any;
+  const names: Record<string, string> = config.TEACHER_NAMES || {};
+  res.json({ teachers: names });
+});
+
+/**
+ * POST /api/timetable/teachers
+ * Save teacher code → name mappings to config.json.
+ * Body: { teachers: { "CSI": "Mohd Shazil Iqbal", ... } }
+ * OR: { add: { code: "XYZ", name: "New Teacher" } }
+ * OR: { remove: "XYZ" }
+ */
+app.post("/api/timetable/teachers", verifyRequest, superAdminOnly, (req, res) => {
+  try {
+    const config = getAppConfig() as any;
+    if (!config.TEACHER_NAMES) config.TEACHER_NAMES = {};
+
+    const { teachers, add, remove } = req.body;
+
+    if (teachers && typeof teachers === "object") {
+      // Bulk set
+      config.TEACHER_NAMES = teachers;
+    } else if (add && add.code && add.name) {
+      // Add single
+      config.TEACHER_NAMES[add.code.toUpperCase().trim()] = add.name.trim();
+    } else if (remove) {
+      // Remove single
+      delete config.TEACHER_NAMES[remove.toUpperCase().trim()];
+    }
+
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), "utf-8");
+
+    const admin = String(req.headers["x-user-email"] || "").trim().toLowerCase();
+    if (admin) logActivity(admin, "teacher_names_update", `Updated teacher name mappings`);
+
+    res.json({
+      success: true,
+      message: "Teacher names saved.",
+      count: Object.keys(config.TEACHER_NAMES).length,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to save: " + err.toString() });
+  }
+});
+
 // Auto-load timetable on startup if a URL is configured
 loadTimetableData();
 
