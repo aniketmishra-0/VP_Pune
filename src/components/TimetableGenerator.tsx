@@ -244,6 +244,7 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
   const [warnings, setWarnings] = useState<string[]>([]);
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
+  const [editingCell, setEditingCell] = useState<{ day: string; slotId: number; batchCode: string } | null>(null);
 
   // Step 5 — Export
   const [tabName, setTabName] = useState("");
@@ -266,6 +267,91 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
     () => faculty.filter(f => f.status.toLowerCase() === "active" && f.code && !disabledTeachers.has(f.code)),
     [faculty, disabledTeachers],
   );
+
+  // Find double bookings: "DAY-SLOT-TEACHER" -> Set of batchCodes
+  const doubleBookings = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    for (const s of generatedSlots) {
+      if (!s.teacherCode) continue;
+      const key = `${s.day}-${s.slotNum}-${s.teacherCode}`;
+      if (!map.has(key)) map.set(key, new Set());
+      map.get(key)!.add(s.batchCode);
+    }
+    return map;
+  }, [generatedSlots]);
+
+  // Combine and dynamically resolve warnings
+  const activeWarnings = useMemo(() => {
+    let filtered = warnings.filter(w => {
+      // Parse warnings like: "Monday Slot 1: No available teacher for batch LJ151MA"
+      const match = w.match(/([A-Za-z]+)\s+Slot\s+(\d+):\s+No\s+available\s+teacher\s+for\s+batch\s+([A-Za-z0-9_-]+)/i);
+      if (match) {
+        const [_, day, slotStr, batchCode] = match;
+        const slotId = parseInt(slotStr);
+        // Is there a teacher assigned now?
+        const hasTeacher = generatedSlots.some(
+          s => s.day.toLowerCase() === day.toLowerCase() && s.slotNum === slotId && s.batchCode === batchCode && s.teacherCode
+        );
+        if (hasTeacher) return false; // Resolved!
+      }
+      return true;
+    });
+
+    const doubleBookedWarnings: string[] = [];
+    for (const [key, batches] of doubleBookings.entries()) {
+      if (batches.size > 1) {
+        const [day, slotId, teacher] = key.split("-");
+        const batchList = Array.from(batches).join(", ");
+        doubleBookedWarnings.push(`⚠️ Double Booking Clash: Teacher ${teacher} is assigned to multiple batches (${batchList}) on ${day} Slot ${slotId}`);
+      }
+    }
+
+    return [...filtered, ...doubleBookedWarnings];
+  }, [warnings, generatedSlots, doubleBookings]);
+
+  // Handler for manual cell edits in Step 4 Preview Grid
+  const handleCellEdit = useCallback((
+    day: string,
+    slotNum: number,
+    batchCode: string,
+    teacherCode: string,
+    section: "JEE" | "NEET" | "DROPPER"
+  ) => {
+    setGeneratedSlots(prev => {
+      const exists = prev.some(s => s.day === day && s.slotNum === slotNum && s.batchCode === batchCode);
+      
+      if (!teacherCode) {
+        // Remove assignment
+        return prev.filter(s => !(s.day === day && s.slotNum === slotNum && s.batchCode === batchCode));
+      }
+
+      if (exists) {
+        // Update existing slot
+        return prev.map(s => {
+          if (s.day === day && s.slotNum === slotNum && s.batchCode === batchCode) {
+            return { ...s, teacherCode };
+          }
+          return s;
+        });
+      } else {
+        // Create new slot
+        const dateInfo = weekDates.find(w => w.day === day);
+        const slotInfo = SLOTS.find(sl => sl.id === slotNum);
+        const newSlot: GeneratedSlot = {
+          day,
+          date: dateInfo?.dateStr || "",
+          slotNum,
+          startTime: slotInfo?.start || "",
+          endTime: slotInfo?.end || "",
+          batchCode,
+          teacherCode,
+          room: batchRooms[batchCode] || getDefaultRoom(batchCode) || "",
+          section,
+        };
+        return [...prev, newSlot];
+      }
+    });
+  }, [weekDates, batchRooms]);
 
   const allBatches = useMemo(() => {
     const batchSet = new Map<string, BatchInfo>();
@@ -1062,10 +1148,10 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
                   </div>
 
                   {/* Warnings */}
-                  {warnings.length > 0 && (
-                    <GlassCard title={`Warnings (${warnings.length})`} icon={<AlertTriangle className="w-3.5 h-3.5 text-amber-500" />}>
+                  {activeWarnings.length > 0 && (
+                    <GlassCard title={`Warnings (${activeWarnings.length})`} icon={<AlertTriangle className="w-3.5 h-3.5 text-amber-500" />}>
                       <div className="max-h-[200px] overflow-y-auto space-y-1">
-                        {warnings.map((w, i) => (
+                        {activeWarnings.map((w, i) => (
                           <div key={i} className="flex items-start gap-2 text-[11px] text-amber-600 dark:text-amber-400">
                             <CloudOff className="w-3 h-3 mt-0.5 shrink-0" />
                             <span>{w}</span>
@@ -1086,7 +1172,7 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
                         setHfError(null);
                         try {
                           // If no warnings, generate validation warnings from pattern analysis
-                          const warningsToSend = warnings.length > 0 ? warnings : 
+                          const warningsToSend = activeWarnings.length > 0 ? activeWarnings : 
                             [`Validate ${generatedSlots.length} generated slots against 14-week historical patterns`];
                           const r = await fetch("/api/timetable/ai-resolve", {
                             method: "POST",
@@ -1117,8 +1203,8 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
                     >
                       {aiResolving ? (
                         <><Loader2 className="w-3.5 h-3.5 animate-spin" /> AI Analyzing...</>
-                      ) : warnings.length > 0 ? (
-                        <><Sparkles className="w-3.5 h-3.5" /> 🤖 AI Resolve {warnings.length} Conflicts (14-Week Data)</>
+                      ) : activeWarnings.length > 0 ? (
+                        <><Sparkles className="w-3.5 h-3.5" /> 🤖 AI Resolve {activeWarnings.length} Conflicts (14-Week Data)</>
                       ) : (
                         <><Sparkles className="w-3.5 h-3.5" /> 🤖 AI Validate & Optimize (14-Week Data)</>
                       )}
@@ -1305,14 +1391,56 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
                                 {/* JEE batch cells */}
                                 {jeeBatches.map(b => {
                                   const teacher = row.isHoliday ? "" : (previewGrid.lookup.get(`${row.day}-${row.slot.id}-${b.code}`) || "");
+                                  const isDoubleBooked = teacher && (doubleBookings.get(`${row.day}-${row.slot.id}-${teacher}`)?.size || 0) > 1;
+                                  const isEditing = editingCell && editingCell.day === row.day && editingCell.slotId === row.slot.id && editingCell.batchCode === b.code;
+
                                   return (
                                     <td
                                       key={b.code}
-                                      className={`px-1 py-1 border border-slate-200 dark:border-gray-800 text-center font-bold font-mono ${
-                                        teacher ? `${dayTextColor}` : "text-slate-300 dark:text-gray-700"
+                                      onClick={() => {
+                                        if (!row.isHoliday) {
+                                          setEditingCell({ day: row.day, slotId: row.slot.id, batchCode: b.code });
+                                        }
+                                      }}
+                                      className={`px-1 py-1 border border-slate-200 dark:border-gray-800 text-center font-bold font-mono cursor-pointer transition-all min-w-[50px] relative select-none ${
+                                        isDoubleBooked 
+                                          ? "bg-red-500/10 dark:bg-red-950/20 text-red-500 border-red-500/40" 
+                                          : teacher 
+                                            ? `${dayTextColor} hover:bg-slate-100 dark:hover:bg-slate-800/40` 
+                                            : "text-slate-300 dark:text-gray-700 hover:bg-slate-50 dark:hover:bg-slate-800/20"
                                       }`}
+                                      title={isDoubleBooked ? `Conflict: ${teacher} is double-booked!` : "Click to edit"}
                                     >
-                                      {teacher || "—"}
+                                      {isEditing ? (
+                                        <select
+                                          value={teacher}
+                                          onChange={(e) => {
+                                            handleCellEdit(row.day, row.slot.id, b.code, e.target.value, b.section);
+                                            setEditingCell(null);
+                                          }}
+                                          onBlur={() => setEditingCell(null)}
+                                          autoFocus
+                                          className="w-full bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-white border border-blue-500 rounded px-1 py-0.5 text-[9px] focus:outline-none"
+                                        >
+                                          <option value="">— (Empty)</option>
+                                          <optgroup label="Batch Faculty">
+                                            {activeFaculty
+                                              .filter(f => f.batches?.includes(b.code) && f.code)
+                                              .map(f => (
+                                                <option key={f.code} value={f.code}>{f.code} - {f.name}</option>
+                                              ))}
+                                          </optgroup>
+                                          <optgroup label="Other Faculty">
+                                            {activeFaculty
+                                              .filter(f => !f.batches?.includes(b.code) && f.code)
+                                              .map(f => (
+                                                <option key={f.code} value={f.code}>{f.code} - {f.name}</option>
+                                              ))}
+                                          </optgroup>
+                                        </select>
+                                      ) : (
+                                        teacher || "—"
+                                      )}
                                     </td>
                                   );
                                 })}
@@ -1328,14 +1456,56 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
                                 {/* NEET batch cells */}
                                 {neetBatches.map(b => {
                                   const teacher = row.isHoliday ? "" : (previewGrid.lookup.get(`${row.day}-${row.slot.id}-${b.code}`) || "");
+                                  const isDoubleBooked = teacher && (doubleBookings.get(`${row.day}-${row.slot.id}-${teacher}`)?.size || 0) > 1;
+                                  const isEditing = editingCell && editingCell.day === row.day && editingCell.slotId === row.slot.id && editingCell.batchCode === b.code;
+
                                   return (
                                     <td
                                       key={b.code}
-                                      className={`px-1 py-1 border border-slate-200 dark:border-gray-800 text-center font-bold font-mono ${
-                                        teacher ? `${dayTextColor}` : "text-slate-300 dark:text-gray-700"
+                                      onClick={() => {
+                                        if (!row.isHoliday) {
+                                          setEditingCell({ day: row.day, slotId: row.slot.id, batchCode: b.code });
+                                        }
+                                      }}
+                                      className={`px-1 py-1 border border-slate-200 dark:border-gray-800 text-center font-bold font-mono cursor-pointer transition-all min-w-[50px] relative select-none ${
+                                        isDoubleBooked 
+                                          ? "bg-red-500/10 dark:bg-red-950/20 text-red-500 border-red-500/40" 
+                                          : teacher 
+                                            ? `${dayTextColor} hover:bg-slate-100 dark:hover:bg-slate-800/40` 
+                                            : "text-slate-300 dark:text-gray-700 hover:bg-slate-50 dark:hover:bg-slate-800/20"
                                       }`}
+                                      title={isDoubleBooked ? `Conflict: ${teacher} is double-booked!` : "Click to edit"}
                                     >
-                                      {teacher || "—"}
+                                      {isEditing ? (
+                                        <select
+                                          value={teacher}
+                                          onChange={(e) => {
+                                            handleCellEdit(row.day, row.slot.id, b.code, e.target.value, b.section);
+                                            setEditingCell(null);
+                                          }}
+                                          onBlur={() => setEditingCell(null)}
+                                          autoFocus
+                                          className="w-full bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-white border border-blue-500 rounded px-1 py-0.5 text-[9px] focus:outline-none"
+                                        >
+                                          <option value="">— (Empty)</option>
+                                          <optgroup label="Batch Faculty">
+                                            {activeFaculty
+                                              .filter(f => f.batches?.includes(b.code) && f.code)
+                                              .map(f => (
+                                                <option key={f.code} value={f.code}>{f.code} - {f.name}</option>
+                                              ))}
+                                          </optgroup>
+                                          <optgroup label="Other Faculty">
+                                            {activeFaculty
+                                              .filter(f => !f.batches?.includes(b.code) && f.code)
+                                              .map(f => (
+                                                <option key={f.code} value={f.code}>{f.code} - {f.name}</option>
+                                              ))}
+                                          </optgroup>
+                                        </select>
+                                      ) : (
+                                        teacher || "—"
+                                      )}
                                     </td>
                                   );
                                 })}
@@ -1351,14 +1521,56 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
                                 {/* DROPPER batch cells */}
                                 {dropperBatches.map(b => {
                                   const teacher = row.isHoliday ? "" : (previewGrid.lookup.get(`${row.day}-${row.slot.id}-${b.code}`) || "");
+                                  const isDoubleBooked = teacher && (doubleBookings.get(`${row.day}-${row.slot.id}-${teacher}`)?.size || 0) > 1;
+                                  const isEditing = editingCell && editingCell.day === row.day && editingCell.slotId === row.slot.id && editingCell.batchCode === b.code;
+
                                   return (
                                     <td
                                       key={b.code}
-                                      className={`px-1 py-1 border border-slate-200 dark:border-gray-800 text-center font-bold font-mono ${
-                                        teacher ? `${dayTextColor}` : "text-slate-300 dark:text-gray-700"
+                                      onClick={() => {
+                                        if (!row.isHoliday) {
+                                          setEditingCell({ day: row.day, slotId: row.slot.id, batchCode: b.code });
+                                        }
+                                      }}
+                                      className={`px-1 py-1 border border-slate-200 dark:border-gray-800 text-center font-bold font-mono cursor-pointer transition-all min-w-[50px] relative select-none ${
+                                        isDoubleBooked 
+                                          ? "bg-red-500/10 dark:bg-red-950/20 text-red-500 border-red-500/40" 
+                                          : teacher 
+                                            ? `${dayTextColor} hover:bg-slate-100 dark:hover:bg-slate-800/40` 
+                                            : "text-slate-300 dark:text-gray-700 hover:bg-slate-50 dark:hover:bg-slate-800/20"
                                       }`}
+                                      title={isDoubleBooked ? `Conflict: ${teacher} is double-booked!` : "Click to edit"}
                                     >
-                                      {teacher || "—"}
+                                      {isEditing ? (
+                                        <select
+                                          value={teacher}
+                                          onChange={(e) => {
+                                            handleCellEdit(row.day, row.slot.id, b.code, e.target.value, b.section);
+                                            setEditingCell(null);
+                                          }}
+                                          onBlur={() => setEditingCell(null)}
+                                          autoFocus
+                                          className="w-full bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-white border border-blue-500 rounded px-1 py-0.5 text-[9px] focus:outline-none"
+                                        >
+                                          <option value="">— (Empty)</option>
+                                          <optgroup label="Batch Faculty">
+                                            {activeFaculty
+                                              .filter(f => f.batches?.includes(b.code) && f.code)
+                                              .map(f => (
+                                                <option key={f.code} value={f.code}>{f.code} - {f.name}</option>
+                                              ))}
+                                          </optgroup>
+                                          <optgroup label="Other Faculty">
+                                            {activeFaculty
+                                              .filter(f => !f.batches?.includes(b.code) && f.code)
+                                              .map(f => (
+                                                <option key={f.code} value={f.code}>{f.code} - {f.name}</option>
+                                              ))}
+                                          </optgroup>
+                                        </select>
+                                      ) : (
+                                        teacher || "—"
+                                      )}
                                     </td>
                                   );
                                 })}
