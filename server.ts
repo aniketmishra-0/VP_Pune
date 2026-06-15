@@ -2726,7 +2726,7 @@ function parseTimetableSheet(sheetData: any[][]): TimetableLecture[] {
       if (!/^[A-Z]{2,5}$/i.test(cellVal)) continue;
       const upperCode = cellVal.toUpperCase();
       // Skip day names and common non-code words that might appear in cells
-      if (/^(MONDAY|TUESDAY|WEDNESDAY|THURSDAY|FRIDAY|SATURDAY|SUNDAY|TEST|EXAM|ROOM|DATE|TIME|DAY|NA|NO|NIL|TBD|OFF|FREE)$/.test(upperCode)) continue;
+      if (/^(MONDAY|TUESDAY|WEDNESDAY|THURSDAY|FRIDAY|SATURDAY|SUNDAY|ROOM|DATE|TIME|DAY)$/.test(upperCode)) continue;
 
       const tp = timePairs[bc.timePairIndex];
       const startTime = String(row[tp.startCol] ?? "").trim();
