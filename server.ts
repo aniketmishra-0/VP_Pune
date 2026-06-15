@@ -2541,6 +2541,43 @@ function getTimetableUrl(): string {
   return (config as any).TIMETABLE_URL || process.env.TIMETABLE_URL || "";
 }
 
+/** Convert Excel time serial (0-1 fraction of day) to "H:MM AM/PM" string */
+function excelTimeToString(val: any): string {
+  const str = String(val ?? "").trim();
+  // Already a formatted time string like "8:45 AM" → return as-is
+  if (/\d+:\d+/.test(str)) return str;
+  // Excel time serial: 0.364583 = 8:45 AM
+  const num = parseFloat(str);
+  if (!isNaN(num) && num >= 0 && num <= 1) {
+    const totalMinutes = Math.round(num * 24 * 60);
+    let hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    const ampm = hours >= 12 ? "PM" : "AM";
+    if (hours > 12) hours -= 12;
+    if (hours === 0) hours = 12;
+    return `${hours}:${minutes.toString().padStart(2, "0")} ${ampm}`;
+  }
+  return str;
+}
+
+/** Convert Excel date serial number to "DD-Mon-YYYY" string */
+function excelDateToString(val: any): string {
+  const str = String(val ?? "").trim();
+  // Already a formatted date string → return as-is
+  if (/[A-Za-z]/.test(str) && /\d/.test(str)) return str;
+  const num = parseFloat(str);
+  if (!isNaN(num) && num > 40000 && num < 60000) {
+    // Excel serial date → JS Date (Excel epoch = Jan 1, 1900, with leap year bug)
+    const jsDate = new Date((num - 25569) * 86400 * 1000);
+    const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    const day = jsDate.getUTCDate();
+    const month = months[jsDate.getUTCMonth()];
+    const year = jsDate.getUTCFullYear();
+    return `${day}-${month}-${year}`;
+  }
+  return str;
+}
+
 /**
  * Fully-dynamic timetable sheet parser.
  *
@@ -2697,7 +2734,7 @@ function parseTimetableSheet(sheetData: any[][]): TimetableLecture[] {
 
     // Handle merged cells for Day & Date
     const rawDay  = String(row[dayCol] ?? "").trim();
-    const rawDate = String(row[dateCol] ?? "").trim();
+    const rawDate = excelDateToString(row[dateCol]);
     if (rawDay)  lastDay  = rawDay;
     if (rawDate) lastDate = rawDate;
 
@@ -2729,8 +2766,8 @@ function parseTimetableSheet(sheetData: any[][]): TimetableLecture[] {
       if (/^(MONDAY|TUESDAY|WEDNESDAY|THURSDAY|FRIDAY|SATURDAY|SUNDAY|ROOM|DATE|TIME|DAY)$/.test(upperCode)) continue;
 
       const tp = timePairs[bc.timePairIndex];
-      const startTime = String(row[tp.startCol] ?? "").trim();
-      const endTime   = String(row[tp.endCol] ?? "").trim();
+      const startTime = excelTimeToString(row[tp.startCol]);
+      const endTime   = excelTimeToString(row[tp.endCol]);
       if (!startTime || !endTime) continue;
 
       const teacherCode = upperCode;
