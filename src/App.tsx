@@ -45,6 +45,7 @@ import AdminSettings, { Role, SessionUser } from "./components/AdminSettings";
 import StudentQR from "./components/StudentQR";
 import FloatingEducationBg from "./components/FloatingEducationBg";
 import InstallPrompt from "./components/InstallPrompt";
+import TimetableViewer from "./components/TimetableViewer";
 
 function PWLogo({ size = "h-10 w-10", textSize = "text-sm", className = "" }: { size?: string, textSize?: string, className?: string }) {
   const [hasError, setHasError] = React.useState(false);
@@ -228,7 +229,7 @@ export default function App() {
   const [theme, setTheme] = useState<"light" | "dark">(
     () => (localStorage.getItem("theme") as "light" | "dark") || "light"
   );
-  const [activeView, setActiveView] = useState<"home" | "input" | "batchList" | "dashboard" | "sheetsList" | "admin">("home");
+  const [activeView, setActiveView] = useState<"home" | "input" | "batchList" | "dashboard" | "sheetsList" | "admin" | "timetable">("home");
   const [searchType, setSearchType] = useState<"batch" | "name" | "reg" | null>(null);
   const [sheetFilterQuery, setSheetFilterQuery] = useState<string>("");
   
@@ -3992,6 +3993,18 @@ export default function App() {
             </motion.div>
           )}
 
+          {activeView === "timetable" && isSuperAdmin && (
+            <motion.div
+              key="timetable"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              className="space-y-6 max-w-6xl mx-auto py-2 w-full text-slate-800 dark:text-slate-100"
+            >
+              <TimetableViewer adminHeaders={adminHeaders} />
+            </motion.div>
+          )}
+
         </AnimatePresence>
 
 
@@ -4064,6 +4077,21 @@ export default function App() {
           >
             <Settings className="w-5 h-5 shrink-0" />
             <span className="text-[10px] font-semibold tracking-tight font-sans leading-tight">Settings</span>
+          </button>
+          )}
+
+          {/* Timetable Tab — super-admin only */}
+          {isSuperAdmin && (
+          <button
+            onClick={() => { setActiveView("timetable"); setErrorMessage(null); }}
+            className={`flex flex-col items-center justify-center gap-1 w-14 py-1 rounded-xl transition-all cursor-pointer outline-none ${
+              activeView === "timetable"
+                ? "text-[#5277f7] dark:text-blue-400"
+                : "text-slate-400 hover:text-slate-800 dark:hover:text-white"
+            }`}
+          >
+            <Calendar className="w-5 h-5 shrink-0" />
+            <span className="text-[10px] font-semibold tracking-tight font-sans leading-tight">Timetable</span>
           </button>
           )}
         </nav>

@@ -2512,6 +2512,282 @@ app.get("/api/admin/export-cache", (req, res) => {
   res.send(buffer);
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+//  TIMETABLE MODULE — parse teacher-code timetable from a Google Sheet
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface TimetableLecture {
+  teacherCode: string;
+  day: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  batches: string[];
+  rooms: string[];
+  isMerged: boolean;
+  isExtraLecture: boolean;
+}
+
+// State variables (separate from student data)
+let timetableSheetUrl: string = "";
+let timetableData: TimetableLecture[] = [];
+let timetableLastLoaded: string | null = null;
+let timetableLoading: boolean = false;
+let timetableError: string | null = null;
+
+/** Read the timetable URL from config.json or env */
+function getTimetableUrl(): string {
+  const config = getAppConfig();
+  return (config as any).TIMETABLE_URL || process.env.TIMETABLE_URL || "";
+}
+
+/**
+ * Fully-dynamic timetable sheet parser.
+ *
+ * Expected sheet layout (rows are 0-indexed in `sheetData`):
+ *   Row 0 : Header row 1 — columns A-D have DAY / DATE / Start Time / End Time,
+ *           columns E+ have the first part of batch info.
+ *   Row 1 : Header row 2 — columns E+ have batch names (or second part).
+ *   Row 2 : Header row 3 — columns E+ have room / classroom numbers.
+ *   Row 3+: Data rows with time-slot entries; teacher codes in the batch columns.
+ *
+ * Merged cells (DAY / DATE spanning multiple time rows) are handled by
+ * carrying forward the last non-empty value.
+ */
+function parseTimetableSheet(sheetData: any[][]): TimetableLecture[] {
+  if (!sheetData || sheetData.length < 4) return [];
+
+  const row0 = sheetData[0] || [];
+  const row1 = sheetData[1] || [];
+  const row2 = sheetData[2] || [];
+
+  // --- Discover batch columns (index 4+) dynamically ---
+  interface BatchColumn {
+    index: number;
+    batchName: string;
+    room: string;
+    isExtra: boolean;
+  }
+
+  const batchColumns: BatchColumn[] = [];
+  const maxCols = Math.max(row0.length, row1.length, row2.length);
+
+  for (let col = 4; col < maxCols; col++) {
+    const part0 = String(row0[col] ?? "").trim();
+    const part1 = String(row1[col] ?? "").trim();
+    const room  = String(row2[col] ?? "").trim();
+
+    // Combine row-0 and row-1 parts into a single batch name
+    const parts = [part0, part1].filter(Boolean);
+    const batchName = parts.join(" ");
+    if (!batchName) continue; // skip entirely empty header columns
+
+    const isExtra = /\b(EXTRA|EL|SPECIAL)\b/i.test(batchName);
+
+    batchColumns.push({ index: col, batchName, room, isExtra });
+  }
+
+  if (batchColumns.length === 0) return [];
+
+  // --- Parse data rows ---
+  const lectures: TimetableLecture[] = [];
+  let lastDay = "";
+  let lastDate = "";
+
+  for (let r = 3; r < sheetData.length; r++) {
+    const row = sheetData[r] || [];
+
+    // Handle merged cells for Day & Date
+    const rawDay  = String(row[0] ?? "").trim();
+    const rawDate = String(row[1] ?? "").trim();
+    if (rawDay)  lastDay  = rawDay;
+    if (rawDate) lastDate = rawDate;
+
+    const startTime = String(row[2] ?? "").trim();
+    const endTime   = String(row[3] ?? "").trim();
+    if (!startTime || !endTime) continue; // skip rows with no time info
+
+    // Collect teacher codes from all batch columns for this row
+    // Key = teacherCode, Value = { batches[], rooms[], isExtra }
+    const codeMap = new Map<string, { batches: string[]; rooms: string[]; isExtra: boolean }>();
+
+    for (const bc of batchColumns) {
+      const cellVal = String(row[bc.index] ?? "").trim();
+      if (!cellVal) continue;
+
+      // Teacher codes are typically 2-4 uppercase letters; allow broader matches too
+      const teacherCode = cellVal;
+
+      if (!codeMap.has(teacherCode)) {
+        codeMap.set(teacherCode, { batches: [], rooms: [], isExtra: bc.isExtra });
+      }
+      const entry = codeMap.get(teacherCode)!;
+      if (!entry.batches.includes(bc.batchName)) entry.batches.push(bc.batchName);
+      if (bc.room && !entry.rooms.includes(bc.room)) entry.rooms.push(bc.room);
+      if (bc.isExtra) entry.isExtra = true;
+    }
+
+    // Emit one TimetableLecture per unique teacher code in this time slot
+    for (const [code, info] of Array.from(codeMap.entries())) {
+      lectures.push({
+        teacherCode: code,
+        day: lastDay,
+        date: lastDate,
+        startTime,
+        endTime,
+        batches: info.batches,
+        rooms: info.rooms,
+        isMerged: info.batches.length > 1,
+        isExtraLecture: info.isExtra,
+      });
+    }
+  }
+
+  return lectures;
+}
+
+/** Download and parse the timetable spreadsheet */
+async function loadTimetableData() {
+  if (timetableLoading) return;
+  const url = getTimetableUrl();
+  if (!url) {
+    timetableError = "No timetable sheet URL configured.";
+    return;
+  }
+  timetableLoading = true;
+  timetableError = null;
+  try {
+    const normalized = normalizeSpreadsheetUrl(url);
+    const res = await fetch(normalized);
+    if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+    const buffer = await res.arrayBuffer();
+    const wb = XLSX.read(new Uint8Array(buffer), { type: "array" });
+    const firstSheet = wb.Sheets[wb.SheetNames[0]];
+    const data = XLSX.utils.sheet_to_json<any[]>(firstSheet, { header: 1 });
+    timetableData = parseTimetableSheet(data as any[][]);
+    timetableSheetUrl = url;
+    timetableLastLoaded = new Date().toISOString();
+    console.log(
+      `Timetable loaded: ${timetableData.length} lectures, ` +
+      `${new Set(timetableData.map(l => l.teacherCode)).size} teachers`
+    );
+  } catch (err: any) {
+    timetableError = err.message || String(err);
+    console.error("Failed to load timetable:", timetableError);
+  } finally {
+    timetableLoading = false;
+  }
+}
+
+// ── Timetable API endpoints ─────────────────────────────────────────────
+
+/**
+ * GET /api/timetable?code=CSI
+ * Return filtered lectures for a teacher code, or all if no code given.
+ */
+app.get("/api/timetable", verifyRequest, superAdminOnly, (req, res) => {
+  const code = String(req.query.code ?? "").trim().toUpperCase();
+  const filtered = code
+    ? timetableData.filter(l => l.teacherCode.toUpperCase() === code)
+    : timetableData;
+  res.json({
+    lectures: filtered,
+    total: filtered.length,
+    lastLoaded: timetableLastLoaded,
+  });
+});
+
+/**
+ * GET /api/timetable/codes
+ * Return all unique teacher codes with lecture counts.
+ */
+app.get("/api/timetable/codes", verifyRequest, superAdminOnly, (_req, res) => {
+  const counts = new Map<string, number>();
+  for (const l of timetableData) {
+    counts.set(l.teacherCode, (counts.get(l.teacherCode) || 0) + 1);
+  }
+  const codes = Array.from(counts.entries())
+    .map(([code, count]) => ({ code, count }))
+    .sort((a, b) => a.code.localeCompare(b.code));
+  res.json({ codes, total: codes.length });
+});
+
+/**
+ * GET /api/timetable/stats
+ * Aggregate statistics about the loaded timetable.
+ */
+app.get("/api/timetable/stats", verifyRequest, superAdminOnly, (_req, res) => {
+  const uniqueTeachers = new Set(timetableData.map(l => l.teacherCode));
+  const uniqueBatches = new Set(timetableData.flatMap(l => l.batches));
+  res.json({
+    totalLectures: timetableData.length,
+    totalTeachers: uniqueTeachers.size,
+    totalBatches: uniqueBatches.size,
+    lastLoaded: timetableLastLoaded,
+    isLoading: timetableLoading,
+    error: timetableError,
+  });
+});
+
+/**
+ * GET /api/timetable/config
+ * Return the current timetable configuration & status.
+ */
+app.get("/api/timetable/config", verifyRequest, superAdminOnly, (_req, res) => {
+  res.json({
+    url: getTimetableUrl(),
+    lastLoaded: timetableLastLoaded,
+    isLoading: timetableLoading,
+    error: timetableError,
+  });
+});
+
+/**
+ * POST /api/timetable/config
+ * Save a new timetable sheet URL and trigger an immediate load.
+ */
+app.post("/api/timetable/config", verifyRequest, superAdminOnly, async (req, res) => {
+  try {
+    const { url } = req.body;
+    if (typeof url !== "string" || !url.trim()) {
+      return res.status(400).json({ error: "A valid 'url' string is required." });
+    }
+
+    // Persist to config.json alongside existing keys
+    const currentConfig = getAppConfig() as any;
+    currentConfig.TIMETABLE_URL = url.trim();
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(currentConfig, null, 2), "utf-8");
+
+    const admin = String(req.headers["x-user-email"] || "").trim().toLowerCase();
+    if (admin) logActivity(admin, "timetable_config", `URL updated`);
+
+    // Trigger background load
+    loadTimetableData();
+
+    res.json({ success: true, message: "Timetable URL saved. Data is reloading in background." });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to save timetable config: " + err.toString() });
+  }
+});
+
+/**
+ * POST /api/timetable/refresh
+ * Re-download and parse the timetable from the configured URL.
+ */
+app.post("/api/timetable/refresh", verifyRequest, superAdminOnly, async (req, res) => {
+  const admin = String(req.headers["x-user-email"] || "").trim().toLowerCase();
+  if (admin) logActivity(admin, "timetable_refresh", "Manual refresh triggered");
+
+  if (timetableLoading) {
+    return res.json({ success: false, message: "Timetable is already loading." });
+  }
+
+  loadTimetableData();
+  res.json({ success: true, message: "Timetable refresh started in background." });
+});
+
+// Auto-load timetable on startup if a URL is configured
+loadTimetableData();
 
 
 // Configure Vite integration or static file server
