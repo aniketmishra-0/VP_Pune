@@ -436,13 +436,36 @@ export function generateTimetable(
 
   // Build batch → teacher mapping (from Faculty Details sheet)
   const batchTeachers = new Map<string, string[]>();
+  const allTeacherCodes = new Set<string>(); // all known active teachers
   for (const f of faculty) {
     if (f.status && f.status.toLowerCase() !== "active") continue;
+    allTeacherCodes.add(f.code);
     for (const b of f.batches) {
       const bNorm = b.trim();
       if (!bNorm) continue;
       if (!batchTeachers.has(bNorm)) batchTeachers.set(bNorm, []);
-      batchTeachers.get(bNorm)!.push(f.code);
+      if (!batchTeachers.get(bNorm)!.includes(f.code)) {
+        batchTeachers.get(bNorm)!.push(f.code);
+      }
+    }
+  }
+
+  // CRITICAL: Supplement Faculty Details with historical pattern data
+  // If a batch only has 1-2 teachers from Faculty Details, but historical
+  // patterns show other teachers also taught it — add them as candidates.
+  // This prevents "PKK all week" when Faculty Details is incomplete.
+  for (const [batchCode, teachers] of batchTeachers) {
+    if (teachers.length >= 3) continue; // already has enough variety
+    const originalCount = teachers.length;
+    const shortBatch = extractShort(batchCode);
+    const historicalTeachers = (HISTORICAL_PATTERNS.bt as Record<string, string[]>)[shortBatch] || [];
+    for (const ht of historicalTeachers) {
+      if (!teachers.includes(ht) && allTeacherCodes.has(ht)) {
+        teachers.push(ht);
+      }
+    }
+    if (teachers.length > originalCount) {
+      console.log(`[generate] Supplemented ${batchCode} (${shortBatch}): ${originalCount} → ${teachers.length} teachers [${teachers.join(", ")}] using pattern AI`);
     }
   }
 
