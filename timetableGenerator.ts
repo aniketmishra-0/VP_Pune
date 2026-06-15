@@ -287,6 +287,10 @@ export function generateTimetable(
   // Track total weekly assignments for load balancing
   const weeklyLoad = new Map<string, number>();
 
+  // Track teacher variety per batch (avoid same teacher all week)
+  // batchWeekTeachers[batchCode] = Map<teacherCode, count>
+  const batchWeekTeachers = new Map<string, Map<string, number>>();
+
   const collisions = new SlotCollisionTracker();
 
   for (const day of DAYS) {
@@ -294,6 +298,9 @@ export function generateTimetable(
 
     const dateStr = dayDates.get(day) || "";
     const dayTracker = new DayTracker();
+    
+    // Track last assigned teacher per batch THIS day (for variety within a day)
+    const batchDayLastTeacher = new Map<string, string>();
 
     for (const batch of batches) {
       const validSlots = getValidSlots(batch.code);
@@ -311,7 +318,7 @@ export function generateTimetable(
           continue;
         }
 
-        // Already assigned? (shouldn't happen, but safety)
+        // Already assigned? (safety)
         if (result.some(r => r.day === day && r.slotNum === slot && r.batchCode === batch.code)) continue;
 
         if (eligible.length === 0) {
@@ -320,50 +327,73 @@ export function generateTimetable(
         }
 
         // ── BUILD RANKED CANDIDATE LIST ──
-        // Uses 3 intelligence layers:
-        //   1. 14-week pattern AI (slot-specific → batch-level → teacher prefs)
-        //   2. Runtime historical data (last week's loaded timetable)
-        //   3. Load-balanced fallback (teachers with fewest weekly assignments)
-
         const patternSuggestions = getPatternSuggestions(batch.code, day, slot);
         const runtimeTeacher = runtimeHistLookup.get(`${day}-${slot}-${batch.code}`);
+        const lastTeacherForBatch = batchDayLastTeacher.get(batch.code);
 
-        // Merge: runtime first (freshest), then pattern AI, then remaining
+        // Get weekly usage for this batch
+        if (!batchWeekTeachers.has(batch.code)) {
+          batchWeekTeachers.set(batch.code, new Map());
+        }
+        const batchWeekUsage = batchWeekTeachers.get(batch.code)!;
+
         const candidateOrder: string[] = [];
         const seen = new Set<string>();
 
-        // Layer 1: Runtime historical (last week)
+        // Layer 1: Runtime historical (last week) — but NOT if same as last slot
         if (runtimeTeacher && eligible.includes(runtimeTeacher) && activeTeachers.has(runtimeTeacher)) {
-          candidateOrder.push(runtimeTeacher);
+          if (runtimeTeacher !== lastTeacherForBatch) {
+            candidateOrder.push(runtimeTeacher);
+          }
           seen.add(runtimeTeacher);
         }
 
-        // Layer 2: Pattern AI suggestions (14-week analysis)
+        // Layer 2: Pattern AI suggestions — filter out last-used teacher
         for (const t of patternSuggestions) {
           if (!seen.has(t) && eligible.includes(t) && activeTeachers.has(t)) {
-            candidateOrder.push(t);
+            if (t !== lastTeacherForBatch) {
+              candidateOrder.push(t);
+            }
             seen.add(t);
           }
         }
 
-        // Layer 3: Remaining eligible, sorted by weekly load (least-loaded first)
-        // Also prefer teachers whose slot preferences match
+        // Layer 3: Remaining eligible, sorted by:
+        //   a) NOT the teacher from previous slot (variety within day)
+        //   b) Fewer weekly usages for THIS batch (variety across week)
+        //   c) Slot preference match
+        //   d) Lower overall weekly load
         const remaining = eligible
           .filter(t => !seen.has(t) && activeTeachers.has(t))
           .map(t => ({
             code: t,
             load: weeklyLoad.get(t) || 0,
             prefersSlot: teacherPrefersSlot(t, slot),
+            batchUse: batchWeekUsage.get(t) || 0,
+            isRepeat: t === lastTeacherForBatch,
           }))
           .sort((a, b) => {
+            // Don't repeat same teacher in consecutive slots
+            if (a.isRepeat !== b.isRepeat) return a.isRepeat ? 1 : -1;
+            // Prefer teachers less-used for THIS batch this week
+            if (a.batchUse !== b.batchUse) return a.batchUse - b.batchUse;
             // Prefer teachers who like this slot
             if (a.prefersSlot !== b.prefersSlot) return a.prefersSlot ? -1 : 1;
-            // Then by lower load
+            // Then by lower overall load
             return a.load - b.load;
           });
 
         for (const r of remaining) {
           candidateOrder.push(r.code);
+        }
+
+        // If all candidates were filtered (only 1 teacher available), add back the repeat
+        if (candidateOrder.length === 0 && lastTeacherForBatch && eligible.includes(lastTeacherForBatch)) {
+          candidateOrder.push(lastTeacherForBatch);
+        }
+        // Also add runtime teacher back if it was skipped
+        if (candidateOrder.length === 0 && runtimeTeacher && eligible.includes(runtimeTeacher)) {
+          candidateOrder.push(runtimeTeacher);
         }
 
         // ── TRY CANDIDATES ──
@@ -382,6 +412,8 @@ export function generateTimetable(
           collisions.book(day, slot, teacher);
           dayTracker.assign(teacher, slot);
           weeklyLoad.set(teacher, (weeklyLoad.get(teacher) || 0) + 1);
+          batchDayLastTeacher.set(batch.code, teacher);
+          batchWeekUsage.set(teacher, (batchWeekUsage.get(teacher) || 0) + 1);
           assigned = true;
           break;
         }

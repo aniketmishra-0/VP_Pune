@@ -738,6 +738,7 @@ export async function writeTimetableToSheet(
 
       // Only emit a request if the colour isn't plain white (optimisation)
       if (bgColor !== COLORS.WHITE) {
+        const isBold = cell.color === "HEADER" || cell.color === "ROOM" || cell.color === "SEP";
         formatRequests.push({
           repeatCell: {
             range: {
@@ -750,9 +751,13 @@ export async function writeTimetableToSheet(
             cell: {
               userEnteredFormat: {
                 backgroundColor: bgColor,
+                textFormat: {
+                  bold: isBold,
+                  fontSize: isBold ? 8 : 9,
+                },
               },
             },
-            fields: "userEnteredFormat.backgroundColor",
+            fields: "userEnteredFormat(backgroundColor,textFormat)",
           },
         });
       }
