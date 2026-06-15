@@ -7,7 +7,7 @@ import fs from "fs";
 import "dotenv/config";
 import * as settingsStore from "./settingsStore";
 import type { Role } from "./settingsStore";
-import { generateTimetable, type GeneratorConfig, type GeneratedSlot, type BatchInfo } from "./timetableGenerator";
+import { generateTimetable, aiResolveConflicts, type GeneratorConfig, type GeneratedSlot, type BatchInfo } from "./timetableGenerator";
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
@@ -3203,119 +3203,38 @@ app.post("/api/timetable/generate", verifyRequest, superAdminOnly, async (req, r
 
 /**
  * POST /api/timetable/ai-resolve
- * Use HuggingFace Inference API to intelligently resolve timetable conflicts.
- * Sends constraint data to AI model and gets optimized assignments.
+ * Resolve timetable conflicts using embedded 14-week historical patterns.
+ * No external API — all intelligence is local from pattern analysis.
  */
 app.post("/api/timetable/ai-resolve", verifyRequest, superAdminOnly, async (req, res) => {
   try {
-    const { warnings, faculty, batches, currentSlots, config } = req.body;
+    const { warnings, faculty: clientFaculty, currentSlots } = req.body;
     
     if (!warnings || !Array.isArray(warnings) || warnings.length === 0) {
       return res.json({ success: true, suggestions: [], message: "No conflicts to resolve" });
     }
 
-    // Build context for the AI
-    const activeTeachers = faculty?.filter((f: any) => f.status?.toLowerCase() === "active") || [];
-    const teacherInfo = activeTeachers.map((t: any) => 
-      `${t.code}: ${t.name} (${t.subject}, ${t.division}) → batches: [${t.batches?.join(", ")}]`
-    ).join("\n");
-
-    const conflictInfo = warnings.join("\n");
-    
-    // Count current assignments per teacher
-    const teacherLoad: Record<string, number> = {};
-    for (const s of (currentSlots || [])) {
-      teacherLoad[s.teacherCode] = (teacherLoad[s.teacherCode] || 0) + 1;
-    }
-    const loadInfo = Object.entries(teacherLoad)
-      .sort((a, b) => b[1] - a[1])
-      .map(([t, c]) => `${t}: ${c} slots`)
-      .join(", ");
-
-    const prompt = `You are an expert school timetable scheduler. Analyze these scheduling conflicts and suggest resolutions.
-
-CONSTRAINTS:
-- Max ${config?.maxConsecutive || 3} consecutive lectures per teacher
-- Max ${config?.maxSlotsPerDay || 4} slots per teacher per day  
-- Batch suffix determines time: MA=slots 1-2 (morning), NA=slots 3-4 (afternoon), EA=slots 5-6 (evening)
-- No teacher can be in two places at once
-
-CURRENT TEACHER WORKLOAD:
-${loadInfo}
-
-AVAILABLE TEACHERS:
-${teacherInfo}
-
-CONFLICTS TO RESOLVE:
-${conflictInfo}
-
-For each conflict, suggest which teacher should be assigned and why. Consider:
-1. Teachers with fewer total slots should be preferred
-2. Match teacher's subject to the batch type
-3. Avoid creating new consecutive lecture violations
-
-Respond in JSON format: { "suggestions": [{ "conflict": "...", "teacher": "CODE", "reason": "..." }] }`;
-
-    // Call HuggingFace Inference API
-    const HF_TOKEN = process.env.HF_TOKEN || "";
-    const HF_MODEL = "mistralai/Mistral-7B-Instruct-v0.3";
-    
-    const hfRes = await fetch(`https://api-inference.huggingface.co/models/${HF_MODEL}`, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${HF_TOKEN}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        inputs: prompt,
-        parameters: {
-          max_new_tokens: 1024,
-          temperature: 0.3,
-          return_full_text: false,
-        },
-      }),
-    });
-
-    if (!hfRes.ok) {
-      const errText = await hfRes.text();
-      console.error("[ai-resolve] HF API error:", errText);
-      return res.json({
-        success: false,
-        error: `HuggingFace API error (${hfRes.status}): ${errText}`,
-        suggestions: [],
-        fallback: "AI unavailable. Try re-generating with different random seed.",
-      });
-    }
-
-    const hfData = await hfRes.json();
-    let aiText = "";
-    if (Array.isArray(hfData) && hfData[0]?.generated_text) {
-      aiText = hfData[0].generated_text;
-    } else if (typeof hfData === "string") {
-      aiText = hfData;
-    }
-
-    // Try to parse JSON from AI response
-    let suggestions: any[] = [];
+    // Load faculty from server (more reliable than client data)
+    let facultyList = clientFaculty;
     try {
-      const jsonMatch = aiText.match(/\{[\s\S]*"suggestions"[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        suggestions = parsed.suggestions || [];
-      }
-    } catch {
-      // AI didn't return valid JSON — return raw text
-      suggestions = [{ conflict: "AI Analysis", teacher: "", reason: aiText.trim() }];
-    }
+      const serverFaculty = await settingsStore.readFacultyDetails();
+      if (serverFaculty.length > 0) facultyList = serverFaculty;
+    } catch { /* use client data */ }
+
+    const suggestions = aiResolveConflicts(
+      warnings,
+      facultyList || [],
+      currentSlots || [],
+    );
 
     const admin = String(req.headers["x-user-email"] || "").trim().toLowerCase();
-    if (admin) logActivity(admin, "timetable_ai_resolve", `AI resolved ${suggestions.length} conflicts`);
+    if (admin) logActivity(admin, "timetable_ai_resolve", `Pattern AI resolved ${suggestions.length} conflicts`);
 
     res.json({
       success: true,
       suggestions,
-      rawResponse: aiText,
-      model: HF_MODEL,
+      model: "14-Week Pattern AI (Local)",
+      totalPatterns: "377 slot patterns, 35 batches, 36 teachers",
     });
   } catch (err: any) {
     console.error("[/api/timetable/ai-resolve] Error:", err.message);

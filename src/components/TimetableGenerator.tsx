@@ -1087,14 +1087,29 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
                       )}
 
                       {aiSuggestions.length > 0 && (
-                        <GlassCard title="AI Suggestions" icon={<Sparkles className="w-3.5 h-3.5 text-purple-500" />}>
-                          <div className="space-y-2 max-h-[250px] overflow-y-auto">
+                        <GlassCard title={`🧠 Pattern AI Suggestions (14-Week Data)`} icon={<Sparkles className="w-3.5 h-3.5 text-purple-500" />}>
+                          <div className="space-y-2 max-h-[300px] overflow-y-auto">
                             {aiSuggestions.map((s: any, i: number) => (
-                              <div key={i} className="bg-purple-500/5 border border-purple-500/10 rounded-xl px-3 py-2">
-                                <p className="text-[11px] font-bold text-purple-400">
-                                  {s.teacher ? `→ Assign ${s.teacher}` : s.conflict}
-                                </p>
-                                <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">{s.reason}</p>
+                              <div key={i} className="bg-purple-500/5 border border-purple-500/10 rounded-xl px-3 py-2.5">
+                                <div className="flex items-center justify-between mb-1">
+                                  <p className="text-[11px] font-bold text-purple-400">
+                                    {s.teacher ? `→ Assign ${s.teacher}` : "⚠ No suggestion"}
+                                  </p>
+                                  {s.confidence > 0 && (
+                                    <div className="flex items-center gap-1.5">
+                                      <div className="w-16 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                                        <div
+                                          className={`h-full rounded-full ${
+                                            s.confidence >= 80 ? "bg-green-500" : s.confidence >= 50 ? "bg-yellow-500" : "bg-red-500"
+                                          }`}
+                                          style={{ width: `${s.confidence}%` }}
+                                        />
+                                      </div>
+                                      <span className="text-[9px] text-slate-500">{s.confidence}%</span>
+                                    </div>
+                                  )}
+                                </div>
+                                <p className="text-[10px] text-slate-500 dark:text-slate-400">{s.reason}</p>
                               </div>
                             ))}
                           </div>
