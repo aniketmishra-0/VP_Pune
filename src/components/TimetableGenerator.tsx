@@ -73,10 +73,10 @@ const DAY_BG_LIGHT: Record<string, string> = {
   FRIDAY: "bg-pink-500/10",
 };
 
-// Default room assignments from 14-week historical data (latest week 14)
-// Key: partial batch code (e.g., "LJ151MA"), Value: room number
+// Default room assignments from ALL 14 weeks of historical data
+// Key: short batch code (e.g., "LJ151MA"), Value: room number
 const DEFAULT_BATCH_ROOMS: Record<string, string> = {
-  // JEE Morning
+  // JEE Morning (MP/MA)
   "LJE51MP":  "S-03",
   "LJ151MA":  "507",
   "LJ152MA":  "601",
@@ -84,22 +84,24 @@ const DEFAULT_BATCH_ROOMS: Record<string, string> = {
   "LJE51MA":  "501",
   "LJE52MA":  "502",
   "AJ151MA":  "602",
+  "AJ152MA":  "201",
+  "AJ153MA":  "603",
   "AJ253MA":  "604",
   "AJ254MA":  "603",
   "AJ251MA":  "605",
   "AJ252MA":  "202",
   "AJ351MA":  "201",
-  // JEE Afternoon
+  // JEE Afternoon (NA/NP)
   "AJ251NA":  "603",
   "AJ351NA":  "203",
   "LJ151NA":  "503",
   "AJ451NA":  "504",
   "AJ251NP":  "S-04",
-  // JEE Evening
+  // JEE Evening (EA)
   "AJ251EA":  "605",
   "LJ151EA":  "603",
   "LJ152EA":  "604",
-  // NEET Morning
+  // NEET Morning (MP/MA)
   "LNE51MP":  "S-01",
   "LN151MA":  "503",
   "LN152MA":  "506",
@@ -107,10 +109,10 @@ const DEFAULT_BATCH_ROOMS: Record<string, string> = {
   "AN151MA":  "504",
   "AN251MA":  "606",
   "AN351MA":  "203",
-  // NEET Afternoon
+  // NEET Afternoon (NA)
   "AN251NA":  "604",
   "LN151NA":  "506",
-  // NEET Evening
+  // NEET Evening (EA)
   "LN151EA":  "504",
   "AN351EA":  "602",
   // Dropper
@@ -269,7 +271,7 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
         if (!code || batchSet.has(code)) continue;
         batchSet.set(code, {
           code,
-          room: batchRooms[code] || "",
+          room: batchRooms[code] || getDefaultRoom(code) || "",
           section: detectSection(code),
         });
       }
@@ -340,7 +342,7 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
     try {
       const batches = allBatches.map(b => ({
         code: b.code,
-        room: batchRooms[b.code] || b.room || "",
+        room: batchRooms[b.code] || getDefaultRoom(b.code) || b.room || "",
         section: b.section,
       }));
 
@@ -453,16 +455,16 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
       { value: "", color: "ROOM" },
       { value: "", color: "ROOM" },
     ];
-    for (const b of jb) roomRow.push({ value: batchRooms[b.code] || b.room || "", color: "ROOM" });
+    for (const b of jb) roomRow.push({ value: batchRooms[b.code] || getDefaultRoom(b.code) || b.room || "", color: "ROOM" });
     roomRow.push({ value: "", color: "SEP" });
     roomRow.push({ value: "", color: "ROOM" });
     roomRow.push({ value: "", color: "ROOM" });
-    for (const b of nb) roomRow.push({ value: batchRooms[b.code] || b.room || "", color: "ROOM" });
+    for (const b of nb) roomRow.push({ value: batchRooms[b.code] || getDefaultRoom(b.code) || b.room || "", color: "ROOM" });
     // DROPPER separator + rooms
     roomRow.push({ value: "", color: "SEP" });
     roomRow.push({ value: "", color: "ROOM" });
     roomRow.push({ value: "", color: "ROOM" });
-    for (const b of db) roomRow.push({ value: batchRooms[b.code] || b.room || "", color: "ROOM" });
+    for (const b of db) roomRow.push({ value: batchRooms[b.code] || getDefaultRoom(b.code) || b.room || "", color: "ROOM" });
     grid.push(roomRow);
 
     // Data rows
@@ -1216,7 +1218,7 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
                             <th className="bg-fuchsia-500/20 px-1.5 py-1.5 border border-slate-200 dark:border-gray-800 text-fuchsia-600 dark:text-fuchsia-400 text-[9px]"></th>
                             {jeeBatches.map(b => (
                               <th key={`room-jee-${b.code}`} className="bg-fuchsia-500/20 px-1 py-1.5 border border-slate-200 dark:border-gray-800 font-bold text-fuchsia-600 dark:text-fuchsia-300 text-[9px] whitespace-nowrap">
-                                {batchRooms[b.code] || b.room || "—"}
+                                {batchRooms[b.code] || getDefaultRoom(b.code) || b.room || "—"}
                               </th>
                             ))}
                             <th className="bg-emerald-500/20 w-1 border border-slate-200 dark:border-gray-800" />
@@ -1224,7 +1226,7 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
                             <th className="bg-fuchsia-500/20 px-1.5 py-1.5 border border-slate-200 dark:border-gray-800 text-fuchsia-600 dark:text-fuchsia-400 text-[9px]"></th>
                             {neetBatches.map(b => (
                               <th key={`room-neet-${b.code}`} className="bg-fuchsia-500/20 px-1 py-1.5 border border-slate-200 dark:border-gray-800 font-bold text-fuchsia-600 dark:text-fuchsia-300 text-[9px] whitespace-nowrap">
-                                {batchRooms[b.code] || b.room || "—"}
+                                {batchRooms[b.code] || getDefaultRoom(b.code) || b.room || "—"}
                               </th>
                             ))}
                             <th className="bg-orange-500/20 w-1 border border-slate-200 dark:border-gray-800" />
@@ -1232,7 +1234,7 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
                             <th className="bg-fuchsia-500/20 px-1.5 py-1.5 border border-slate-200 dark:border-gray-800 text-fuchsia-600 dark:text-fuchsia-400 text-[9px]"></th>
                             {dropperBatches.map(b => (
                               <th key={`room-dropper-${b.code}`} className="bg-fuchsia-500/20 px-1 py-1.5 border border-slate-200 dark:border-gray-800 font-bold text-fuchsia-600 dark:text-fuchsia-300 text-[9px] whitespace-nowrap">
-                                {batchRooms[b.code] || b.room || "—"}
+                                {batchRooms[b.code] || getDefaultRoom(b.code) || b.room || "—"}
                               </th>
                             ))}
                           </tr>
