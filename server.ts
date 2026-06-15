@@ -2721,12 +2721,19 @@ function parseTimetableSheet(sheetData: any[][]): TimetableLecture[] {
       const cellVal = String(row[bc.index] ?? "").trim();
       if (!cellVal) continue;
 
+      // Teacher codes are 2-5 uppercase letters (e.g., CSI, PMT, PQL, PHP)
+      // Reject: numbers, day names, test descriptions, room numbers, long strings
+      if (!/^[A-Z]{2,5}$/i.test(cellVal)) continue;
+      const upperCode = cellVal.toUpperCase();
+      // Skip day names and common non-code words that might appear in cells
+      if (/^(MONDAY|TUESDAY|WEDNESDAY|THURSDAY|FRIDAY|SATURDAY|SUNDAY|TEST|EXAM|ROOM|DATE|TIME|DAY|NA|NO|NIL|TBD|OFF|FREE)$/.test(upperCode)) continue;
+
       const tp = timePairs[bc.timePairIndex];
       const startTime = String(row[tp.startCol] ?? "").trim();
       const endTime   = String(row[tp.endCol] ?? "").trim();
       if (!startTime || !endTime) continue;
 
-      const teacherCode = cellVal;
+      const teacherCode = upperCode;
       const mapKey = `${teacherCode}||${startTime}||${endTime}`;
 
       if (!codeMap.has(mapKey)) {
@@ -2782,12 +2789,22 @@ async function loadTimetableData() {
     const buffer = await res.arrayBuffer();
     const wb = XLSX.read(new Uint8Array(buffer), { type: "array" });
 
-    // Parse ALL sheets (each tab may be a different week's timetable)
+    // Parse ALL sheets but only if they look like timetable sheets
     const allLectures: TimetableLecture[] = [];
     for (const sheetName of wb.SheetNames) {
       const worksheet = wb.Sheets[sheetName];
       const data = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1 }) as any[][];
       if (data.length < 4) continue; // skip sheets with too few rows
+
+      // Validate: sheet must have "Start Time" or "End Time" somewhere in first 3 rows
+      const headerText = (data[0] || []).concat(data[1] || []).concat(data[2] || [])
+        .map(c => String(c ?? "").toLowerCase().replace(/[^a-z]/g, ""))
+        .join(" ");
+      if (!headerText.includes("starttime") && !headerText.includes("endtime")) {
+        console.log(`  Skipping sheet "${sheetName}" — no time headers found`);
+        continue;
+      }
+
       const lectures = parseTimetableSheet(data);
       if (lectures.length > 0) {
         console.log(`  Sheet "${sheetName}": ${lectures.length} lectures parsed`);
