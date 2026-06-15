@@ -540,5 +540,120 @@ export function aiResolveConflicts(
     });
   }
 
+  // If no real warnings (validation mode), proactively analyze the timetable
+  if (warningsList.length <= 1 && warningsList[0]?.startsWith("Validate")) {
+    const validationIssues = validateTimetable(currentSlots, faculty);
+    suggestions.push(...validationIssues);
+  }
+
   return suggestions;
+}
+
+/**
+ * Proactively validate a generated timetable against 14-week historical patterns.
+ * Returns suggestions for improvements even when there are no conflicts.
+ */
+function validateTimetable(
+  slots: GeneratedSlot[],
+  faculty: FacultyMember[],
+): AISuggestion[] {
+  const issues: AISuggestion[] = [];
+
+  // 1. Check for same teacher repeating in consecutive slots for same batch
+  const batchDaySlots = new Map<string, { slot: number; teacher: string }[]>();
+  for (const s of slots) {
+    const key = `${s.batchCode}_${s.day}`;
+    if (!batchDaySlots.has(key)) batchDaySlots.set(key, []);
+    batchDaySlots.get(key)!.push({ slot: s.slotNum, teacher: s.teacherCode });
+  }
+
+  for (const [key, daySlots] of batchDaySlots) {
+    const sorted = daySlots.sort((a, b) => a.slot - b.slot);
+    for (let i = 1; i < sorted.length; i++) {
+      if (sorted[i].teacher === sorted[i-1].teacher) {
+        const [batch, day] = key.split('_');
+        const shortBatch = extractShort(batch);
+        
+        // Find alternative teacher from patterns
+        const altTeachers = getPatternSuggestions(batch, day, sorted[i].slot);
+        const currentTeacher = sorted[i].teacher;
+        const alternative = altTeachers.find(t => t !== currentTeacher) || "";
+        
+        issues.push({
+          conflict: `${day} Slots ${sorted[i-1].slot}-${sorted[i].slot}: Same teacher ${currentTeacher} teaches ${shortBatch} consecutively`,
+          teacher: alternative,
+          reason: alternative 
+            ? `Historical data suggests ${alternative} for ${shortBatch} on ${day} Slot ${sorted[i].slot}. Rotating teachers improves variety.`
+            : `${currentTeacher} is the only available teacher for this batch. Consider assigning additional teachers.`,
+          confidence: alternative ? 75 : 30,
+        });
+      }
+    }
+  }
+
+  // 2. Check for non-historical assignments (teacher not in pattern data for this batch)
+  let nonHistorical = 0;
+  for (const s of slots) {
+    if (s.teacherCode === "TEST" || s.teacherCode === "HOLIDAY") continue;
+    const short = extractShort(s.batchCode);
+    const batchTeachers = (HISTORICAL_PATTERNS.bt as Record<string, string[]>)[short] || [];
+    if (batchTeachers.length > 0 && !batchTeachers.includes(s.teacherCode)) {
+      nonHistorical++;
+    }
+  }
+  if (nonHistorical > 0) {
+    issues.push({
+      conflict: `${nonHistorical} assignments differ from 14-week historical patterns`,
+      teacher: "",
+      reason: `${nonHistorical} out of ${slots.length} slots have teachers not historically associated with the batch. This may be fine for new batches but could indicate unexpected assignments.`,
+      confidence: 50,
+    });
+  }
+
+  // 3. Teacher load distribution
+  const teacherLoad = new Map<string, number>();
+  for (const s of slots) {
+    teacherLoad.set(s.teacherCode, (teacherLoad.get(s.teacherCode) || 0) + 1);
+  }
+  const loads = [...teacherLoad.entries()].sort((a, b) => b[1] - a[1]);
+  if (loads.length >= 2) {
+    const maxLoad = loads[0][1];
+    const minLoad = loads[loads.length - 1][1];
+    if (maxLoad > minLoad * 3) {
+      issues.push({
+        conflict: `Load imbalance: ${loads[0][0]} has ${maxLoad} slots, ${loads[loads.length-1][0]} has only ${minLoad}`,
+        teacher: "",
+        reason: `Consider redistributing workload. Top 3: ${loads.slice(0, 3).map(([t, c]) => `${t}(${c})`).join(", ")}. Bottom 3: ${loads.slice(-3).map(([t, c]) => `${t}(${c})`).join(", ")}.`,
+        confidence: 60,
+      });
+    }
+  }
+
+  // 4. Historical pattern match score
+  let matchCount = 0;
+  let totalChecked = 0;
+  for (const s of slots) {
+    if (s.teacherCode === "TEST" || s.teacherCode === "HOLIDAY") continue;
+    const short = extractShort(s.batchCode);
+    const slotKey = `${short}_${s.day}_${s.slotNum}`;
+    const histTeachers = (HISTORICAL_PATTERNS.sh as Record<string, string[]>)[slotKey] || [];
+    totalChecked++;
+    if (histTeachers.includes(s.teacherCode)) matchCount++;
+  }
+  
+  if (totalChecked > 0) {
+    const matchPct = Math.round((matchCount / totalChecked) * 100);
+    issues.unshift({
+      conflict: `📊 Pattern Match Score: ${matchPct}% (${matchCount}/${totalChecked} slots match history)`,
+      teacher: "",
+      reason: matchPct >= 80 
+        ? `Excellent! ${matchPct}% of assignments match the 14-week historical patterns. This timetable closely follows established patterns.`
+        : matchPct >= 50
+        ? `${matchPct}% of assignments match history. Some new assignments detected — review for accuracy.`
+        : `Only ${matchPct}% match history. Many assignments are new or different from established patterns.`,
+      confidence: matchPct,
+    });
+  }
+
+  return issues;
 }
