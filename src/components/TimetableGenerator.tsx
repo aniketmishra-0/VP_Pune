@@ -4,7 +4,7 @@ import {
   Calendar, ChevronLeft, ChevronRight, Check, AlertCircle,
   RefreshCw, Users, Settings, Eye, FileSpreadsheet, Zap,
   AlertTriangle, CheckCircle2, Loader2, Sun, CloudOff, Hash,
-  Sliders, Trash2, Plus, Download,
+  Sliders, Trash2, Plus, Download, Sparkles,
 } from "lucide-react";
 
 // ─── Types ──────────────────────────────────────────────────────────────
@@ -175,6 +175,11 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
   const [tabName, setTabName] = useState("");
   const [exporting, setExporting] = useState(false);
   const [exportResult, setExportResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  // AI Resolve
+  const [aiResolving, setAiResolving] = useState(false);
+  const [aiSuggestions, setAiSuggestions] = useState<any[]>([]);
+  const [aiError, setAiError] = useState<string | null>(null);
 
   // ─── Derived data ──────────────────────────────────────────────────
 
@@ -898,6 +903,67 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
                         ))}
                       </div>
                     </GlassCard>
+                  )}
+
+                  {/* AI Resolve Button */}
+                  {warnings.length > 0 && (
+                    <div className="flex flex-col gap-3">
+                      <button
+                        onClick={async () => {
+                          setAiResolving(true);
+                          setAiError(null);
+                          setAiSuggestions([]);
+                          try {
+                            const r = await fetch("/api/timetable/ai-resolve", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json", ...adminHeaders() },
+                              body: JSON.stringify({
+                                warnings,
+                                faculty: activeFaculty,
+                                currentSlots: generatedSlots,
+                                config: { maxConsecutive, maxSlotsPerDay },
+                              }),
+                            });
+                            const d = await r.json();
+                            if (d.suggestions) setAiSuggestions(d.suggestions);
+                            if (d.error) setAiError(d.error);
+                          } catch (err: any) {
+                            setAiError(err.message);
+                          } finally {
+                            setAiResolving(false);
+                          }
+                        }}
+                        disabled={aiResolving}
+                        className="flex items-center justify-center gap-2 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-lg shadow-purple-500/20 disabled:opacity-50"
+                      >
+                        {aiResolving ? (
+                          <><Loader2 className="w-3.5 h-3.5 animate-spin" /> AI Resolving...</>
+                        ) : (
+                          <><Sparkles className="w-3.5 h-3.5" /> 🤖 Ask AI to Resolve Conflicts</>
+                        )}
+                      </button>
+
+                      {aiError && (
+                        <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2 text-[11px] text-red-400">
+                          {aiError}
+                        </div>
+                      )}
+
+                      {aiSuggestions.length > 0 && (
+                        <GlassCard title="AI Suggestions" icon={<Sparkles className="w-3.5 h-3.5 text-purple-500" />}>
+                          <div className="space-y-2 max-h-[250px] overflow-y-auto">
+                            {aiSuggestions.map((s: any, i: number) => (
+                              <div key={i} className="bg-purple-500/5 border border-purple-500/10 rounded-xl px-3 py-2">
+                                <p className="text-[11px] font-bold text-purple-400">
+                                  {s.teacher ? `→ Assign ${s.teacher}` : s.conflict}
+                                </p>
+                                <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">{s.reason}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </GlassCard>
+                      )}
+                    </div>
                   )}
 
                   {/* Preview Grid */}

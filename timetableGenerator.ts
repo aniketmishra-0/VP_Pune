@@ -1,17 +1,19 @@
 /**
- * Timetable Auto-Generator — Core Algorithm
+ * Timetable Auto-Generator — v2 (Historical + Constraint-Based)
  *
- * Generates a weekly timetable by assigning teachers to batch slots while
- * respecting hard scheduling constraints:
- *   1. Batch suffix determines valid time slots (MA→1-2, NA→3-4, EA→5-6, MP→1|3)
- *   2. Teachers can only teach their assigned batches
- *   3. No teacher collision (1 teacher in 1 slot at a time)
+ * Strategy:
+ *   1. Load the LAST week's actual timetable from the Google Sheet
+ *   2. Use it as a TEMPLATE — copy teacher assignments that still work
+ *   3. For remaining unassigned slots, use constraint-based assignment
+ *      prioritizing teachers who taught the same batch historically
+ *
+ * Constraints:
+ *   1. Batch suffix → valid slots (MA→1-2, NA→3-4, EA→5-6, MP→1|3)
+ *   2. Teachers can only teach assigned batches
+ *   3. No teacher collision (1 teacher = 1 slot at a time)
  *   4. Max N slots per teacher per day (default 4)
  *   5. Max N consecutive slots per teacher (default 3)
- *   6. Skip holidays
- *   7. Saturday is always off
- *
- * Uses randomized assignment with conflict-aware selection.
+ *   6. Skip holidays, Saturday always off
  */
 
 import type { FacultyMember } from "./settingsStore";
@@ -19,24 +21,25 @@ import type { FacultyMember } from "./settingsStore";
 // ── Public types ────────────────────────────────────────────────────────
 
 export interface GeneratorConfig {
-  weekStartDate: string;       // e.g., "2026-06-15" (Monday)
-  maxConsecutive: number;      // max consecutive slots per teacher (default 3)
-  maxSlotsPerDay: number;      // max total slots per teacher per day (default 4)
-  holidays: string[];          // day names to skip, e.g. ["THURSDAY"]
+  weekStartDate: string;
+  maxConsecutive: number;
+  maxSlotsPerDay: number;
+  holidays: string[];
   testSlots: TestSlotOverride[];
+  historicalData?: HistoricalSlot[];
 }
 
 export interface TestSlotOverride {
-  day: string;       // e.g., "TUESDAY"
-  slot: number;      // 1-6
-  batchCode: string; // batch to override
-  label: string;     // e.g., "VP AIR TEST"
+  day: string;
+  slot: number;
+  batchCode: string;
+  label: string;
 }
 
 export interface GeneratedSlot {
-  day: string;        // MONDAY, TUESDAY, etc.
-  date: string;       // e.g., "15-Jun-2026"
-  slotNum: number;    // 1-6
+  day: string;
+  date: string;
+  slotNum: number;
   startTime: string;
   endTime: string;
   batchCode: string;
@@ -56,11 +59,18 @@ export interface GenerationResult {
   warnings: string[];
 }
 
+/** Historical slot = what was used in a previous week */
+export interface HistoricalSlot {
+  day: string;
+  slotNum: number;
+  batchCode: string;
+  teacherCode: string;
+}
+
 // ── Constants ───────────────────────────────────────────────────────────
 
 const DAYS = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"] as const;
 
-/** Slot timings (1-indexed): slot 1 = 8:45-10:15, etc. */
 const SLOT_TIMES: Record<number, { start: string; end: string }> = {
   1: { start: "8:45",  end: "10:15" },
   2: { start: "10:30", end: "12:00" },
@@ -72,31 +82,15 @@ const SLOT_TIMES: Record<number, { start: string; end: string }> = {
 
 // ── Helpers ─────────────────────────────────────────────────────────────
 
-/**
- * Extract the batch suffix (MA, NA, EA, MP, NP) from a batch code.
- * Batch codes look like "27-JL999MA 2026" — the suffix is the two
- * characters just before the space-separated year.
- */
 function getBatchSuffix(batchCode: string): string {
   const trimmed = batchCode.trim();
-  // Try to match the 2-char suffix before the year (e.g., "MA" from "27-JL999MA 2026")
   const match = trimmed.match(/([A-Z]{2})\s+\d{4}$/i);
   if (match) return match[1].toUpperCase();
-
-  // Fallback: last two alpha chars before end or whitespace
   const alphaMatch = trimmed.replace(/\s+\d{4}$/, "").match(/([A-Z]{2})$/i);
   if (alphaMatch) return alphaMatch[1].toUpperCase();
-
   return "";
 }
 
-/**
- * Determine valid slot numbers for a batch based on its suffix.
- *   MA → slots 1-2 (Morning)
- *   NA / NP → slots 3-4 (Afternoon)
- *   EA → slots 5-6 (Evening)
- *   MP → slot 1 or 3 (Master/Merged)
- */
 function getValidSlots(batchCode: string): number[] {
   const suffix = getBatchSuffix(batchCode);
   switch (suffix) {
@@ -104,23 +98,15 @@ function getValidSlots(batchCode: string): number[] {
     case "NA": case "NP": return [3, 4];
     case "EA": return [5, 6];
     case "MP": return [1, 3];
-    default:
-      // Unknown suffix — default to morning slots
-      return [1, 2];
+    default: return [1, 2];
   }
 }
 
-/**
- * Format a Date as "15-Jun-2026".
- */
 function formatDate(d: Date): string {
   const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   return `${d.getDate()}-${months[d.getMonth()]}-${d.getFullYear()}`;
 }
 
-/**
- * Fisher-Yates shuffle (in-place, returns same array).
- */
 function shuffle<T>(arr: T[]): T[] {
   for (let i = arr.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -129,10 +115,6 @@ function shuffle<T>(arr: T[]): T[] {
   return arr;
 }
 
-/**
- * Build a map of day name → date string for the week starting at `weekStartDate`.
- * `weekStartDate` should be a Monday.
- */
 function buildDayDates(weekStartDate: string): Map<string, string> {
   const base = new Date(weekStartDate + "T00:00:00");
   const map = new Map<string, string>();
@@ -147,14 +129,8 @@ function buildDayDates(weekStartDate: string): Map<string, string> {
 
 // ── Constraint tracker ──────────────────────────────────────────────────
 
-/**
- * Tracks per-teacher scheduling state for a single day so we can enforce
- * max-slots-per-day and max-consecutive-slots constraints efficiently.
- */
 class DayTracker {
-  /** teacher → set of slot numbers assigned today */
   private slotsPerTeacher = new Map<string, Set<number>>();
-  /** teacher → sorted array of slot numbers (for consecutive check) */
   private orderedSlots = new Map<string, number[]>();
 
   assign(teacher: string, slot: number): void {
@@ -168,43 +144,24 @@ class DayTracker {
     ordered.sort((a, b) => a - b);
   }
 
-  /** How many slots has this teacher been assigned today? */
   slotCount(teacher: string): number {
     return this.slotsPerTeacher.get(teacher)?.size ?? 0;
   }
 
-  /**
-   * Would assigning `slot` to `teacher` create a run longer than `maxConsec`?
-   * We temporarily add the slot, compute the longest consecutive run, then
-   * remove it.
-   */
   wouldExceedConsecutive(teacher: string, slot: number, maxConsec: number): boolean {
     const ordered = [...(this.orderedSlots.get(teacher) || []), slot].sort((a, b) => a - b);
-    let run = 1;
-    let maxRun = 1;
+    let run = 1, maxRun = 1;
     for (let i = 1; i < ordered.length; i++) {
-      if (ordered[i] === ordered[i - 1] + 1) {
-        run++;
-        maxRun = Math.max(maxRun, run);
-      } else {
-        run = 1;
-      }
+      if (ordered[i] === ordered[i - 1] + 1) { run++; maxRun = Math.max(maxRun, run); }
+      else { run = 1; }
     }
     return maxRun > maxConsec;
   }
 }
 
-/**
- * Global slot-level collision tracker: ensures no teacher is double-booked
- * within the same time slot across ALL batches.
- */
 class SlotCollisionTracker {
-  /** "DAY-SLOT" → Set of teacher codes already booked */
   private booked = new Map<string, Set<string>>();
-
-  private key(day: string, slot: number): string {
-    return `${day}-${slot}`;
-  }
+  private key(day: string, slot: number): string { return `${day}-${slot}`; }
 
   isBooked(day: string, slot: number, teacher: string): boolean {
     return this.booked.get(this.key(day, slot))?.has(teacher) ?? false;
@@ -230,18 +187,15 @@ export function generateTimetable(
     maxSlotsPerDay = 4,
     holidays = [],
     testSlots = [],
+    historicalData = [],
   } = config;
 
   const warnings: string[] = [];
   const result: GeneratedSlot[] = [];
-
-  // Normalise holiday names to uppercase
   const holidaySet = new Set(holidays.map((h) => h.toUpperCase().trim()));
-
-  // Day → date map
   const dayDates = buildDayDates(weekStartDate);
 
-  // Build a lookup: batchCode → list of teacher codes that can teach it
+  // Build batch → teacher mapping
   const batchTeachers = new Map<string, string[]>();
   for (const f of faculty) {
     if (f.status && f.status.toLowerCase() !== "active") continue;
@@ -253,85 +207,121 @@ export function generateTimetable(
     }
   }
 
-  // Build a test-slot lookup for quick checks: "DAY-SLOT-BATCH" → label
+  // Historical lookup: "DAY-SLOT-BATCH" → teacherCode
+  const histLookup = new Map<string, string>();
+  for (const hs of historicalData) {
+    histLookup.set(`${hs.day}-${hs.slotNum}-${hs.batchCode}`, hs.teacherCode);
+  }
+  const hasHistorical = histLookup.size > 0;
+
+  // Test-slot lookup
   const testSlotMap = new Map<string, string>();
   for (const ts of testSlots) {
-    testSlotMap.set(
-      `${ts.day.toUpperCase()}-${ts.slot}-${ts.batchCode.trim()}`,
-      ts.label,
-    );
+    testSlotMap.set(`${ts.day.toUpperCase()}-${ts.slot}-${ts.batchCode.trim()}`, ts.label);
   }
 
-  // Global collision tracker
+  // Active teacher codes
+  const activeTeachers = new Set(
+    faculty.filter(f => !f.status || f.status.toLowerCase() === "active").map(f => f.code)
+  );
+
   const collisions = new SlotCollisionTracker();
 
-  // Process each working day
   for (const day of DAYS) {
-    // Skip holidays and Saturdays (Saturdays are implicitly not in DAYS)
-    if (holidaySet.has(day)) {
-      warnings.push(`${day}: Skipped (holiday)`);
-      continue;
-    }
+    if (holidaySet.has(day)) continue;
 
     const dateStr = dayDates.get(day) || "";
     const dayTracker = new DayTracker();
 
-    // Iterate over each batch
+    // ── PHASE 1: Pre-assign from historical data ──
+    if (hasHistorical) {
+      for (const batch of batches) {
+        const validSlots = getValidSlots(batch.code);
+        for (const slot of validSlots) {
+          if (testSlotMap.has(`${day}-${slot}-${batch.code}`)) continue;
+
+          const histTeacher = histLookup.get(`${day}-${slot}-${batch.code}`);
+          if (!histTeacher || !activeTeachers.has(histTeacher)) continue;
+
+          // Validate eligibility
+          const eligible = batchTeachers.get(batch.code) || [];
+          if (!eligible.includes(histTeacher)) continue;
+
+          // Check constraints
+          if (collisions.isBooked(day, slot, histTeacher)) continue;
+          if (dayTracker.slotCount(histTeacher) >= maxSlotsPerDay) continue;
+          if (dayTracker.wouldExceedConsecutive(histTeacher, slot, maxConsecutive)) continue;
+
+          result.push({
+            day, date: dateStr, slotNum: slot,
+            startTime: SLOT_TIMES[slot].start, endTime: SLOT_TIMES[slot].end,
+            batchCode: batch.code, teacherCode: histTeacher,
+            room: batch.room, section: batch.section,
+          });
+          collisions.book(day, slot, histTeacher);
+          dayTracker.assign(histTeacher, slot);
+        }
+      }
+    }
+
+    // ── PHASE 2: Fill remaining slots ──
     for (const batch of batches) {
       const validSlots = getValidSlots(batch.code);
-
-      // Get teachers eligible for this batch
       const eligible = batchTeachers.get(batch.code) || [];
-      if (eligible.length === 0) {
-        warnings.push(`${day}: No teachers found for batch ${batch.code}`);
-      }
 
-      // Try to fill each valid slot
       for (const slot of validSlots) {
-        // Check if this is a test slot override
         const testKey = `${day}-${slot}-${batch.code}`;
         if (testSlotMap.has(testKey)) {
-          result.push({
-            day,
-            date: dateStr,
-            slotNum: slot,
-            startTime: SLOT_TIMES[slot].start,
-            endTime: SLOT_TIMES[slot].end,
-            batchCode: batch.code,
-            teacherCode: testSlotMap.get(testKey)!, // The test label
-            room: batch.room,
-            section: batch.section,
-          });
+          // Check if test slot already added in phase 1 (it won't be, but safety check)
+          const exists = result.some(r => r.day === day && r.slotNum === slot && r.batchCode === batch.code);
+          if (!exists) {
+            result.push({
+              day, date: dateStr, slotNum: slot,
+              startTime: SLOT_TIMES[slot].start, endTime: SLOT_TIMES[slot].end,
+              batchCode: batch.code, teacherCode: testSlotMap.get(testKey)!,
+              room: batch.room, section: batch.section,
+            });
+          }
           continue;
         }
 
-        // Randomize teacher order for fairness
-        const candidates = shuffle([...eligible]);
+        // Already assigned in Phase 1?
+        const alreadyAssigned = result.some(
+          r => r.day === day && r.slotNum === slot && r.batchCode === batch.code
+        );
+        if (alreadyAssigned) continue;
+
+        if (eligible.length === 0) {
+          warnings.push(`${day}: No teachers found for batch ${batch.code}`);
+          continue;
+        }
+
+        // Prioritize: historical teachers for this batch (any day/slot), then others
+        const histForBatch: string[] = [];
+        for (const s of [1,2,3,4,5,6]) {
+          const ht = histLookup.get(`${day}-${s}-${batch.code}`);
+          if (ht && eligible.includes(ht) && activeTeachers.has(ht)) {
+            if (!histForBatch.includes(ht)) histForBatch.push(ht);
+          }
+        }
+
+        const candidates = [
+          ...histForBatch,
+          ...shuffle([...eligible]).filter(t => !histForBatch.includes(t))
+        ];
+
         let assigned = false;
-
         for (const teacher of candidates) {
-          // Constraint 3: No collision (teacher already booked this slot)
           if (collisions.isBooked(day, slot, teacher)) continue;
-
-          // Constraint 4: Max slots per day
           if (dayTracker.slotCount(teacher) >= maxSlotsPerDay) continue;
-
-          // Constraint 5: Max consecutive slots
           if (dayTracker.wouldExceedConsecutive(teacher, slot, maxConsecutive)) continue;
 
-          // All constraints passed — assign
           result.push({
-            day,
-            date: dateStr,
-            slotNum: slot,
-            startTime: SLOT_TIMES[slot].start,
-            endTime: SLOT_TIMES[slot].end,
-            batchCode: batch.code,
-            teacherCode: teacher,
-            room: batch.room,
-            section: batch.section,
+            day, date: dateStr, slotNum: slot,
+            startTime: SLOT_TIMES[slot].start, endTime: SLOT_TIMES[slot].end,
+            batchCode: batch.code, teacherCode: teacher,
+            room: batch.room, section: batch.section,
           });
-
           collisions.book(day, slot, teacher);
           dayTracker.assign(teacher, slot);
           assigned = true;
@@ -339,7 +329,6 @@ export function generateTimetable(
         }
 
         if (!assigned) {
-          // No valid teacher found — leave empty and warn
           warnings.push(
             `${day} Slot ${slot}: No available teacher for batch ${batch.code} ` +
             `(${candidates.length} candidates all conflicted)`,
@@ -351,3 +340,4 @@ export function generateTimetable(
 
   return { slots: result, warnings };
 }
+

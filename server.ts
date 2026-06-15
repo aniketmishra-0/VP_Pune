@@ -3111,6 +3111,7 @@ app.get("/api/timetable/faculty", verifyRequest, superAdminOnly, async (_req, re
 /**
  * POST /api/timetable/generate
  * Run the auto-generation algorithm and return a preview (does NOT write to sheet).
+ * Now auto-loads LAST WEEK's timetable as historical reference.
  *
  * Body: {
  *   batches: [{ code, room, section }],
@@ -3131,13 +3132,48 @@ app.post("/api/timetable/generate", verifyRequest, superAdminOnly, async (req, r
     // Read faculty from timetable sheet
     const faculty = await settingsStore.readFacultyDetails();
 
-    // Build config with defaults
+    // Try to load historical data from the currently loaded timetable
+    let historicalData: any[] = [];
+    try {
+      // Use the already-loaded timetable data (TimetableLecture[])
+      if (timetableData && timetableData.length > 0) {
+        const dayMap: Record<string, string> = {
+          'monday': 'MONDAY', 'tuesday': 'TUESDAY', 'wednesday': 'WEDNESDAY',
+          'thursday': 'THURSDAY', 'friday': 'FRIDAY', 'saturday': 'SATURDAY',
+        };
+        const slotTimeMap: Record<string, number> = {
+          '8:45 AM': 1, '10:30 AM': 2, '12:25 PM': 3, '2:15 PM': 4, '4:10 PM': 5, '5:55 PM': 6
+        };
+
+        for (const lec of timetableData) {
+          const dayNorm = dayMap[lec.day?.toLowerCase()] || '';
+          const slotNum = slotTimeMap[lec.startTime] || 0;
+          if (dayNorm && slotNum && lec.teacherCode) {
+            // Each lecture can have multiple batches
+            for (const batch of (lec.batches || [])) {
+              historicalData.push({
+                day: dayNorm,
+                slotNum,
+                batchCode: batch,
+                teacherCode: lec.teacherCode,
+              });
+            }
+          }
+        }
+        console.log(`[generate] Loaded ${historicalData.length} historical slots from current timetable`);
+      }
+    } catch (histErr: any) {
+      console.warn("[generate] Could not load historical data:", histErr.message);
+    }
+
+    // Build config with defaults + historical data
     const genConfig: GeneratorConfig = {
       weekStartDate: rawConfig.weekStartDate,
       maxConsecutive: rawConfig.maxConsecutive ?? 3,
       maxSlotsPerDay: rawConfig.maxSlotsPerDay ?? 4,
       holidays: rawConfig.holidays ?? [],
       testSlots: rawConfig.testSlots ?? [],
+      historicalData,
     };
 
     const batchInfos: BatchInfo[] = batches.map((b: any) => ({
@@ -3149,7 +3185,7 @@ app.post("/api/timetable/generate", verifyRequest, superAdminOnly, async (req, r
     const result = generateTimetable(faculty, batchInfos, genConfig);
 
     const admin = String(req.headers["x-user-email"] || "").trim().toLowerCase();
-    if (admin) logActivity(admin, "timetable_generate", `Generated ${result.slots.length} slots, ${result.warnings.length} warnings`);
+    if (admin) logActivity(admin, "timetable_generate", `Generated ${result.slots.length} slots, ${result.warnings.length} warnings, ${historicalData.length} historical refs`);
 
     res.json({
       success: true,
@@ -3157,10 +3193,133 @@ app.post("/api/timetable/generate", verifyRequest, superAdminOnly, async (req, r
       totalSlots: result.slots.length,
       warnings: result.warnings,
       config: genConfig,
+      historicalUsed: historicalData.length,
     });
   } catch (err: any) {
     console.error("[/api/timetable/generate] Error:", err.message);
     res.status(500).json({ error: "Timetable generation failed: " + err.message });
+  }
+});
+
+/**
+ * POST /api/timetable/ai-resolve
+ * Use HuggingFace Inference API to intelligently resolve timetable conflicts.
+ * Sends constraint data to AI model and gets optimized assignments.
+ */
+app.post("/api/timetable/ai-resolve", verifyRequest, superAdminOnly, async (req, res) => {
+  try {
+    const { warnings, faculty, batches, currentSlots, config } = req.body;
+    
+    if (!warnings || !Array.isArray(warnings) || warnings.length === 0) {
+      return res.json({ success: true, suggestions: [], message: "No conflicts to resolve" });
+    }
+
+    // Build context for the AI
+    const activeTeachers = faculty?.filter((f: any) => f.status?.toLowerCase() === "active") || [];
+    const teacherInfo = activeTeachers.map((t: any) => 
+      `${t.code}: ${t.name} (${t.subject}, ${t.division}) → batches: [${t.batches?.join(", ")}]`
+    ).join("\n");
+
+    const conflictInfo = warnings.join("\n");
+    
+    // Count current assignments per teacher
+    const teacherLoad: Record<string, number> = {};
+    for (const s of (currentSlots || [])) {
+      teacherLoad[s.teacherCode] = (teacherLoad[s.teacherCode] || 0) + 1;
+    }
+    const loadInfo = Object.entries(teacherLoad)
+      .sort((a, b) => b[1] - a[1])
+      .map(([t, c]) => `${t}: ${c} slots`)
+      .join(", ");
+
+    const prompt = `You are an expert school timetable scheduler. Analyze these scheduling conflicts and suggest resolutions.
+
+CONSTRAINTS:
+- Max ${config?.maxConsecutive || 3} consecutive lectures per teacher
+- Max ${config?.maxSlotsPerDay || 4} slots per teacher per day  
+- Batch suffix determines time: MA=slots 1-2 (morning), NA=slots 3-4 (afternoon), EA=slots 5-6 (evening)
+- No teacher can be in two places at once
+
+CURRENT TEACHER WORKLOAD:
+${loadInfo}
+
+AVAILABLE TEACHERS:
+${teacherInfo}
+
+CONFLICTS TO RESOLVE:
+${conflictInfo}
+
+For each conflict, suggest which teacher should be assigned and why. Consider:
+1. Teachers with fewer total slots should be preferred
+2. Match teacher's subject to the batch type
+3. Avoid creating new consecutive lecture violations
+
+Respond in JSON format: { "suggestions": [{ "conflict": "...", "teacher": "CODE", "reason": "..." }] }`;
+
+    // Call HuggingFace Inference API
+    const HF_TOKEN = process.env.HF_TOKEN || "";
+    const HF_MODEL = "mistralai/Mistral-7B-Instruct-v0.3";
+    
+    const hfRes = await fetch(`https://api-inference.huggingface.co/models/${HF_MODEL}`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${HF_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        inputs: prompt,
+        parameters: {
+          max_new_tokens: 1024,
+          temperature: 0.3,
+          return_full_text: false,
+        },
+      }),
+    });
+
+    if (!hfRes.ok) {
+      const errText = await hfRes.text();
+      console.error("[ai-resolve] HF API error:", errText);
+      return res.json({
+        success: false,
+        error: `HuggingFace API error (${hfRes.status}): ${errText}`,
+        suggestions: [],
+        fallback: "AI unavailable. Try re-generating with different random seed.",
+      });
+    }
+
+    const hfData = await hfRes.json();
+    let aiText = "";
+    if (Array.isArray(hfData) && hfData[0]?.generated_text) {
+      aiText = hfData[0].generated_text;
+    } else if (typeof hfData === "string") {
+      aiText = hfData;
+    }
+
+    // Try to parse JSON from AI response
+    let suggestions: any[] = [];
+    try {
+      const jsonMatch = aiText.match(/\{[\s\S]*"suggestions"[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        suggestions = parsed.suggestions || [];
+      }
+    } catch {
+      // AI didn't return valid JSON — return raw text
+      suggestions = [{ conflict: "AI Analysis", teacher: "", reason: aiText.trim() }];
+    }
+
+    const admin = String(req.headers["x-user-email"] || "").trim().toLowerCase();
+    if (admin) logActivity(admin, "timetable_ai_resolve", `AI resolved ${suggestions.length} conflicts`);
+
+    res.json({
+      success: true,
+      suggestions,
+      rawResponse: aiText,
+      model: HF_MODEL,
+    });
+  } catch (err: any) {
+    console.error("[/api/timetable/ai-resolve] Error:", err.message);
+    res.status(500).json({ error: "AI resolution failed: " + err.message, suggestions: [] });
   }
 });
 
@@ -3205,6 +3364,7 @@ app.post("/api/timetable/write-sheet", verifyRequest, superAdminOnly, async (req
     res.status(500).json({ error: "Failed to write timetable to sheet: " + err.message });
   }
 });
+
 
 // Auto-load timetable on startup if a URL is configured
 // Load timetable URL from sheet first, THEN load data
