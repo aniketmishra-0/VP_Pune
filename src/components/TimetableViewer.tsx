@@ -78,7 +78,7 @@ export default function TimetableViewer({ adminHeaders }: TimetableViewerProps) 
   const [allCodes, setAllCodes] = useState<TeacherCode[]>([]);
   const [lectures, setLectures] = useState<TimetableLecture[]>([]);
   const [codesExpanded, setCodesExpanded] = useState(false);
-  const [expandedDay, setExpandedDay] = useState<string | null>(null);
+  const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set());
   const [mergeModal, setMergeModal] = useState<TimetableLecture | null>(null);
   const [isDemo, setIsDemo] = useState(false);
   const [lastLoaded, setLastLoaded] = useState<string | null>(null);
@@ -159,7 +159,7 @@ export default function TimetableViewer({ adminHeaders }: TimetableViewerProps) 
     setSearchQuery("");
     setShowSuggestions(false);
     setInputFocused(false);
-    setExpandedDay(null);
+    setExpandedDays(new Set());
     setCodesExpanded(false);
     inputRef.current?.blur();
   };
@@ -170,7 +170,7 @@ export default function TimetableViewer({ adminHeaders }: TimetableViewerProps) 
     setLectures([]);
     setShowSuggestions(false);
     setCodesExpanded(false);
-    setExpandedDay(null);
+    setExpandedDays(new Set());
   };
 
   const groupedByDay = useMemo(() => {
@@ -203,7 +203,11 @@ export default function TimetableViewer({ adminHeaders }: TimetableViewerProps) 
 
   const MAX = 14;
   const chipList = codesExpanded ? allCodes : allCodes.slice(0, MAX);
-  const toggleDay = (d: string) => setExpandedDay(prev => prev === d ? null : d);
+  // Accordion: click a day → close others, toggle that one
+  const toggleDay = (d: string) => setExpandedDays(prev => {
+    if (prev.has(d)) { const n = new Set<string>(); return n; } // close it
+    return new Set([d]); // open only this one
+  });
 
   // ─── Render ───────────────────────────────────────────────────────
 
@@ -357,15 +361,15 @@ export default function TimetableViewer({ adminHeaders }: TimetableViewerProps) 
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-3">
           {groupedByDay.length > 1 && (
             <div className="flex gap-3 mb-2.5 px-0.5">
-              <button onClick={() => setExpandedDay(groupedByDay[0]?.[0] || null)} className="text-xs font-bold text-[#5277f7] cursor-pointer hover:underline">Expand All</button>
+              <button onClick={() => setExpandedDays(new Set(groupedByDay.map(([d]) => d)))} className="text-xs font-bold text-[#5277f7] cursor-pointer hover:underline">Expand All</button>
               <span className="text-slate-300 dark:text-gray-700 text-xs">·</span>
-              <button onClick={() => setExpandedDay(null)} className="text-xs font-bold text-[#5277f7] cursor-pointer hover:underline">Collapse All</button>
+              <button onClick={() => setExpandedDays(new Set())} className="text-xs font-bold text-[#5277f7] cursor-pointer hover:underline">Collapse All</button>
             </div>
           )}
 
           <div className="space-y-2.5">
             {groupedByDay.map(([day, { date, lectures: dl }], di) => {
-              const isExpanded = expandedDay === day;
+              const isExpanded = expandedDays.has(day);
               const colors = DAY_COLORS[day] || { dot: "bg-slate-400", bg: "border-l-slate-400" };
               return (
                 <motion.div key={day} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: di * 0.05 }}
