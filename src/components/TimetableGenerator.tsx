@@ -300,7 +300,10 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
       const d = await r.json();
       setFaculty(d.faculty || []);
 
-      // Auto-populate room numbers from historical data
+      // Auto-populate room numbers from 3 sources:
+      // 1. Latest Google Sheet tab (always current, has ALL batches)
+      // 2. Historical defaults (14-week embedded data)
+      // 3. Manual overrides (user's edits preserved)
       const autoRooms: Record<string, string> = {};
       const allBatchCodes = new Set<string>();
       for (const f of (d.faculty || [])) {
@@ -314,6 +317,21 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
           }
         }
       }
+
+      // Also fetch rooms from latest sheet tab (catches NEW batches)
+      try {
+        const roomsRes = await fetch("/api/timetable/rooms", { headers: adminHeaders() });
+        if (roomsRes.ok) {
+          const roomsData = await roomsRes.json();
+          if (roomsData.rooms) {
+            // Sheet rooms take priority over historical defaults (more current)
+            for (const [batchCode, room] of Object.entries(roomsData.rooms)) {
+              if (room) autoRooms[batchCode] = room as string;
+            }
+          }
+        }
+      } catch { /* sheet room fetch failed, using historical defaults */ }
+
       // Only set rooms that aren't already manually set
       setBatchRooms(prev => {
         const merged = { ...autoRooms };

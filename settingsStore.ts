@@ -537,6 +537,68 @@ export async function readFacultyDetails(
 
 // ── Write timetable to sheet ────────────────────────────────────────────
 
+// ── Room Number Lookup from Latest Sheet ─────────────────────────────────
+
+/**
+ * Read batch → room mappings from the latest (most recent) timetable tab.
+ * Reads rows 1-2: header row has batch codes, row 2 has "Room No" and room values.
+ * Returns: Record<batchCode, roomNumber>
+ */
+export async function readLatestSheetRooms(
+  spreadsheetId: string = TIMETABLE_SPREADSHEET_ID,
+): Promise<Record<string, string>> {
+  // 1. Get all sheet names to find the latest tab
+  const metaRes = await timetableApiFetch(spreadsheetId, "?fields=sheets.properties.title");
+  const sheets: { properties: { title: string } }[] = metaRes.sheets || [];
+  
+  // Filter out system tabs (Faculty Details, Settings, etc.)
+  const timetableTabs = sheets
+    .map(s => s.properties.title)
+    .filter(t => !["Faculty Details", "Settings", "Activity Log", "Notifications", "Timetable Config"].includes(t));
+  
+  if (timetableTabs.length === 0) return {};
+  
+  // Pick the LAST tab (most recent timetable)
+  const latestTab = timetableTabs[timetableTabs.length - 1];
+  
+  // 2. Read first 2 rows (header + rooms)
+  const dataRes = await timetableApiFetch(
+    spreadsheetId,
+    `/values/${encodeURIComponent(latestTab)}!A1:BZ3?majorDimension=ROWS`,
+  );
+  const rows: string[][] = dataRes.values || [];
+  if (rows.length < 2) return {};
+
+  // Find header row (the one with batch codes starting with "27-")
+  let headerRow: string[] = [];
+  let roomRow: string[] = [];
+  
+  for (let i = 0; i < Math.min(rows.length, 3); i++) {
+    if (rows[i].some(c => (c || "").trim().startsWith("27-"))) {
+      headerRow = rows[i];
+      // Room row is the next one
+      if (i + 1 < rows.length) roomRow = rows[i + 1];
+      break;
+    }
+  }
+  
+  if (headerRow.length === 0) return {};
+
+  // 3. Build batch → room map
+  const rooms: Record<string, string> = {};
+  for (let c = 0; c < headerRow.length; c++) {
+    const batch = (headerRow[c] || "").trim();
+    if (!batch.startsWith("27-")) continue;
+    
+    const room = (roomRow[c] || "").trim();
+    if (!room || room.toLowerCase() === "room no" || room.toLowerCase() === "room no.") continue;
+    
+    rooms[batch] = room;
+  }
+  
+  return rooms;
+}
+
 /**
  * Colour constants for timetable formatting (RGB 0-1 scale for Sheets API).
  */

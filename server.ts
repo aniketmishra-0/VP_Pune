@@ -3090,6 +3090,21 @@ app.post("/api/timetable/teachers", verifyRequest, superAdminOnly, (req, res) =>
 // ===== Auto Timetable Generator (super-admin only) =====
 
 /**
+ * GET /api/timetable/rooms
+ * Read batch → room mappings from the latest timetable sheet tab.
+ * Returns rooms for ALL batches (including new ones not in historical data).
+ */
+app.get("/api/timetable/rooms", verifyRequest, superAdminOnly, async (_req, res) => {
+  try {
+    const rooms = await settingsStore.readLatestSheetRooms();
+    res.json({ success: true, rooms, source: "latest_sheet_tab", count: Object.keys(rooms).length });
+  } catch (err: any) {
+    console.warn("[/api/timetable/rooms] Error:", err.message);
+    res.json({ success: false, rooms: {}, error: err.message });
+  }
+});
+
+/**
  * GET /api/timetable/faculty
  * Read Faculty Details from the timetable spreadsheet.
  * Returns the full list of active faculty with their assigned batches.
