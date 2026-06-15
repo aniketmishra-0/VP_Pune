@@ -1774,6 +1774,21 @@ export default function App() {
               </button>
               )}
 
+              {/* Timetable Tab — super-admin only */}
+              {isSuperAdmin && (
+              <button
+                onClick={() => { setActiveView("timetable"); setErrorMessage(null); }}
+                className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all cursor-pointer ${
+                  activeView === "timetable"
+                    ? "bg-[#5277f7] text-white shadow-lg shadow-[#5277f7]/20"
+                    : "text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-gray-800/60"
+                }`}
+                title="Teacher Timetable"
+              >
+                <Calendar className="w-5 h-5" />
+              </button>
+              )}
+
               {/* Workspace Color Preferences */}
               <button
                 onClick={() => setTheme(theme === "light" ? "dark" : "light")}
