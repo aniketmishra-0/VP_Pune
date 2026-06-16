@@ -245,6 +245,10 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
   const [editingCell, setEditingCell] = useState<{ day: string; slotId: number; batchCode: string } | null>(null);
+  const [activePaintbrushTeacher, setActivePaintbrushTeacher] = useState<string | null>(null);
+  const [isSwapMode, setIsSwapMode] = useState(false);
+  const [swapSelection, setSwapSelection] = useState<{ day: string; slotId: number; batchCode: string } | null>(null);
+  const [focusedCell, setFocusedCell] = useState<{ day: string; slotId: number; batchCode: string } | null>(null);
 
   // Step 5 — Export
   const [tabName, setTabName] = useState("");
@@ -384,6 +388,141 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
   const jeeBatches = useMemo(() => allBatches.filter(b => b.section === "JEE"), [allBatches]);
   const neetBatches = useMemo(() => allBatches.filter(b => b.section === "NEET"), [allBatches]);
   const dropperBatches = useMemo(() => allBatches.filter(b => b.section === "DROPPER"), [allBatches]);
+
+  const allBatchCodes = useMemo(() => {
+    return [
+      ...jeeBatches.map(b => b.code),
+      ...neetBatches.map(b => b.code),
+      ...dropperBatches.map(b => b.code)
+    ];
+  }, [jeeBatches, neetBatches, dropperBatches]);
+
+  const navigateCell = useCallback((direction: 'up' | 'down' | 'left' | 'right') => {
+    if (!focusedCell) {
+      if (DAYS.length > 0 && allBatchCodes.length > 0) {
+        setFocusedCell({
+          day: DAYS[0],
+          slotId: 1,
+          batchCode: allBatchCodes[0]
+        });
+      }
+      return;
+    }
+
+    const { day, slotId, batchCode } = focusedCell;
+    const dayIndex = DAYS.indexOf(day);
+    const batchIndex = allBatchCodes.indexOf(batchCode);
+
+    if (direction === 'up') {
+      if (slotId > 1) {
+        setFocusedCell({ day, slotId: slotId - 1, batchCode });
+      } else if (dayIndex > 0) {
+        setFocusedCell({ day: DAYS[dayIndex - 1], slotId: 6, batchCode });
+      }
+    } else if (direction === 'down') {
+      if (slotId < 6) {
+        setFocusedCell({ day, slotId: slotId + 1, batchCode });
+      } else if (dayIndex < DAYS.length - 1) {
+        setFocusedCell({ day: DAYS[dayIndex + 1], slotId: 1, batchCode });
+      }
+    } else if (direction === 'left') {
+      if (batchIndex > 0) {
+        setFocusedCell({ day, slotId, batchCode: allBatchCodes[batchIndex - 1] });
+      } else if (slotId > 1) {
+        setFocusedCell({ day, slotId: slotId - 1, batchCode: allBatchCodes[allBatchCodes.length - 1] });
+      } else if (dayIndex > 0) {
+        setFocusedCell({ day: DAYS[dayIndex - 1], slotId: 6, batchCode: allBatchCodes[allBatchCodes.length - 1] });
+      }
+    } else if (direction === 'right') {
+      if (batchIndex < allBatchCodes.length - 1) {
+        setFocusedCell({ day, slotId, batchCode: allBatchCodes[batchIndex + 1] });
+      } else if (slotId < 6) {
+        setFocusedCell({ day, slotId: slotId + 1, batchCode: allBatchCodes[0] });
+      } else if (dayIndex < DAYS.length - 1) {
+        setFocusedCell({ day: DAYS[dayIndex + 1], slotId: 1, batchCode: allBatchCodes[0] });
+      }
+    }
+  }, [focusedCell, allBatchCodes]);
+
+  const handleSwapClick = useCallback((day: string, slotId: number, batchCode: string) => {
+    if (!swapSelection) {
+      setSwapSelection({ day, slotId, batchCode });
+    } else {
+      const first = swapSelection;
+      const second = { day, slotId, batchCode };
+      
+      const teacher1 = previewGrid?.lookup.get(`${first.day}-${first.slotId}-${first.batchCode}`) || "";
+      const teacher2 = previewGrid?.lookup.get(`${second.day}-${second.slotId}-${second.batchCode}`) || "";
+      
+      const sec1 = allBatches.find(b => b.code === first.batchCode)?.section || "JEE";
+      const sec2 = allBatches.find(b => b.code === second.batchCode)?.section || "JEE";
+
+      handleCellEdit(first.day, first.slotId, first.batchCode, teacher2, sec1);
+      handleCellEdit(second.day, second.slotId, second.batchCode, teacher1, sec2);
+
+      setSwapSelection(null);
+      setIsSwapMode(false);
+    }
+  }, [swapSelection, previewGrid, allBatches, handleCellEdit]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT") {
+        return;
+      }
+      
+      if (editingCell) {
+        if (e.key === "Escape") {
+          setEditingCell(null);
+        }
+        return;
+      }
+
+      if (!focusedCell) return;
+
+      const { day, slotId, batchCode } = focusedCell;
+      const currentSection = allBatches.find(b => b.code === batchCode)?.section || "JEE";
+
+      switch (e.key) {
+        case "ArrowUp":
+          e.preventDefault();
+          navigateCell("up");
+          break;
+        case "ArrowDown":
+          e.preventDefault();
+          navigateCell("down");
+          break;
+        case "ArrowLeft":
+          e.preventDefault();
+          navigateCell("left");
+          break;
+        case "ArrowRight":
+          e.preventDefault();
+          navigateCell("right");
+          break;
+        case "Enter":
+          e.preventDefault();
+          setEditingCell({ day, slotId, batchCode });
+          break;
+        case "Backspace":
+        case "Delete":
+          e.preventDefault();
+          handleCellEdit(day, slotId, batchCode, "", currentSection);
+          setTimeout(() => navigateCell("down"), 10);
+          break;
+        default:
+          if (e.key.length === 1 && /[a-zA-Z0-9]/.test(e.key)) {
+            e.preventDefault();
+            setEditingCell({ day, slotId, batchCode });
+          }
+          break;
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [focusedCell, editingCell, allBatches, handleCellEdit, navigateCell]);
 
   // ─── Fetch Faculty ────────────────────────────────────────────────
 
@@ -1281,6 +1420,79 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
 
                   {/* Preview Grid */}
                   <GlassCard title="Timetable Preview" icon={<Eye className="w-3.5 h-3.5 text-[#5277f7]" />}>
+                    {/* Quick Edit Toolkit bar */}
+                    <div className="mb-4 bg-slate-100/60 dark:bg-slate-800/40 border border-slate-200/50 dark:border-slate-700/50 rounded-xl p-3 flex flex-wrap items-center gap-4 text-xs">
+                      {/* Paintbrush Mode Section */}
+                      <div className="flex flex-wrap items-center gap-2 border-r border-slate-300 dark:border-slate-700 pr-4">
+                        <span className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                          🖌️ Paintbrush:
+                        </span>
+                        <select
+                          value={activePaintbrushTeacher || ""}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setActivePaintbrushTeacher(val ? val : null);
+                            if (val) {
+                              setIsSwapMode(false);
+                              setSwapSelection(null);
+                            }
+                          }}
+                          className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded px-2 py-1 text-xs focus:outline-none"
+                        >
+                          <option value="">Off (Normal Select)</option>
+                          <option value="ERASER">🧽 Eraser (Clear Slot)</option>
+                          <optgroup label="Active Faculty">
+                            {activeFaculty.map(f => (
+                              <option key={f.code} value={f.code}>{f.code} - {f.name}</option>
+                            ))}
+                          </optgroup>
+                        </select>
+                        {activePaintbrushTeacher && (
+                          <span className="text-[10px] text-purple-500 font-bold bg-purple-500/10 px-2 py-0.5 rounded animate-pulse">
+                            {activePaintbrushTeacher === "ERASER" ? "Eraser Active" : `Painting: ${activePaintbrushTeacher}`}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Swap Tool Section */}
+                      <div className="flex items-center gap-2 border-r border-slate-300 dark:border-slate-700 pr-4">
+                        <button
+                          onClick={() => {
+                            const nextSwapState = !isSwapMode;
+                            setIsSwapMode(nextSwapState);
+                            setSwapSelection(null);
+                            if (nextSwapState) {
+                              setActivePaintbrushTeacher(null);
+                            }
+                          }}
+                          className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition-all ${
+                            isSwapMode
+                              ? "bg-amber-500 text-white shadow-md shadow-amber-500/20"
+                              : "bg-slate-200/80 dark:bg-slate-700/60 hover:bg-slate-300/80 dark:hover:bg-slate-600/80 text-slate-800 dark:text-slate-200"
+                          }`}
+                        >
+                          🔄 Swap Mode {isSwapMode ? "Active" : ""}
+                        </button>
+                        {isSwapMode && (
+                          <span className="text-[10px] text-amber-500 font-bold bg-amber-500/10 px-2 py-0.5 rounded animate-pulse">
+                            {!swapSelection ? "Click cell 1..." : "Click cell 2 to swap..."}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Keyboard Navigation Tip */}
+                      <div className="text-[10px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                        <kbd className="px-1.5 py-0.5 bg-slate-200 dark:bg-slate-700 rounded border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 font-mono">↑↓←→</kbd>
+                        <span>Navigate cell</span>
+                        <span className="text-slate-300 dark:text-slate-600">|</span>
+                        <kbd className="px-1.5 py-0.5 bg-slate-200 dark:bg-slate-700 rounded border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 font-mono">Enter / Typable key</kbd>
+                        <span>Edit</span>
+                        <span className="text-slate-300 dark:text-slate-600">|</span>
+                        <kbd className="px-1.5 py-0.5 bg-slate-200 dark:bg-slate-700 rounded border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 font-mono">Del / Backspace</kbd>
+                        <span>Clear</span>
+                      </div>
+                    </div>
+
                     <div className="overflow-x-auto -mx-4 px-4 md:-mx-5 md:px-5 pb-2">
                       <table className="w-max min-w-full border-collapse text-[10px]">
                         <thead>
@@ -1393,21 +1605,38 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
                                   const teacher = row.isHoliday ? "" : (previewGrid.lookup.get(`${row.day}-${row.slot.id}-${b.code}`) || "");
                                   const isDoubleBooked = teacher && (doubleBookings.get(`${row.day}-${row.slot.id}-${teacher}`)?.size || 0) > 1;
                                   const isEditing = editingCell && editingCell.day === row.day && editingCell.slotId === row.slot.id && editingCell.batchCode === b.code;
+                                  const isFocused = focusedCell && focusedCell.day === row.day && focusedCell.slotId === row.slot.id && focusedCell.batchCode === b.code;
+                                  const isSwapSelected = swapSelection && swapSelection.day === row.day && swapSelection.slotId === row.slot.id && swapSelection.batchCode === b.code;
 
                                   return (
                                     <td
                                       key={b.code}
                                       onClick={() => {
-                                        if (!row.isHoliday) {
-                                          setEditingCell({ day: row.day, slotId: row.slot.id, batchCode: b.code });
+                                        if (row.isHoliday) return;
+                                        if (isSwapMode) {
+                                          handleSwapClick(row.day, row.slot.id, b.code);
+                                          return;
                                         }
+                                        if (activePaintbrushTeacher) {
+                                          const val = activePaintbrushTeacher === "ERASER" ? "" : activePaintbrushTeacher;
+                                          handleCellEdit(row.day, row.slot.id, b.code, val, b.section);
+                                          return;
+                                        }
+                                        setFocusedCell({ day: row.day, slotId: row.slot.id, batchCode: b.code });
+                                        setEditingCell({ day: row.day, slotId: row.slot.id, batchCode: b.code });
                                       }}
-                                      className={`px-1 py-1 border border-slate-200 dark:border-gray-800 text-center font-bold font-mono cursor-pointer transition-all min-w-[50px] relative select-none ${
-                                        isDoubleBooked 
-                                          ? "bg-red-500/10 dark:bg-red-950/20 text-red-500 border-red-500/40" 
-                                          : teacher 
-                                            ? `${dayTextColor} hover:bg-slate-100 dark:hover:bg-slate-800/40` 
-                                            : "text-slate-300 dark:text-gray-700 hover:bg-slate-50 dark:hover:bg-slate-800/20"
+                                      className={`px-1 py-1 border border-slate-200 dark:border-gray-800 text-center font-bold font-mono min-w-[50px] relative select-none transition-all ${
+                                        activePaintbrushTeacher ? "cursor-crosshair" : "cursor-pointer"
+                                      } ${
+                                        isFocused ? "ring-2 ring-blue-500 ring-inset z-20" : ""
+                                      } ${
+                                        isSwapSelected 
+                                          ? "bg-amber-500/20 dark:bg-amber-950/40 border-amber-500 animate-pulse z-20" 
+                                          : isDoubleBooked 
+                                            ? "bg-red-500/10 dark:bg-red-950/20 text-red-500 border-red-500/40" 
+                                            : teacher 
+                                              ? `${dayTextColor} hover:bg-slate-100 dark:hover:bg-slate-800/40` 
+                                              : "text-slate-300 dark:text-gray-700 hover:bg-slate-50 dark:hover:bg-slate-800/20"
                                       }`}
                                       title={isDoubleBooked ? `Conflict: ${teacher} is double-booked!` : "Click to edit"}
                                     >
@@ -1417,6 +1646,7 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
                                           onChange={(e) => {
                                             handleCellEdit(row.day, row.slot.id, b.code, e.target.value, b.section);
                                             setEditingCell(null);
+                                            setTimeout(() => navigateCell("down"), 10);
                                           }}
                                           onBlur={() => setEditingCell(null)}
                                           autoFocus
@@ -1458,21 +1688,38 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
                                   const teacher = row.isHoliday ? "" : (previewGrid.lookup.get(`${row.day}-${row.slot.id}-${b.code}`) || "");
                                   const isDoubleBooked = teacher && (doubleBookings.get(`${row.day}-${row.slot.id}-${teacher}`)?.size || 0) > 1;
                                   const isEditing = editingCell && editingCell.day === row.day && editingCell.slotId === row.slot.id && editingCell.batchCode === b.code;
+                                  const isFocused = focusedCell && focusedCell.day === row.day && focusedCell.slotId === row.slot.id && focusedCell.batchCode === b.code;
+                                  const isSwapSelected = swapSelection && swapSelection.day === row.day && swapSelection.slotId === row.slot.id && swapSelection.batchCode === b.code;
 
                                   return (
                                     <td
                                       key={b.code}
                                       onClick={() => {
-                                        if (!row.isHoliday) {
-                                          setEditingCell({ day: row.day, slotId: row.slot.id, batchCode: b.code });
+                                        if (row.isHoliday) return;
+                                        if (isSwapMode) {
+                                          handleSwapClick(row.day, row.slot.id, b.code);
+                                          return;
                                         }
+                                        if (activePaintbrushTeacher) {
+                                          const val = activePaintbrushTeacher === "ERASER" ? "" : activePaintbrushTeacher;
+                                          handleCellEdit(row.day, row.slot.id, b.code, val, b.section);
+                                          return;
+                                        }
+                                        setFocusedCell({ day: row.day, slotId: row.slot.id, batchCode: b.code });
+                                        setEditingCell({ day: row.day, slotId: row.slot.id, batchCode: b.code });
                                       }}
-                                      className={`px-1 py-1 border border-slate-200 dark:border-gray-800 text-center font-bold font-mono cursor-pointer transition-all min-w-[50px] relative select-none ${
-                                        isDoubleBooked 
-                                          ? "bg-red-500/10 dark:bg-red-950/20 text-red-500 border-red-500/40" 
-                                          : teacher 
-                                            ? `${dayTextColor} hover:bg-slate-100 dark:hover:bg-slate-800/40` 
-                                            : "text-slate-300 dark:text-gray-700 hover:bg-slate-50 dark:hover:bg-slate-800/20"
+                                      className={`px-1 py-1 border border-slate-200 dark:border-gray-800 text-center font-bold font-mono min-w-[50px] relative select-none transition-all ${
+                                        activePaintbrushTeacher ? "cursor-crosshair" : "cursor-pointer"
+                                      } ${
+                                        isFocused ? "ring-2 ring-blue-500 ring-inset z-20" : ""
+                                      } ${
+                                        isSwapSelected 
+                                          ? "bg-amber-500/20 dark:bg-amber-950/40 border-amber-500 animate-pulse z-20" 
+                                          : isDoubleBooked 
+                                            ? "bg-red-500/10 dark:bg-red-950/20 text-red-500 border-red-500/40" 
+                                            : teacher 
+                                              ? `${dayTextColor} hover:bg-slate-100 dark:hover:bg-slate-800/40` 
+                                              : "text-slate-300 dark:text-gray-700 hover:bg-slate-50 dark:hover:bg-slate-800/20"
                                       }`}
                                       title={isDoubleBooked ? `Conflict: ${teacher} is double-booked!` : "Click to edit"}
                                     >
@@ -1482,6 +1729,7 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
                                           onChange={(e) => {
                                             handleCellEdit(row.day, row.slot.id, b.code, e.target.value, b.section);
                                             setEditingCell(null);
+                                            setTimeout(() => navigateCell("down"), 10);
                                           }}
                                           onBlur={() => setEditingCell(null)}
                                           autoFocus
@@ -1523,21 +1771,38 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
                                   const teacher = row.isHoliday ? "" : (previewGrid.lookup.get(`${row.day}-${row.slot.id}-${b.code}`) || "");
                                   const isDoubleBooked = teacher && (doubleBookings.get(`${row.day}-${row.slot.id}-${teacher}`)?.size || 0) > 1;
                                   const isEditing = editingCell && editingCell.day === row.day && editingCell.slotId === row.slot.id && editingCell.batchCode === b.code;
+                                  const isFocused = focusedCell && focusedCell.day === row.day && focusedCell.slotId === row.slot.id && focusedCell.batchCode === b.code;
+                                  const isSwapSelected = swapSelection && swapSelection.day === row.day && swapSelection.slotId === row.slot.id && swapSelection.batchCode === b.code;
 
                                   return (
                                     <td
                                       key={b.code}
                                       onClick={() => {
-                                        if (!row.isHoliday) {
-                                          setEditingCell({ day: row.day, slotId: row.slot.id, batchCode: b.code });
+                                        if (row.isHoliday) return;
+                                        if (isSwapMode) {
+                                          handleSwapClick(row.day, row.slot.id, b.code);
+                                          return;
                                         }
+                                        if (activePaintbrushTeacher) {
+                                          const val = activePaintbrushTeacher === "ERASER" ? "" : activePaintbrushTeacher;
+                                          handleCellEdit(row.day, row.slot.id, b.code, val, b.section);
+                                          return;
+                                        }
+                                        setFocusedCell({ day: row.day, slotId: row.slot.id, batchCode: b.code });
+                                        setEditingCell({ day: row.day, slotId: row.slot.id, batchCode: b.code });
                                       }}
-                                      className={`px-1 py-1 border border-slate-200 dark:border-gray-800 text-center font-bold font-mono cursor-pointer transition-all min-w-[50px] relative select-none ${
-                                        isDoubleBooked 
-                                          ? "bg-red-500/10 dark:bg-red-950/20 text-red-500 border-red-500/40" 
-                                          : teacher 
-                                            ? `${dayTextColor} hover:bg-slate-100 dark:hover:bg-slate-800/40` 
-                                            : "text-slate-300 dark:text-gray-700 hover:bg-slate-50 dark:hover:bg-slate-800/20"
+                                      className={`px-1 py-1 border border-slate-200 dark:border-gray-800 text-center font-bold font-mono min-w-[50px] relative select-none transition-all ${
+                                        activePaintbrushTeacher ? "cursor-crosshair" : "cursor-pointer"
+                                      } ${
+                                        isFocused ? "ring-2 ring-blue-500 ring-inset z-20" : ""
+                                      } ${
+                                        isSwapSelected 
+                                          ? "bg-amber-500/20 dark:bg-amber-950/40 border-amber-500 animate-pulse z-20" 
+                                          : isDoubleBooked 
+                                            ? "bg-red-500/10 dark:bg-red-950/20 text-red-500 border-red-500/40" 
+                                            : teacher 
+                                              ? `${dayTextColor} hover:bg-slate-100 dark:hover:bg-slate-800/40` 
+                                              : "text-slate-300 dark:text-gray-700 hover:bg-slate-50 dark:hover:bg-slate-800/20"
                                       }`}
                                       title={isDoubleBooked ? `Conflict: ${teacher} is double-booked!` : "Click to edit"}
                                     >
@@ -1547,6 +1812,7 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
                                           onChange={(e) => {
                                             handleCellEdit(row.day, row.slot.id, b.code, e.target.value, b.section);
                                             setEditingCell(null);
+                                            setTimeout(() => navigateCell("down"), 10);
                                           }}
                                           onBlur={() => setEditingCell(null)}
                                           autoFocus
