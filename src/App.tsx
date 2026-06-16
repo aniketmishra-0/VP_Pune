@@ -47,14 +47,37 @@ import InstallPrompt from "./components/InstallPrompt";
 import ErrorBoundary from "./components/ErrorBoundary";
 
 // ── Lazy-loaded heavy components (code-split into separate chunks) ──
-const AdminSettings = React.lazy(() => import("./components/AdminSettings"));
-const StudentQR = React.lazy(() => import("./components/StudentQR"));
-const TimetableViewer = React.lazy(() => import("./components/TimetableViewer"));
-const TimetableGenerator = React.lazy(() => import("./components/TimetableGenerator"));
-const TimetableConfig = React.lazy(() => import("./components/TimetableConfig"));
-const SheetEditorPage = React.lazy(() => import("./components/SheetEditorPage"));
-const PublicResult = React.lazy(() => import("./components/PublicResult"));
-const PortalAdmin = React.lazy(() => import("./components/PortalAdmin"));
+// Each import factory is stored so we can preload chunks before user navigates.
+const importAdminSettings = () => import("./components/AdminSettings");
+const importStudentQR = () => import("./components/StudentQR");
+const importTimetableViewer = () => import("./components/TimetableViewer");
+const importTimetableGenerator = () => import("./components/TimetableGenerator");
+const importTimetableConfig = () => import("./components/TimetableConfig");
+const importSheetEditorPage = () => import("./components/SheetEditorPage");
+const importPublicResult = () => import("./components/PublicResult");
+const importPortalAdmin = () => import("./components/PortalAdmin");
+
+const AdminSettings = React.lazy(importAdminSettings);
+const StudentQR = React.lazy(importStudentQR);
+const TimetableViewer = React.lazy(importTimetableViewer);
+const TimetableGenerator = React.lazy(importTimetableGenerator);
+const TimetableConfig = React.lazy(importTimetableConfig);
+const SheetEditorPage = React.lazy(importSheetEditorPage);
+const PublicResult = React.lazy(importPublicResult);
+const PortalAdmin = React.lazy(importPortalAdmin);
+
+// Preload all lazy chunks in background so navigation is instant (no black screen flash).
+// Once a dynamic import is called, the browser caches the module — React.lazy will resolve
+// synchronously on next render, skipping the Suspense fallback entirely.
+const preloadAllChunks = () => {
+  importTimetableViewer();
+  importTimetableConfig();
+  importAdminSettings();
+  importPortalAdmin();
+  importStudentQR();
+  importTimetableGenerator();
+  importSheetEditorPage();
+};
 
 // Lazy-load html2pdf only when needed (PDF export)
 let html2pdfModule: any = null;
@@ -897,6 +920,14 @@ export default function App() {
           splash.classList.add("splash-hide");
           window.setTimeout(() => splash.remove(), 500);
         }
+      }
+
+      // Preload all lazy-loaded chunks in the background once the app is ready.
+      // This ensures clicking any nav button loads the view instantly (no black screen flash).
+      if (typeof window.requestIdleCallback === "function") {
+        window.requestIdleCallback(preloadAllChunks);
+      } else {
+        window.setTimeout(preloadAllChunks, 1500);
       }
     }
   }, [loggedInUser, isPublicReport, dropdowns.isLoading, isSearching, studentsPayload, errorMessage]);
@@ -1826,6 +1857,8 @@ export default function App() {
               {isAdmin && (
               <button
                 onClick={() => { setActiveView("admin"); setErrorMessage(null); }}
+                onMouseEnter={preloadAllChunks}
+                onTouchStart={preloadAllChunks}
                 className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all cursor-pointer ${
                   activeView === "admin"
                     ? "bg-[#5277f7] text-white shadow-lg shadow-[#5277f7]/20"
@@ -1841,6 +1874,8 @@ export default function App() {
               {isSuperAdmin && featureFlags.timetableGenerator && (
               <button
                 onClick={() => { setActiveView("timetableGen"); setErrorMessage(null); }}
+                onMouseEnter={() => importTimetableGenerator()}
+                onTouchStart={() => importTimetableGenerator()}
                 className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all cursor-pointer ${
                   activeView === "timetableGen"
                     ? "bg-[#5277f7] text-white shadow-lg shadow-[#5277f7]/20"
@@ -1856,6 +1891,8 @@ export default function App() {
               {isSuperAdmin && featureFlags.sheetEditor && (
               <button
                 onClick={() => { setActiveView("sheetEditor"); setErrorMessage(null); }}
+                onMouseEnter={() => importSheetEditorPage()}
+                onTouchStart={() => importSheetEditorPage()}
                 className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all cursor-pointer ${
                   activeView === "sheetEditor"
                     ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/20"
@@ -1870,6 +1907,8 @@ export default function App() {
               {/* Timetable Tab — visible to all */}
               <button
                 onClick={() => { setActiveView("timetable"); setErrorMessage(null); }}
+                onMouseEnter={() => importTimetableViewer()}
+                onTouchStart={() => importTimetableViewer()}
                 className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all cursor-pointer ${
                   activeView === "timetable"
                     ? "bg-[#5277f7] text-white shadow-lg shadow-[#5277f7]/20"
@@ -2011,15 +2050,16 @@ export default function App() {
             </motion.div>
           )}
 
-          <AnimatePresence mode="wait">
+          <AnimatePresence mode="popLayout">
             
             {/* HOME VIEW: Dribbble Aesthetic layout */}
             {activeView === "home" && (
               <motion.div
                 key="home"
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -15 }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
                 className="space-y-4 sm:space-y-8 py-2 sm:py-8 mt-2 sm:my-auto"
               >
                 {/* Brand Promos */}
@@ -2152,9 +2192,10 @@ export default function App() {
             {activeView === "input" && (
               <motion.div
                 key="input"
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -15 }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
                 className="max-w-md mx-auto w-full space-y-4 sm:space-y-6 mt-2 sm:my-auto"
               >
                 {/* Back Link */}
@@ -2326,9 +2367,10 @@ export default function App() {
             {activeView === "batchList" && studentsPayload && (
               <motion.div
                   key="batchList"
-                  initial={{ opacity: 0, y: 15 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -15 }}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.1 }}
                   className="max-w-4xl mx-auto w-full space-y-6"
                 >
                   <button
@@ -2479,9 +2521,10 @@ export default function App() {
             {activeView === "dashboard" && activeStudent && (
               <motion.div
                 key="dashboard"
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -15 }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
                 className="space-y-6 w-full"
               >
                 
@@ -3003,9 +3046,10 @@ export default function App() {
           {activeView === "sheetsList" && (
             <motion.div
               key="sheetsList"
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -15 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
               className="space-y-6 max-w-6xl mx-auto py-2 w-full"
             >
               {/* Header panel */}
@@ -3120,9 +3164,10 @@ export default function App() {
           {activeView === "admin" && isAdmin && (
             <motion.div
               key="admin"
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -15 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
               className="space-y-6 max-w-6xl mx-auto py-2 w-full text-slate-800 dark:text-slate-100"
             >
               {/* Header Panel */}
@@ -4140,9 +4185,10 @@ export default function App() {
           {activeView === "timetable" && (
             <motion.div
               key="timetable"
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -15 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
               className="space-y-6 max-w-6xl mx-auto py-2 w-full text-slate-800 dark:text-slate-100"
             >
               <Suspense fallback={<LazyLoadFallback />}>
@@ -4154,9 +4200,10 @@ export default function App() {
           {activeView === "timetableGen" && isSuperAdmin && featureFlags.timetableGenerator && (
             <motion.div
               key="timetableGen"
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -15 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
               className="space-y-6 max-w-7xl mx-auto py-2 w-full text-slate-800 dark:text-slate-100"
             >
               <Suspense fallback={<LazyLoadFallback />}>
@@ -4170,9 +4217,10 @@ export default function App() {
           {activeView === "sheetEditor" && isSuperAdmin && featureFlags.sheetEditor && (
             <motion.div
               key="sheetEditor"
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -15 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
               className="space-y-6 max-w-7xl mx-auto py-2 w-full text-slate-800 dark:text-slate-100"
             >
               <Suspense fallback={<LazyLoadFallback />}>
@@ -4249,6 +4297,7 @@ export default function App() {
           {isAdmin && (
           <button
             onClick={() => { setActiveView("admin"); setErrorMessage(null); }}
+            onTouchStart={preloadAllChunks}
             className={`flex flex-col items-center justify-center gap-1 w-14 py-1 rounded-xl transition-all cursor-pointer outline-none ${
               activeView === "admin"
                 ? "text-[#5277f7] dark:text-blue-400"
@@ -4278,6 +4327,7 @@ export default function App() {
           {/* Timetable Tab — visible to all */}
           <button
             onClick={() => { setActiveView("timetable"); setErrorMessage(null); }}
+            onTouchStart={() => importTimetableViewer()}
             className={`flex flex-col items-center justify-center gap-1 w-14 py-1 rounded-xl transition-all cursor-pointer outline-none ${
               activeView === "timetable"
                 ? "text-[#5277f7] dark:text-blue-400"
