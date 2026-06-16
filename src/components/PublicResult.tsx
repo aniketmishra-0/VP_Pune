@@ -25,6 +25,7 @@ import {
   Download,
   Printer,
   PartyPopper,
+  ArrowLeft,
 } from "lucide-react";
 import QRCode from "qrcode";
 import { getDeviceFingerprint } from "../utils/deviceFingerprint";
@@ -190,6 +191,28 @@ function StatCard({
 /*  Main Component                                                     */
 /* ------------------------------------------------------------------ */
 
+/* PW Logo — loads real logo from API with fallback */
+function PWLogoPublic() {
+  const [hasError, setHasError] = React.useState(false);
+  return (
+    <div className="w-14 h-14 rounded-2xl overflow-hidden bg-white shadow-lg shadow-[#5277f7]/30 border border-white/20 flex items-center justify-center shrink-0">
+      {!hasError ? (
+        <img
+          src="/api/logo"
+          alt="PW Logo"
+          className="w-full h-full object-contain p-1"
+          referrerPolicy="no-referrer"
+          onError={() => setHasError(true)}
+        />
+      ) : (
+        <div className="w-full h-full bg-gradient-to-br from-[#5277f7] to-[#3a56c5] text-white flex items-center justify-center font-bold tracking-tight select-none">
+          <span className="text-xl font-black tracking-tighter" style={{ fontFamily: "Space Grotesk, sans-serif" }}>PW</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function PublicResult() {
   const [regNo, setRegNo] = useState("");
   const [state, setState] = useState<PageState>({ kind: "idle" });
@@ -307,12 +330,8 @@ export default function PublicResult() {
             transition={{ duration: 0.5 }}
             className="flex flex-col items-center gap-3"
           >
-            {/* Logo placeholder */}
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#5277f7] to-indigo-500 flex items-center justify-center shadow-lg shadow-[#5277f7]/30">
-              <span className="text-white font-extrabold text-xl font-display tracking-tight">
-                PW
-              </span>
-            </div>
+            {/* Real PW Logo */}
+            <PWLogoPublic />
             <div>
               <h1 className="text-xl md:text-2xl font-extrabold text-white font-display tracking-tight">
                 Student Result Portal
@@ -326,68 +345,93 @@ export default function PublicResult() {
 
         {/* Main */}
         <main className="flex-1 flex flex-col items-center px-4 pb-8">
-          {/* Search Card */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.15 }}
-            className="w-full max-w-lg mt-4"
-          >
-            <GlassCard className="p-6 md:p-8">
-              <div className="flex items-center gap-2.5 mb-5">
-                <div className="w-9 h-9 rounded-xl bg-[#5277f7]/15 flex items-center justify-center">
-                  <Search className="w-4.5 h-4.5 text-[#5277f7]" />
-                </div>
-                <div>
-                  <h2 className="text-sm font-bold text-white">Search Result</h2>
-                  <p className="text-[10px] text-slate-500">
-                    Enter your registration number to view results
-                  </p>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <div className="relative">
-                  <input
-                    ref={inputRef}
-                    type="text"
-                    value={regNo}
-                    onChange={(e) => setRegNo(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                    placeholder="Enter Your Registration Number"
-                    className="w-full px-4 py-3.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-slate-500 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-[#5277f7]/50 focus:border-[#5277f7]/50 transition-all"
-                    disabled={state.kind === "loading"}
-                  />
-                  {regNo && (
-                    <button
-                      onClick={() => setRegNo("")}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors cursor-pointer"
-                    >
-                      ✕
-                    </button>
-                  )}
+          <AnimatePresence mode="wait">
+          {/* Search Card — only visible when NOT showing result */}
+          {state.kind !== "result" && (
+            <motion.div
+              key="search-card"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20, scale: 0.95 }}
+              transition={{ duration: 0.35 }}
+              className="w-full max-w-lg mt-4"
+            >
+              <GlassCard className="p-6 md:p-8">
+                <div className="flex items-center gap-2.5 mb-5">
+                  <div className="w-9 h-9 rounded-xl bg-[#5277f7]/15 flex items-center justify-center">
+                    <Search className="w-4.5 h-4.5 text-[#5277f7]" />
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-bold text-white">Search Result</h2>
+                    <p className="text-[10px] text-slate-500">
+                      Enter your registration number to view results
+                    </p>
+                  </div>
                 </div>
 
-                <button
-                  onClick={handleSearch}
-                  disabled={state.kind === "loading" || !regNo.trim()}
-                  className="w-full py-3.5 rounded-xl bg-gradient-to-r from-[#5277f7] to-indigo-500 hover:from-[#4062dd] hover:to-indigo-600 text-white font-bold text-sm flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-[#5277f7]/20 active:scale-[0.98]"
-                >
-                  {state.kind === "loading" ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Searching...
-                    </>
-                  ) : (
-                    <>
-                      <Search className="w-4 h-4" />
-                      View Result
-                    </>
-                  )}
-                </button>
-              </div>
-            </GlassCard>
-          </motion.div>
+                <div className="space-y-4">
+                  <div className="relative">
+                    <input
+                      ref={inputRef}
+                      type="text"
+                      value={regNo}
+                      onChange={(e) => setRegNo(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                      placeholder="Enter Your Registration Number"
+                      className="w-full px-4 py-3.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-slate-500 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-[#5277f7]/50 focus:border-[#5277f7]/50 transition-all"
+                      disabled={state.kind === "loading"}
+                    />
+                    {regNo && (
+                      <button
+                        onClick={() => setRegNo("")}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors cursor-pointer"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={handleSearch}
+                    disabled={state.kind === "loading" || !regNo.trim()}
+                    className="w-full py-3.5 rounded-xl bg-gradient-to-r from-[#5277f7] to-indigo-500 hover:from-[#4062dd] hover:to-indigo-600 text-white font-bold text-sm flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-[#5277f7]/20 active:scale-[0.98]"
+                  >
+                    {state.kind === "loading" ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Searching...
+                      </>
+                    ) : (
+                      <>
+                        <Search className="w-4 h-4" />
+                        View Result
+                      </>
+                    )}
+                  </button>
+                </div>
+              </GlassCard>
+            </motion.div>
+          )}
+
+          {/* Back to Search button — only when result is shown */}
+          {state.kind === "result" && (
+            <motion.div
+              key="back-button"
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.3 }}
+              className="w-full max-w-lg mt-4"
+            >
+              <button
+                onClick={() => { setState({ kind: "idle" }); setRegNo(""); }}
+                className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors text-xs font-bold cursor-pointer group mb-2"
+              >
+                <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
+                Back to Search
+              </button>
+            </motion.div>
+          )}
+          </AnimatePresence>
 
           {/* Results Area */}
           <AnimatePresence mode="wait">
