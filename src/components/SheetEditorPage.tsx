@@ -546,13 +546,13 @@ export default function SheetEditorPage({ adminHeaders }: SheetEditorPageProps) 
     }
   }, [sheetData, sheetSourceTab, adminHeaders]);
 
-  // ── NEW: Quick Generate (smart — always targets next upcoming Monday from today) ──
+  // ── Quick Generate (uses selected sheet or latest, dates from today) ──
   const handleQuickGenerate = useCallback(async () => {
     setQuickGenerating(true);
     setLoadError(null);
     setSheetSaveResult(null);
     try {
-      // 1. Get latest tab
+      // 1. Get tabs list
       const tabsRes = await fetch("/api/timetable/tabs", { headers: adminHeaders() });
       if (!tabsRes.ok) throw new Error("Failed to fetch tabs");
       const tabsData = await tabsRes.json();
@@ -560,11 +560,12 @@ export default function SheetEditorPage({ adminHeaders }: SheetEditorPageProps) 
       if (tabs.length === 0) throw new Error("No existing tabs found in sheet");
       setExistingTabs(tabs);
 
-      const latestTab = tabs[tabs.length - 1];
-      setSelectedLoadTab(latestTab);
+      // Use selected tab if user chose one, otherwise use latest
+      const tabToLoad = selectedLoadTab || tabs[tabs.length - 1];
+      setSelectedLoadTab(tabToLoad);
 
-      // 2. Load the tab
-      const r = await fetch(`/api/timetable/tab-values?tabName=${encodeURIComponent(latestTab)}`, {
+      // 2. Load the selected tab
+      const r = await fetch(`/api/timetable/tab-values?tabName=${encodeURIComponent(tabToLoad)}`, {
         headers: adminHeaders()
       });
       if (!r.ok) throw new Error(`Failed to load tab: HTTP ${r.status}`);
@@ -662,7 +663,7 @@ export default function SheetEditorPage({ adminHeaders }: SheetEditorPageProps) 
     } finally {
       setQuickGenerating(false);
     }
-  }, [adminHeaders]);
+  }, [adminHeaders, selectedLoadTab]);
 
   // ── NEW: Autocomplete logic ──
   const getAutocompleteSuggestions = useCallback((input: string, batchCode?: string) => {
