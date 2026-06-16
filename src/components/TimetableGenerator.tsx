@@ -252,6 +252,7 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
   const [existingTabs, setExistingTabs] = useState<string[]>([]);
   const [selectedLoadTab, setSelectedLoadTab] = useState("");
   const [loadingTab, setLoadingTab] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Step 5 — Export
   const [tabName, setTabName] = useState("");
@@ -553,8 +554,21 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
   const handleLoadTab = useCallback(async () => {
     if (!selectedLoadTab) return;
     setLoadingTab(true);
+    setLoadError(null);
     setGenError(null);
     try {
+      // 1. Auto-fetch faculty if not loaded yet (allBatches depends on it)
+      if (faculty.length === 0) {
+        try {
+          const fr = await fetch("/api/timetable/faculty", { headers: adminHeaders() });
+          if (fr.ok) {
+            const fd = await fr.json();
+            setFaculty(fd.faculty || []);
+          }
+        } catch { /* faculty fetch failed, will parse header directly */ }
+      }
+
+      // 2. Fetch sheet data
       const r = await fetch(`/api/timetable/tab-values?tabName=${encodeURIComponent(selectedLoadTab)}`, {
         headers: adminHeaders()
       });
@@ -564,31 +578,59 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
 
       const parsedSlots: GeneratedSlot[] = [];
       const values: string[][] = d.values || [];
-      if (values.length < 2) {
+      if (values.length < 3) {
         throw new Error("Timetable sheet format invalid (too few rows)");
       }
 
       const headerRow = values[0];
+      const roomRow = values[1]; // Row 1 is typically rooms
       
       // Map column index -> BatchInfo
+      // First try matching against allBatches, then fallback to detecting from header
       const colIndexToBatch: Record<number, BatchInfo> = {};
+      const parsedRooms: Record<string, string> = {};
+      
       for (let c = 0; c < headerRow.length; c++) {
         const code = String(headerRow[c] || "").trim();
+        if (!code || code === "Day" || code === "Date" || code === "Start" || code === "End" || code === "") continue;
+        
+        // Skip section headers like "JEE (14)", "NEET (12)", "DROPPER (3)"
+        if (/^(JEE|NEET|DROPPER)\s*\(/i.test(code)) continue;
+        // Skip "Room No" labels
+        if (/room/i.test(code)) continue;
+        
+        // Try matching against allBatches first
         const batch = allBatches.find(b => b.code === code);
         if (batch) {
           colIndexToBatch[c] = batch;
+        } else {
+          // Auto-detect: any code that looks like a batch code (contains letters+numbers)
+          if (/[A-Z]/.test(code) && /\d/.test(code) && code.length >= 4) {
+            const section = detectSection(code);
+            const room = roomRow && roomRow[c] ? String(roomRow[c]).trim() : (getDefaultRoom(code) || "");
+            colIndexToBatch[c] = { code, room, section };
+            if (room) parsedRooms[code] = room;
+          }
         }
+      }
+
+      if (Object.keys(colIndexToBatch).length === 0) {
+        throw new Error("Could not find any batch columns in the sheet header. Check sheet format.");
       }
 
       let currentDay = "";
       let currentDate = "";
 
+      // Data rows start after header (row 0) and room row (row 1)
       for (let rowIdx = 2; rowIdx < values.length; rowIdx++) {
         const row = values[rowIdx];
         if (!row || row.length === 0) continue;
 
         if (row[0]) currentDay = String(row[0]).trim().toUpperCase();
         if (row[1]) currentDate = String(row[1]).trim();
+
+        // Skip if no valid day
+        if (!currentDay || !DAYS.includes(currentDay as any)) continue;
 
         // Check if holiday
         const isHoliday = row.some(cell => String(cell).toUpperCase() === "HOLIDAY");
@@ -599,7 +641,7 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
           if (!batch) continue;
 
           const teacherCode = String(row[c] || "").trim();
-          if (!teacherCode || teacherCode === "—" || teacherCode.toUpperCase() === "HOLIDAY") {
+          if (!teacherCode || teacherCode === "—" || teacherCode === "-" || teacherCode.toUpperCase() === "HOLIDAY") {
             continue;
           }
 
@@ -616,7 +658,7 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
             endTime,
             batchCode: batch.code,
             teacherCode,
-            room: batchRooms[batch.code] || getDefaultRoom(batch.code) || batch.room || "",
+            room: batchRooms[batch.code] || parsedRooms[batch.code] || getDefaultRoom(batch.code) || batch.room || "",
             section: batch.section,
           });
         }
@@ -626,16 +668,22 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
         throw new Error("No lecture entries parsed from this sheet. Make sure the format matches standard timetable.");
       }
 
+      // Update rooms from parsed data
+      if (Object.keys(parsedRooms).length > 0) {
+        setBatchRooms(prev => ({ ...prev, ...parsedRooms }));
+      }
+
       setGeneratedSlots(parsedSlots);
       setTabName(selectedLoadTab); 
       setStep(4); // Jump directly to Step 4 Preview Grid!
       setWarnings([]); // Clear previous warnings since we loaded a clean sheet
     } catch (err: any) {
+      setLoadError(err.message || "Failed to load tab");
       setGenError(err.message || "Failed to load tab");
     } finally {
       setLoadingTab(false);
     }
-  }, [selectedLoadTab, allBatches, batchRooms, adminHeaders]);
+  }, [selectedLoadTab, allBatches, batchRooms, adminHeaders, faculty.length]);
 
   // ─── Fetch Faculty ────────────────────────────────────────────────
 
@@ -1108,6 +1156,12 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
                       )}
                     </button>
                   </div>
+                  {loadError && (
+                    <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2.5">
+                      <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                      <p className="text-[11px] text-red-400">{loadError}</p>
+                    </div>
+                  )}
                 </div>
               </GlassCard>
             </div>
