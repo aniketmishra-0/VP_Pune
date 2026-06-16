@@ -11,6 +11,9 @@ import {
   GraduationCap,
   Download,
   AlertCircle,
+  X,
+  Copy,
+  Check,
 } from "lucide-react";
 
 interface PaperRow {
@@ -51,7 +54,47 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
   const [selectedStream, setSelectedStream] = useState<string>("all");
   const [selectedPhase, setSelectedPhase] = useState<string>("all");
 
+  // Preview and copy states
+  const [previewDoc, setPreviewDoc] = useState<{ title: string; url: string; type: "QP" | "AK" } | null>(null);
+  const [copied, setCopied] = useState<boolean>(false);
+
   // Fetch Papers
+  const getEmbedUrl = useCallback((url: string): string => {
+    if (!url) return "";
+    
+    // Google Drive file
+    const driveFileMatch = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9-_]+)/i);
+    if (driveFileMatch) {
+      return `https://drive.google.com/file/d/${driveFileMatch[1]}/preview`;
+    }
+    
+    // Google Drive open?id=
+    const driveOpenMatch = url.match(/drive\.google\.com\/open\?id=([a-zA-Z0-9-_]+)/i);
+    if (driveOpenMatch) {
+      return `https://drive.google.com/file/d/${driveOpenMatch[1]}/preview`;
+    }
+    
+    // Google Docs
+    const docsMatch = url.match(/docs\.google\.com\/document\/d\/([a-zA-Z0-9-_]+)/i);
+    if (docsMatch) {
+      return `https://docs.google.com/document/d/${docsMatch[1]}/preview`;
+    }
+
+    // Google Sheets
+    const sheetsMatch = url.match(/docs\.google\.com\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/i);
+    if (sheetsMatch) {
+      return `https://docs.google.com/spreadsheets/d/${sheetsMatch[1]}/preview`;
+    }
+
+    return url;
+  }, []);
+
+  const handleCopyLink = useCallback((url: string) => {
+    navigator.clipboard.writeText(url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, []);
+
   const fetchPapers = useCallback(async (isRefresh = false) => {
     if (isRefresh) {
       setIsSyncing(true);
@@ -435,17 +478,15 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
                       {/* Question Paper Action */}
                       <td className="p-4 text-center">
                         {paper.questionPaperUrl ? (
-                          <a
-                            href={paper.questionPaperUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                          <button
+                            onClick={() => setPreviewDoc({ title: `${paper.testName} - Question Paper`, url: paper.questionPaperUrl, type: "QP" })}
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-[#5277f7] text-blue-600 hover:text-white dark:bg-blue-950/30 dark:text-blue-300 dark:hover:bg-blue-600 dark:hover:text-white rounded-lg font-bold transition-all cursor-pointer shadow-sm border border-blue-100/20"
                             title={paper.questionPaperName || "Open Question Paper"}
                           >
                             <Download className="w-3.5 h-3.5" />
                             Open
                             <ExternalLink className="w-2.5 h-2.5 opacity-60" />
-                          </a>
+                          </button>
                         ) : (
                           <span className="text-[10px] text-slate-350 font-bold bg-slate-50 dark:bg-gray-800/10 px-2 py-1 rounded border border-slate-100 dark:border-gray-800/20 select-none">
                             Unavailable
@@ -456,17 +497,15 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
                       {/* Answer Key Action */}
                       <td className="p-4 text-center">
                         {paper.answerKeyUrl ? (
-                          <a
-                            href={paper.answerKeyUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                          <button
+                            onClick={() => setPreviewDoc({ title: `${paper.testName} - Answer Key`, url: paper.answerKeyUrl, type: "AK" })}
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-500 text-emerald-600 hover:text-white dark:bg-emerald-950/30 dark:text-emerald-300 dark:hover:bg-emerald-600 dark:hover:text-white rounded-lg font-bold transition-all cursor-pointer shadow-sm border border-emerald-100/20"
                             title={paper.answerKeyName || "Open Answer Key"}
                           >
                             <Download className="w-3.5 h-3.5" />
                             Open
                             <ExternalLink className="w-2.5 h-2.5 opacity-60" />
-                          </a>
+                          </button>
                         ) : (
                           <span className="text-[10px] text-slate-350 font-bold bg-slate-50 dark:bg-gray-800/10 px-2 py-1 rounded border border-slate-100 dark:border-gray-800/20 select-none">
                             Unavailable
@@ -528,15 +567,13 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
                 <div className="grid grid-cols-2 gap-2 pt-0.5">
                   {/* QP */}
                   {paper.questionPaperUrl ? (
-                    <a
-                      href={paper.questionPaperUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <button
+                      onClick={() => setPreviewDoc({ title: `${paper.testName} - Question Paper`, url: paper.questionPaperUrl, type: "QP" })}
                       className="flex items-center justify-center gap-1.5 py-2 bg-blue-50 text-blue-600 dark:bg-blue-950/20 dark:text-blue-300 rounded-xl font-bold text-xs border border-blue-100/10 cursor-pointer transition-colors"
                     >
                       <Download className="w-3.5 h-3.5" />
                       QP Link
-                    </a>
+                    </button>
                   ) : (
                     <div className="flex items-center justify-center py-2 bg-slate-50 dark:bg-gray-800/10 text-slate-350 dark:text-slate-600 rounded-xl font-bold text-xs border border-slate-100 dark:border-gray-800/20 select-none">
                       QP Unavailable
@@ -545,15 +582,13 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
 
                   {/* AK */}
                   {paper.answerKeyUrl ? (
-                    <a
-                      href={paper.answerKeyUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <button
+                      onClick={() => setPreviewDoc({ title: `${paper.testName} - Answer Key`, url: paper.answerKeyUrl, type: "AK" })}
                       className="flex items-center justify-center gap-1.5 py-2 bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-300 rounded-xl font-bold text-xs border border-emerald-100/10 cursor-pointer transition-colors"
                     >
                       <Download className="w-3.5 h-3.5" />
                       AK Link
-                    </a>
+                    </button>
                   ) : (
                     <div className="flex items-center justify-center py-2 bg-slate-50 dark:bg-gray-800/10 text-slate-350 dark:text-slate-600 rounded-xl font-bold text-xs border border-slate-100 dark:border-gray-800/20 select-none">
                       AK Unavailable
@@ -565,6 +600,96 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
           </div>
         </div>
       )}
+
+      {/* PDF Inline Preview Modal */}
+      <AnimatePresence>
+        {previewDoc && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm no-print"
+          >
+            {/* Backdrop click to close */}
+            <div
+              className="absolute inset-0 cursor-default"
+              onClick={() => setPreviewDoc(null)}
+            />
+
+            {/* Modal Box */}
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 20 }}
+              className="relative w-full max-w-6xl h-[85vh] bg-white dark:bg-[#111827] rounded-3xl shadow-2xl flex flex-col overflow-hidden border border-slate-200/50 dark:border-gray-800/40 z-10"
+            >
+              {/* Modal Header */}
+              <div className="flex items-center justify-between p-4 border-b border-slate-100 dark:border-gray-800/50 bg-slate-50/50 dark:bg-gray-900/20">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <FileText className={`w-5 h-5 shrink-0 ${previewDoc.type === "QP" ? "text-blue-500" : "text-emerald-500"}`} />
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-bold text-slate-800 dark:text-white truncate">
+                      {previewDoc.title}
+                    </h3>
+                    <p className="text-[10px] text-slate-400 dark:text-gray-500 font-medium truncate select-all mt-0.5">
+                      Source Link: {previewDoc.url}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleCopyLink(previewDoc.url)}
+                    className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-gray-800 rounded-xl transition-all cursor-pointer flex items-center gap-1 text-[10px] font-bold"
+                    title="Copy direct Google Drive URL"
+                  >
+                    {copied ? (
+                      <>
+                        <Check className="w-4 h-4 text-emerald-500" />
+                        Copied!
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-4 h-4" />
+                        Copy Link
+                      </>
+                    )}
+                  </button>
+
+                  <a
+                    href={previewDoc.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-2 text-[#5277f7] hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 hover:bg-slate-100 dark:hover:bg-gray-800 rounded-xl transition-all cursor-pointer flex items-center gap-1 text-[10px] font-bold"
+                    title="Open full document in a new tab"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    Open Tab
+                  </a>
+
+                  <button
+                    onClick={() => setPreviewDoc(null)}
+                    className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-gray-800 rounded-xl transition-all cursor-pointer"
+                    title="Close preview"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Modal Body (IFrame Preview) */}
+              <div className="flex-1 bg-slate-50 dark:bg-gray-950 p-4 relative">
+                <iframe
+                  src={getEmbedUrl(previewDoc.url)}
+                  className="w-full h-full border-0 rounded-2xl bg-white dark:bg-[#111827] shadow-inner"
+                  allow="autoplay"
+                  title="PDF Preview"
+                />
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
