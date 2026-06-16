@@ -121,6 +121,27 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
   const [copied, setCopied] = useState<boolean>(false);
   const [activeDropdown, setActiveDropdown] = useState<{ idx: number; type: "QP" | "AK" } | null>(null);
 
+  // Handle back gesture to close modal
+  useEffect(() => {
+    if (!previewDoc) return;
+
+    // Push dummy history state to intercept back button
+    window.history.pushState({ modal: "previewDoc" }, "");
+
+    const handlePopState = () => {
+      setPreviewDoc(null);
+    };
+
+    window.addEventListener("popstate", handlePopState);
+
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+      if (window.history.state?.modal === "previewDoc") {
+        window.history.back();
+      }
+    };
+  }, [previewDoc]);
+
   // Fetch Papers
   const getEmbedUrl = useCallback((url: string): string => {
     if (!url) return "";
