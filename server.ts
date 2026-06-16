@@ -40,6 +40,7 @@ interface SavedConfig {
   SUBSHEET_CENTERS?: Record<string, string[]>;
   STAFF_ACCESS?: Record<string, string[]>;
   FEATURE_FLAGS?: Partial<FeatureFlags>;
+  PAPERS_SPREADSHEET_URL?: string;
 }
 
 function getAppConfig(): SavedConfig {
@@ -939,6 +940,222 @@ async function loadSpreadsheetData() {
 // Initial pull on start
 loadSpreadsheetData();
 
+/* ===== PAPERS DATA STORAGE & PARSER (added) ===== */
+
+interface PaperRow {
+  date: string;
+  class: string;
+  phase: string;
+  stream: string;
+  testName: string;
+  questionPaperName: string;
+  questionPaperUrl: string;
+  answerKeyName: string;
+  answerKeyUrl: string;
+}
+
+interface PaperTab {
+  name: string;
+  rows: PaperRow[];
+}
+
+let papersData: PaperTab[] = [];
+let papersLastLoaded: string | null = null;
+let papersLoading = false;
+let papersError: string | null = null;
+
+function getPapersSpreadsheetUrl(): string {
+  const config = getAppConfig();
+  const envUrl = process.env.PAPERS_SPREADSHEET_URL || "";
+  const configUrl = config.PAPERS_SPREADSHEET_URL || "";
+  
+  // Default fallback sheet (the one from screenshot)
+  const defaultUrl = "https://docs.google.com/spreadsheets/d/1R1jK_tiisgx1xVbZAvjxBJ1IdulX6bJZFP4udsQ9PD0/edit";
+  
+  return normalizeSpreadsheetUrl(envUrl || configUrl || defaultUrl);
+}
+
+function parsePapersSheet(worksheet: XLSX.WorkSheet): PaperRow[] {
+  const rangeRef = worksheet["!ref"];
+  if (!rangeRef) return [];
+  const range = XLSX.utils.decode_range(rangeRef);
+
+  // 1. Locate headers
+  let headerRowIdx = -1;
+  let colIndices = {
+    date: -1,
+    class: -1,
+    phase: -1,
+    stream: -1,
+    testName: -1,
+    questionPaper: -1,
+    answerKey: -1,
+  };
+
+  // Inspect first 6 rows to find the headers
+  const maxSearchRows = Math.min(range.s.r + 5, range.e.r);
+  for (let r = range.s.r; r <= maxSearchRows; r++) {
+    const rowCells: string[] = [];
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const cellRef = XLSX.utils.encode_cell({ r, c });
+      const cell = worksheet[cellRef];
+      rowCells.push(cell && cell.v ? String(cell.v).trim().toLowerCase() : "");
+    }
+
+    // Check if this row looks like a header row
+    const hasTest = rowCells.some(v => v.includes("test"));
+    const hasPaper = rowCells.some(v => v.includes("paper") || v.includes("question"));
+    const hasKey = rowCells.some(v => v.includes("key") || v.includes("answer"));
+    if (hasTest || (hasPaper && hasKey)) {
+      headerRowIdx = r;
+      rowCells.forEach((val, idx) => {
+        const c = idx + range.s.c;
+        if (val.includes("date")) colIndices.date = c;
+        else if (val.includes("class")) colIndices.class = c;
+        else if (val.includes("phase")) colIndices.phase = c;
+        else if (val.includes("stream")) colIndices.stream = c;
+        else if (val.includes("test")) colIndices.testName = c;
+        else if (val.includes("question") || val.includes("paper")) colIndices.questionPaper = c;
+        else if (val.includes("answer") || val.includes("key")) colIndices.answerKey = c;
+      });
+      break;
+    }
+  }
+
+  // Fallback if no header row found
+  if (headerRowIdx === -1) {
+    headerRowIdx = range.s.r;
+    colIndices = {
+      date: range.s.c + 0,
+      class: range.s.c + 1,
+      phase: range.s.c + 2,
+      stream: range.s.c + 3,
+      testName: range.s.c + 4,
+      questionPaper: range.s.c + 5,
+      answerKey: range.s.c + 6,
+    };
+  }
+
+  const rows: PaperRow[] = [];
+  
+  for (let r = headerRowIdx + 1; r <= range.e.r; r++) {
+    const dateCellRef = colIndices.date >= 0 ? XLSX.utils.encode_cell({ r, c: colIndices.date }) : null;
+    const testCellRef = colIndices.testName >= 0 ? XLSX.utils.encode_cell({ r, c: colIndices.testName }) : null;
+    
+    const dateVal = dateCellRef && worksheet[dateCellRef]?.v ? String(worksheet[dateCellRef].v).trim() : "";
+    const testVal = testCellRef && worksheet[testCellRef]?.v ? String(worksheet[testCellRef].v).trim() : "";
+
+    if (!dateVal && !testVal) continue;
+
+    const getCellLink = (colIdx: number) => {
+      if (colIdx < 0) return { name: "", url: "" };
+      const cellRef = XLSX.utils.encode_cell({ r, c: colIdx });
+      const cell = worksheet[cellRef];
+      if (!cell) return { name: "", url: "" };
+
+      const name = cell.w || (cell.v !== undefined ? String(cell.v) : "");
+      let url = "";
+
+      if (cell.l && cell.l.Target) {
+        url = cell.l.Target;
+      } else if (cell.f && cell.f.includes("HYPERLINK")) {
+        const match = cell.f.match(/HYPERLINK\(\s*["']([^"']+)["']/i);
+        if (match) {
+          url = match[1];
+        }
+      }
+
+      return { name: name.trim(), url: url.trim() };
+    };
+
+    const qp = getCellLink(colIndices.questionPaper);
+    const ak = getCellLink(colIndices.answerKey);
+
+    rows.push({
+      date: dateVal,
+      class: colIndices.class >= 0 && worksheet[XLSX.utils.encode_cell({ r, c: colIndices.class })]?.v
+        ? String(worksheet[XLSX.utils.encode_cell({ r, c: colIndices.class })].v).trim()
+        : "",
+      phase: colIndices.phase >= 0 && worksheet[XLSX.utils.encode_cell({ r, c: colIndices.phase })]?.v
+        ? String(worksheet[XLSX.utils.encode_cell({ r, c: colIndices.phase })].v).trim()
+        : "",
+      stream: colIndices.stream >= 0 && worksheet[XLSX.utils.encode_cell({ r, c: colIndices.stream })]?.v
+        ? String(worksheet[XLSX.utils.encode_cell({ r, c: colIndices.stream })].v).trim()
+        : "",
+      testName: testVal,
+      questionPaperName: qp.name,
+      questionPaperUrl: qp.url,
+      answerKeyName: ak.name,
+      answerKeyUrl: ak.url,
+    });
+  }
+
+  return rows;
+}
+
+async function loadPapersData() {
+  const url = getPapersSpreadsheetUrl();
+  if (!url) {
+    papersError = "No papers sheet URL configured.";
+    return;
+  }
+  if (papersLoading) return;
+  papersLoading = true;
+  papersError = null;
+  console.log(`Starting Papers spreadsheet download and load from: ${url}`);
+  try {
+    const res = await fetch(url);
+    if (!res.ok) {
+      if (res.status === 401 || res.status === 403) {
+        throw new Error(
+          `HTTP ${res.status} ${res.statusText} — the Papers sheet is not publicly accessible. ` +
+          `Open the sheet → Share → set "General access" to "Anyone with the link" (Viewer), ` +
+          `or use File → Share → Publish to web and paste the /pub URL in admin settings.`
+        );
+      }
+      throw new Error(`HTTP Error Status: ${res.status} ${res.statusText}`);
+    }
+    
+    const contentType = res.headers.get("content-type") || "";
+    if (contentType.includes("html") && !url.includes("pub?output=xlsx")) {
+      throw new Error("Returned HTML/Google login redirection page instead of spreadsheet binary (Permission denied).");
+    }
+
+    const buffer = await res.arrayBuffer();
+    const wb = XLSX.read(new Uint8Array(buffer), { type: "array" });
+    if (!wb || !wb.SheetNames || wb.SheetNames.length === 0) {
+      throw new Error("Parsed workbook is empty or has no sheets.");
+    }
+
+    const loadedTabs: PaperTab[] = [];
+    wb.SheetNames.forEach((sheetName) => {
+      const worksheet = wb.Sheets[sheetName];
+      if (!worksheet) return;
+      const rows = parsePapersSheet(worksheet);
+      if (rows.length > 0) {
+        loadedTabs.push({
+          name: sheetName,
+          rows
+        });
+      }
+    });
+
+    papersData = loadedTabs;
+    papersLastLoaded = fmtIST();
+    console.log(`Successfully loaded Papers. Tabs: ${papersData.length}. Total rows: ${papersData.reduce((acc, t) => acc + t.rows.length, 0)}`);
+  } catch (err: any) {
+    console.error("Error loading Papers spreadsheet:", err.message || err);
+    papersError = err.message || String(err);
+  } finally {
+    papersLoading = false;
+  }
+}
+
+// Initial pull on start
+loadSpreadsheetData();
+loadPapersData();
+
+
 
 /* ===== ADMIN/ROLES/AUDIT SYSTEM (added) ===== */
 /* ============================================================
@@ -1727,18 +1944,21 @@ app.get("/api/config", verifyRequest, superAdminOnly, (req, res) => {
       SPREADSHEET_CENTERS: process.env.SPREADSHEET_CENTERS || "",
       SUBSHEET_CENTERS: process.env.SUBSHEET_CENTERS || "",
       STAFF_ACCESS: process.env.STAFF_ACCESS || "",
+      PAPERS_SPREADSHEET_URL: process.env.PAPERS_SPREADSHEET_URL || "",
     },
     local: {
       SPREADSHEET_URL: config.SPREADSHEET_URL || "",
       SPREADSHEET_CENTERS: config.SPREADSHEET_CENTERS || {},
       SUBSHEET_CENTERS: config.SUBSHEET_CENTERS || {},
       STAFF_ACCESS: config.STAFF_ACCESS || {},
+      PAPERS_SPREADSHEET_URL: config.PAPERS_SPREADSHEET_URL || "",
     },
     combined: {
       SPREADSHEET_URL: getSpreadsheetUrls().join(", "),
       SPREADSHEET_CENTERS: getSpreadsheetCenters(),
       SUBSHEET_CENTERS: getSubsheetCenters(),
       STAFF_ACCESS: getStaffAccess(),
+      PAPERS_SPREADSHEET_URL: getPapersSpreadsheetUrl(),
     },
     featureFlags: { ...DEFAULT_FEATURES, ...(config.FEATURE_FLAGS || {}) },
     activeSheets: userSheets.map(s => ({
@@ -1752,7 +1972,7 @@ app.get("/api/config", verifyRequest, superAdminOnly, (req, res) => {
 // API: Save custom configurations to local config file and trigger load
 app.post("/api/config", verifyRequest, superAdminOnly, async (req, res) => {
   try {
-    const { SPREADSHEET_URL, SPREADSHEET_CENTERS, SUBSHEET_CENTERS, STAFF_ACCESS, FEATURE_FLAGS } = req.body;
+    const { SPREADSHEET_URL, SPREADSHEET_CENTERS, SUBSHEET_CENTERS, STAFF_ACCESS, FEATURE_FLAGS, PAPERS_SPREADSHEET_URL } = req.body;
     const newConfig: SavedConfig = {};
 
     if (typeof SPREADSHEET_URL === "string") {
@@ -1773,6 +1993,9 @@ app.post("/api/config", verifyRequest, superAdminOnly, async (req, res) => {
     if (FEATURE_FLAGS && typeof FEATURE_FLAGS === "object") {
       newConfig.FEATURE_FLAGS = FEATURE_FLAGS;
     }
+    if (typeof PAPERS_SPREADSHEET_URL === "string") {
+      newConfig.PAPERS_SPREADSHEET_URL = normalizeSpreadsheetUrl(PAPERS_SPREADSHEET_URL);
+    }
 
     fs.writeFileSync(CONFIG_PATH, JSON.stringify(newConfig, null, 2), "utf-8");
 
@@ -1787,6 +2010,7 @@ app.post("/api/config", verifyRequest, superAdminOnly, async (req, res) => {
     // Hot-reload spreadsheet data in background
     console.log("Configuration updated, reloading cache in background...");
     loadSpreadsheetData();
+    loadPapersData();
 
     res.json({ success: true, message: "Configurations successfully saved! Cache is reloading in background." });
   } catch (err: any) {
@@ -1940,6 +2164,7 @@ app.post("/api/refresh", verifyRequest, async (req, res) => {
     return res.json({ message: "Refresh already in progress...", isLoading: true });
   }
   await loadSpreadsheetData();
+  await loadPapersData();
   if (loadError) {
     return res.status(500).json({ error: loadError });
   }
@@ -4409,6 +4634,73 @@ app.post("/api/timetable/rebuild-patterns", verifyRequest, superAdminOnly, async
 app.get("/api/timetable/pattern-stats", verifyRequest, (req, res) => {
   const stats = getPatternStats();
   res.json({ success: true, ...stats });
+});
+
+
+/* ===== PAPERS API ENDPOINTS (added) ===== */
+
+/**
+ * Require Teacher or Admin middleware-style helper
+ */
+function requireTeacherOrAdmin(req: express.Request, res: express.Response): AppUser | null {
+  const email = String(req.header("x-user-email") || "").trim().toLowerCase();
+  if (!email) {
+    res.status(401).json({ error: "Authentication required (missing user identity)." });
+    return null;
+  }
+  const staffToken = String(req.header("x-staff-token") || "");
+  const domainOk = email.endsWith("@pw.live") || email.endsWith("@physicswallah.org");
+  if (!domainOk || !staffToken || staffToken !== generateStaffToken(email)) {
+    res.status(403).json({ error: "Access denied. Invalid session token." });
+    return null;
+  }
+  const role = getRoleForEmail(email);
+  if (role !== "admin" && role !== "teacher") {
+    res.status(403).json({ error: "Access denied. Teacher or Admin privileges required." });
+    return null;
+  }
+  return appState.users[email] || { email, role, addedAt: fmtIST() };
+}
+
+/**
+ * GET /api/papers
+ * Retrieve cached test papers data (Teachers and Admins only)
+ */
+app.get("/api/papers", verifyRequest, (req, res) => {
+  const user = requireTeacherOrAdmin(req, res);
+  if (!user) return;
+  res.json({
+    papers: papersData,
+    lastLoaded: papersLastLoaded,
+    isLoading: papersLoading,
+    error: papersError,
+    url: getPapersSpreadsheetUrl(),
+  });
+});
+
+/**
+ * POST /api/papers/refresh
+ * Triggers manual download/re-caching of the test papers Google Sheet (Teachers and Admins only)
+ */
+app.post("/api/papers/refresh", verifyRequest, async (req, res) => {
+  const user = requireTeacherOrAdmin(req, res);
+  if (!user) return;
+  
+  if (papersLoading) {
+    return res.json({ message: "Papers reload already in progress...", isLoading: true });
+  }
+
+  await loadPapersData();
+  
+  if (papersError) {
+    return res.status(500).json({ error: papersError });
+  }
+
+  res.json({
+    success: true,
+    count: papersData.length,
+    lastLoaded: papersLastLoaded,
+  });
 });
 
 

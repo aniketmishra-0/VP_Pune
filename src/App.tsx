@@ -40,6 +40,7 @@ import {
   Users,
   Zap,
   QrCode,
+  FileText,
 } from "lucide-react";
 import { Student, Dropdowns, TestRecord, Profile, Role, SessionUser } from "./types";
 import FloatingEducationBg from "./components/FloatingEducationBg";
@@ -53,6 +54,7 @@ import TimetableGenerator from "./components/TimetableGenerator";
 import TimetableConfig from "./components/TimetableConfig";
 import SheetEditorPage from "./components/SheetEditorPage";
 import PortalAdmin from "./components/PortalAdmin";
+import PapersViewer from "./components/PapersViewer";
 
 
 // Lazy-load html2pdf only when needed (PDF export)
@@ -261,7 +263,7 @@ export default function App() {
   const [theme, setTheme] = useState<"light" | "dark">(
     () => (localStorage.getItem("theme") as "light" | "dark") || "light"
   );
-  const [activeView, setActiveView] = useState<"home" | "input" | "batchList" | "dashboard" | "sheetsList" | "admin" | "timetable" | "timetableGen" | "sheetEditor">("home");
+  const [activeView, setActiveView] = useState<"home" | "input" | "batchList" | "dashboard" | "sheetsList" | "admin" | "timetable" | "timetableGen" | "sheetEditor" | "papers">("home");
   const [searchType, setSearchType] = useState<"batch" | "name" | "reg" | null>(null);
   const [sheetFilterQuery, setSheetFilterQuery] = useState<string>("");
   
@@ -393,6 +395,7 @@ export default function App() {
 
   // Configuration Settings states (Visual Interface)
   const [spreadsheetUrls, setSpreadsheetUrls] = useState<string[]>([]);
+  const [papersSpreadsheetUrl, setPapersSpreadsheetUrl] = useState<string>("");
   const [spreadsheetCenters, setSpreadsheetCenters] = useState<Array<{ pattern: string; center: string }>>([]);
   const [subsheetCenters, setSubsheetCenters] = useState<Array<{ center: string; patterns: string[] }>>([]);
   const [staffAccess, setStaffAccess] = useState<Array<{ email: string; centers: string[] }>>([]);
@@ -438,6 +441,7 @@ export default function App() {
         .map((u: string) => u.trim())
         .filter(Boolean);
       setSpreadsheetUrls(urls);
+      setPapersSpreadsheetUrl(data.local?.PAPERS_SPREADSHEET_URL || "");
 
       // Parse Spreadsheet centers (File mappings)
       const sCenters = data.local?.SPREADSHEET_CENTERS || {};
@@ -1094,6 +1098,7 @@ export default function App() {
           SUBSHEET_CENTERS: subCentersObj,
           STAFF_ACCESS: staffAccessObj,
           FEATURE_FLAGS: featureFlags,
+          PAPERS_SPREADSHEET_URL: papersSpreadsheetUrl.trim(),
         }),
       });
 
@@ -1878,6 +1883,21 @@ export default function App() {
               >
                 <Calendar className="w-5 h-5" />
               </button>
+
+              {/* Papers Tab — visible to teachers and admins */}
+              {(userRole === "teacher" || isAdmin) && (
+              <button
+                onClick={() => { setActiveView("papers"); setErrorMessage(null); }}
+                className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all cursor-pointer ${
+                  activeView === "papers"
+                    ? "bg-[#5277f7] text-white shadow-lg shadow-[#5277f7]/20"
+                    : "text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-gray-800/60"
+                }`}
+                title="Test Papers & Answer Keys"
+              >
+                <FileText className="w-5 h-5" />
+              </button>
+              )}
 
               {/* Workspace Color Preferences */}
               <button
@@ -3336,6 +3356,21 @@ export default function App() {
 
                           <hr className="border-slate-100 dark:border-gray-800/30" />
 
+                          {/* Papers Google Sheet URL */}
+                          <div>
+                            <h3 className="text-sm font-bold tracking-wider uppercase text-slate-400 font-mono mb-1 font-semibold">Papers Google Sheet Source</h3>
+                            <p className="text-[10px] text-slate-400 mb-3">Add the spreadsheet URL containing test question papers and answer keys. Ensure the sheet is shared as viewer-accessible.</p>
+                            <input
+                              type="text"
+                              placeholder="Paste Papers Google Sheet URL..."
+                              value={papersSpreadsheetUrl}
+                              onChange={(e) => setPapersSpreadsheetUrl(e.target.value)}
+                              className="w-full p-2.5 text-xs rounded-xl border border-slate-200 dark:border-gray-800 bg-slate-50 dark:bg-gray-900/60 text-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-[#5277f7]"
+                            />
+                          </div>
+
+                          <hr className="border-slate-100 dark:border-gray-800/30" />
+
                           {/* SPREADSHEET_CENTERS mapping Input */}
                           <div className="space-y-3">
                             <div>
@@ -4121,6 +4156,15 @@ export default function App() {
             </div>
           )}
 
+          {activeView === "papers" && (userRole === "teacher" || isAdmin) && (
+            <div
+              key="papers"
+              className="view-enter space-y-6 max-w-6xl mx-auto py-2 w-full text-slate-800 dark:text-slate-100"
+            >
+              <PapersViewer adminHeaders={adminHeaders} />
+            </div>
+          )}
+
           {activeView === "timetableGen" && isSuperAdmin && featureFlags.timetableGenerator && (
             <div
               key="timetableGen"
@@ -4232,6 +4276,21 @@ export default function App() {
           >
             <FileSpreadsheet className="w-5 h-5 shrink-0" />
             <span className="text-[10px] font-semibold tracking-tight font-sans leading-tight">Editor</span>
+          </button>
+          )}
+
+          {/* Papers Tab — visible to teachers and admins */}
+          {(userRole === "teacher" || isAdmin) && (
+          <button
+            onClick={() => { setActiveView("papers"); setErrorMessage(null); }}
+            className={`flex flex-col items-center justify-center gap-1 w-14 py-1 rounded-xl transition-all cursor-pointer outline-none ${
+              activeView === "papers"
+                ? "text-[#5277f7] dark:text-blue-400"
+                : "text-slate-400 hover:text-slate-800 dark:hover:text-white"
+            }`}
+          >
+            <FileText className="w-5 h-5 shrink-0" />
+            <span className="text-[10px] font-semibold tracking-tight font-sans leading-tight">Papers</span>
           </button>
           )}
 
