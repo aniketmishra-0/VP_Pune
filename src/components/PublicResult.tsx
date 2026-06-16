@@ -347,17 +347,9 @@ export default function PublicResult() {
 
         {/* Main */}
         <main className="flex-1 flex flex-col items-center px-4 pb-8">
-          <AnimatePresence mode="wait">
-          {/* Search Card — only visible when NOT showing result */}
+          {/* Search Card — hidden when result is showing */}
           {state.kind !== "result" && (
-            <motion.div
-              key="search-card"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20, scale: 0.95 }}
-              transition={{ duration: 0.35 }}
-              className="w-full max-w-lg mt-4"
-            >
+            <div className="w-full max-w-lg mt-4">
               <GlassCard className="p-6 md:p-8">
                 <div className="flex items-center gap-2.5 mb-5">
                   <div className="w-9 h-9 rounded-xl bg-[#5277f7]/15 flex items-center justify-center">
@@ -412,28 +404,21 @@ export default function PublicResult() {
                   </button>
                 </div>
               </GlassCard>
-            </motion.div>
+            </div>
           )}
 
           {/* Back to Search button — only when result is shown */}
           {state.kind === "result" && (
-            <motion.div
-              key="back-button"
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.3 }}
-              className="w-full max-w-lg mt-4"
-            >
+            <div className="w-full max-w-5xl mt-4">
               <button
-                onClick={() => { setState({ kind: "idle" }); setRegNo(""); }}
+                onClick={() => { setState({ kind: "idle" }); setRegNo(""); window.scrollTo({ top: 0, behavior: "instant" }); }}
                 className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors text-xs font-bold cursor-pointer group mb-2"
               >
                 <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
                 Back to Search
               </button>
-            </motion.div>
+            </div>
           )}
-          </AnimatePresence>
 
           {/* Results Area */}
           <AnimatePresence mode="wait">
@@ -610,7 +595,7 @@ export default function PublicResult() {
                           {allSubjects.map(sub => (
                             <th key={sub} className="px-3 py-2 text-right capitalize">{sub}</th>
                           ))}
-                          <th className="px-3 py-2 text-center font-bold">Rank</th>
+                          <th className="px-3 py-2 text-right font-black text-emerald-400">Rank</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -643,14 +628,14 @@ export default function PublicResult() {
                                   </td>
                                 );
                               })}
-                              <td className="px-3 py-2.5 text-center">
-                                {parseSafe(test.centerRank) > 0 ? (
-                                  <span className="inline-flex items-center gap-0.5 font-black text-amber-400 text-[11px] font-mono">
-                                    <Award className="w-3 h-3" />#{test.centerRank}
-                                  </span>
-                                ) : (
-                                  <span className="text-slate-600">–</span>
-                                )}
+                              <td className="px-3 py-2.5 text-right">
+                                <span className={`font-mono font-extrabold text-[12px] ${
+                                  test.centerRank === "1" ? "text-yellow-500 font-black"
+                                  : parseSafe(test.centerRank) > 0 ? "text-emerald-400 font-bold"
+                                  : "text-slate-600"
+                                }`}>
+                                  {parseSafe(test.centerRank) > 0 ? `#${test.centerRank}` : "–"}
+                                </span>
                               </td>
                             </tr>
                           );
@@ -686,7 +671,9 @@ export default function PublicResult() {
                               </span>
                               <span className="text-[10px] font-bold text-blue-400 font-mono">{pct > 0 ? `${pct.toFixed(1)}%` : ""}</span>
                               {parseSafe(test.centerRank) > 0 && (
-                                <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-amber-400 font-mono">
+                                <span className={`inline-flex items-center gap-0.5 text-[9px] font-extrabold font-mono ${
+                                  test.centerRank === "1" ? "text-yellow-500" : "text-emerald-400"
+                                }`}>
                                   <Award className="w-2.5 h-2.5" />#{test.centerRank}
                                 </span>
                               )}
@@ -845,7 +832,7 @@ export default function PublicResult() {
               </div>
               <div>
                 <p className="text-sm font-bold">Result Found!</p>
-                <p className="text-[10px] opacity-80 font-medium">Scroll down to view your complete exam report</p>
+                <p className="text-[10px] opacity-80 font-medium">Your complete exam report is ready</p>
               </div>
               <PartyPopper className="w-5 h-5 opacity-60 shrink-0" />
             </div>
