@@ -2337,13 +2337,22 @@ app.post("/api/student-public-check", express.json(), (req, res) => {
 // Admin: View all device bindings (for debugging/management)
 app.get("/api/device-bindings", verifyRequest, (req, res) => {
   const now = Date.now();
-  const active: Record<string, any> = {};
+  // Group by regNo for admin view
+  const grouped: Record<string, { regNo: string; ip: string; lockedAt: string; expiresAt: string; remainingMin: number; types: string[] }> = {};
   for (const [key, val] of Object.entries(deviceBindings)) {
-    if (new Date(val.expiresAt).getTime() > now) {
-      active[key] = { ...val, key: key.startsWith("ip_") ? "IP-based" : "Device-based" };
+    if (new Date(val.expiresAt).getTime() <= now) continue;
+    const reg = val.regNo;
+    const remainMs = new Date(val.expiresAt).getTime() - now;
+    const remainMin = Math.ceil(remainMs / 60000);
+    const bType = key.startsWith("ip_") ? "IP" : "Device";
+    if (!grouped[reg]) {
+      grouped[reg] = { regNo: reg, ip: val.ip, lockedAt: val.lockedAt, expiresAt: val.expiresAt, remainingMin: remainMin, types: [bType] };
+    } else {
+      if (!grouped[reg].types.includes(bType)) grouped[reg].types.push(bType);
     }
   }
-  res.json({ bindings: active, count: Object.keys(active).length });
+  const bindings = Object.values(grouped);
+  res.json({ bindings, count: bindings.length });
 });
 
 // Admin: Reset device bindings for a specific registration
