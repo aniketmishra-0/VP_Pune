@@ -372,11 +372,14 @@ export default function PublicResult() {
                     <input
                       ref={inputRef}
                       type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={8}
                       value={regNo}
-                      onChange={(e) => setRegNo(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                      placeholder="Enter Your Registration Number"
-                      className="w-full px-4 py-3.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-slate-500 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-[#5277f7]/50 focus:border-[#5277f7]/50 transition-all"
+                      onChange={(e) => setRegNo(e.target.value.replace(/\D/g, ""))}
+                      onKeyDown={(e) => e.key === "Enter" && regNo.length === 8 && handleSearch()}
+                      placeholder="Enter 8-digit Registration Number"
+                      className="w-full px-4 py-3.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-slate-500 font-mono text-sm tracking-widest text-center focus:outline-none focus:ring-2 focus:ring-[#5277f7]/50 focus:border-[#5277f7]/50 transition-all"
                       disabled={state.kind === "loading"}
                     />
                     {regNo && (
@@ -389,9 +392,14 @@ export default function PublicResult() {
                     )}
                   </div>
 
+                  {/* Digit counter */}
+                  {regNo.length > 0 && regNo.length < 8 && (
+                    <p className="text-[10px] text-slate-500 font-mono text-center">{regNo.length}/8 digits</p>
+                  )}
+
                   <button
                     onClick={handleSearch}
-                    disabled={state.kind === "loading" || !regNo.trim()}
+                    disabled={state.kind === "loading" || regNo.length !== 8}
                     className="w-full py-3.5 rounded-xl bg-gradient-to-r from-[#5277f7] to-indigo-500 hover:from-[#4062dd] hover:to-indigo-600 text-white font-bold text-sm flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-[#5277f7]/20 active:scale-[0.98]"
                   >
                     {state.kind === "loading" ? (
