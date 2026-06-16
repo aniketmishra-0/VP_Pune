@@ -2050,17 +2050,13 @@ export default function App() {
             </motion.div>
           )}
 
-          <AnimatePresence mode="popLayout">
+          <>
             
             {/* HOME VIEW: Dribbble Aesthetic layout */}
             {activeView === "home" && (
-              <motion.div
+              <div
                 key="home"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.15 }}
-                className="space-y-4 sm:space-y-8 py-2 sm:py-8 mt-2 sm:my-auto"
+                className="view-enter space-y-4 sm:space-y-8 py-2 sm:py-8 mt-2 sm:my-auto"
               >
                 {/* Brand Promos */}
                 <div className="text-center space-y-1.5 sm:space-y-4 max-w-2xl mx-auto py-1">
@@ -2185,18 +2181,14 @@ export default function App() {
                     </a>
                   </p>
                 </footer>
-              </motion.div>
+              </div>
             )}
 
             {/* INPUT PANEL SEARCH VIEWS */}
             {activeView === "input" && (
-              <motion.div
+              <div
                 key="input"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.15 }}
-                className="max-w-md mx-auto w-full space-y-4 sm:space-y-6 mt-2 sm:my-auto"
+                className="view-enter max-w-md mx-auto w-full space-y-4 sm:space-y-6 mt-2 sm:my-auto"
               >
                 {/* Back Link */}
                 <button
@@ -2360,18 +2352,14 @@ export default function App() {
                     <Search className="w-3.5 h-3.5" /> Pull performance sheet
                   </button>
                 </div>
-              </motion.div>
+              </div>
             )}
 
             {/* BATCH STUDENTS LIST SCREEN */}
             {activeView === "batchList" && studentsPayload && (
-              <motion.div
+              <div
                   key="batchList"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.1 }}
-                  className="max-w-4xl mx-auto w-full space-y-6"
+                  className="view-enter max-w-4xl mx-auto w-full space-y-6"
                 >
                   <button
                     onClick={() => { setActiveView(selectedSheetName ? "sheetsList" : "input"); setErrorMessage(null); setBatchSearchQuery(""); }}
@@ -2515,17 +2503,13 @@ export default function App() {
                       </div>
                     )}
                   </div>
-                </motion.div>
+                </div>
             )}
             {/* MAIN STUDENT REPORT CARDS & DASHBOARDS */}
             {activeView === "dashboard" && activeStudent && (
-              <motion.div
+              <div
                 key="dashboard"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.15 }}
-                className="space-y-6 w-full"
+                className="view-enter space-y-6 w-full"
               >
                 
                 {/* BACK CONTROL LINE WITH PRINT STRIPS */}
@@ -3040,17 +3024,13 @@ export default function App() {
                 </div>
 
               </div>
-            </motion.div>
+            </div>
           )}
 
           {activeView === "sheetsList" && (
-            <motion.div
+            <div
               key="sheetsList"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.15 }}
-              className="space-y-6 max-w-6xl mx-auto py-2 w-full"
+              className="view-enter space-y-6 max-w-6xl mx-auto py-2 w-full"
             >
               {/* Header panel */}
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white dark:bg-[#111827] p-6 rounded-3xl border border-slate-200/50 dark:border-gray-800/40 shadow-sm">
@@ -3158,17 +3138,13 @@ export default function App() {
                   <p className="text-xs text-slate-500 dark:text-gray-400">Loading sheets roster from Google database...</p>
                 </div>
               )}
-            </motion.div>
+            </div>
           )}
 
           {activeView === "admin" && isAdmin && (
-            <motion.div
+            <div
               key="admin"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.15 }}
-              className="space-y-6 max-w-6xl mx-auto py-2 w-full text-slate-800 dark:text-slate-100"
+              className="view-enter space-y-6 max-w-6xl mx-auto py-2 w-full text-slate-800 dark:text-slate-100"
             >
               {/* Header Panel */}
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white dark:bg-[#111827] p-6 rounded-3xl border border-slate-200/50 dark:border-gray-800/40 shadow-sm">
@@ -4179,59 +4155,47 @@ export default function App() {
                   </div>
                 );
               })()}
-            </motion.div>
+            </div>
           )}
 
           {activeView === "timetable" && (
-            <motion.div
+            <div
               key="timetable"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.15 }}
-              className="space-y-6 max-w-6xl mx-auto py-2 w-full text-slate-800 dark:text-slate-100"
+              className="view-enter space-y-6 max-w-6xl mx-auto py-2 w-full text-slate-800 dark:text-slate-100"
             >
               <Suspense fallback={<LazyLoadFallback />}>
                 <TimetableViewer adminHeaders={adminHeaders} />
               </Suspense>
-            </motion.div>
+            </div>
           )}
 
           {activeView === "timetableGen" && isSuperAdmin && featureFlags.timetableGenerator && (
-            <motion.div
+            <div
               key="timetableGen"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.15 }}
-              className="space-y-6 max-w-7xl mx-auto py-2 w-full text-slate-800 dark:text-slate-100"
+              className="view-enter space-y-6 max-w-7xl mx-auto py-2 w-full text-slate-800 dark:text-slate-100"
             >
               <Suspense fallback={<LazyLoadFallback />}>
                 <ErrorBoundary fallbackTitle="Timetable Generator crashed">
                   <TimetableGenerator adminHeaders={adminHeaders} />
                 </ErrorBoundary>
               </Suspense>
-            </motion.div>
+            </div>
           )}
 
           {activeView === "sheetEditor" && isSuperAdmin && featureFlags.sheetEditor && (
-            <motion.div
+            <div
               key="sheetEditor"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.15 }}
-              className="space-y-6 max-w-7xl mx-auto py-2 w-full text-slate-800 dark:text-slate-100"
+              className="view-enter space-y-6 max-w-7xl mx-auto py-2 w-full text-slate-800 dark:text-slate-100"
             >
               <Suspense fallback={<LazyLoadFallback />}>
                 <ErrorBoundary fallbackTitle="Sheet Editor crashed">
                   <SheetEditorPage adminHeaders={adminHeaders} />
                 </ErrorBoundary>
               </Suspense>
-            </motion.div>
+            </div>
           )}
 
-        </AnimatePresence>
+        </>
 
 
       </div>
