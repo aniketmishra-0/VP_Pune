@@ -970,11 +970,18 @@ interface SheetSyncInfo {
   lastSync: string;
 }
 
+interface PortalSettings {
+  portalEnabled: boolean;  // Master switch for student result portal
+  qrEnabled: boolean;      // Show/hide QR code on result page
+  portalMessage: string;   // Custom message when portal is disabled
+}
+
 interface AppState {
   users: Record<string, AppUser>;
   activityLog: ActivityEntry[];
   notifications: AppNotification[];
   sheetSync: Record<string, SheetSyncInfo>;
+  portalSettings: PortalSettings;
 }
 
 const DATA_DIR = path.join(process.cwd(), "data");
@@ -997,11 +1004,18 @@ const ENV_ADMIN_EMAILS = Array.from(
   )
 );
 
+const DEFAULT_PORTAL_SETTINGS: PortalSettings = {
+  portalEnabled: true,
+  qrEnabled: true,
+  portalMessage: "Result portal is currently disabled. Please check back later.",
+};
+
 let appState: AppState = {
   users: {},
   activityLog: [],
   notifications: [],
   sheetSync: {},
+  portalSettings: { ...DEFAULT_PORTAL_SETTINGS },
 };
 
 function loadAppState() {
@@ -1014,6 +1028,7 @@ function loadAppState() {
         activityLog: parsed.activityLog || [],
         notifications: parsed.notifications || [],
         sheetSync: parsed.sheetSync || {},
+        portalSettings: { ...DEFAULT_PORTAL_SETTINGS, ...(parsed.portalSettings || {}) },
       };
       console.log(`Loaded app-state: ${Object.keys(appState.users).length} users, ${appState.activityLog.length} log entries.`);
     }
@@ -1993,8 +2008,33 @@ function getClientIP(req: express.Request): string {
   return req.socket?.remoteAddress || req.ip || "unknown";
 }
 
+// Portal settings endpoints
+app.get("/api/portal-settings", (req, res) => {
+  const ps = appState.portalSettings || DEFAULT_PORTAL_SETTINGS;
+  res.json(ps);
+});
+
+app.post("/api/portal-settings", express.json(), (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  const { portalEnabled, qrEnabled, portalMessage } = req.body || {};
+  if (!appState.portalSettings) appState.portalSettings = { ...DEFAULT_PORTAL_SETTINGS };
+  if (typeof portalEnabled === "boolean") appState.portalSettings.portalEnabled = portalEnabled;
+  if (typeof qrEnabled === "boolean") appState.portalSettings.qrEnabled = qrEnabled;
+  if (typeof portalMessage === "string") appState.portalSettings.portalMessage = portalMessage;
+  saveAppState();
+  const who = String(req.headers["x-user-email"] || "admin");
+  logActivity(who, "portal-settings", `Portal: ${appState.portalSettings.portalEnabled ? "ON" : "OFF"}, QR: ${appState.portalSettings.qrEnabled ? "ON" : "OFF"}`);
+  res.json({ ok: true, ...appState.portalSettings });
+});
+
 // Public result endpoint — no login required, device-locked
 app.post("/api/student-public", express.json(), (req, res) => {
+  // Check if portal is enabled
+  const ps = appState.portalSettings || DEFAULT_PORTAL_SETTINGS;
+  if (!ps.portalEnabled) {
+    return res.json({ allowed: false, portalDisabled: true, message: ps.portalMessage });
+  }
+
   const { regNo, deviceId } = req.body || {};
 
   if (!regNo || typeof regNo !== "string" || !regNo.trim()) {

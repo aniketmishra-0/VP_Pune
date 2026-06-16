@@ -27,6 +27,9 @@ import {
   Smartphone,
   Globe,
   ShieldAlert,
+  ToggleLeft,
+  ToggleRight,
+  Power,
 } from "lucide-react";
 import QRCode from "qrcode";
 
@@ -163,6 +166,19 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({
   const [resetRegInput, setResetRegInput] = useState("");
   const [resetResult, setResetResult] = useState<string | null>(null);
 
+  // Portal settings toggles
+  const [portalEnabled, setPortalEnabled] = useState(true);
+  const [qrEnabled, setQrEnabled] = useState(true);
+  const [portalSettingsLoading, setPortalSettingsLoading] = useState(false);
+
+  // Load portal settings
+  useEffect(() => {
+    fetch("/api/portal-settings").then(r => r.json()).then(data => {
+      if (typeof data.portalEnabled === "boolean") setPortalEnabled(data.portalEnabled);
+      if (typeof data.qrEnabled === "boolean") setQrEnabled(data.qrEnabled);
+    }).catch(() => {});
+  }, []);
+
   const toggleExpand = useCallback(
     (email: string) => setExpandedEmail((cur) => (cur === email ? null : email)),
     []
@@ -176,6 +192,24 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({
     }),
     [currentUser.email]
   );
+
+  const togglePortalSetting = useCallback(async (key: "portalEnabled" | "qrEnabled", value: boolean) => {
+    setPortalSettingsLoading(true);
+    try {
+      const res = await fetch("/api/portal-settings", {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ [key]: value }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setPortalEnabled(data.portalEnabled);
+        setQrEnabled(data.qrEnabled);
+        setNotice(`${key === "portalEnabled" ? "Student Portal" : "QR Code"} ${value ? "enabled" : "disabled"} successfully.`);
+      }
+    } catch { setError("Failed to update portal settings."); }
+    setPortalSettingsLoading(false);
+  }, [authHeaders]);
 
   const flash = (msg: string) => {
     setNotice(msg);
@@ -798,6 +832,70 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({
         {/* ---- RESULT PORTAL ---- */}
         {tab === "portal" && (
           <div className="mt-1 space-y-5">
+            {/* Portal Controls — Master Toggles */}
+            <div className="bg-white dark:bg-[#111827] border border-slate-200/60 dark:border-gray-800/80 rounded-2xl p-5 space-y-4">
+              <div className="flex items-center gap-2 mb-1">
+                <Power className="w-4 h-4 text-[#5277f7]" />
+                <span className="text-xs font-extrabold text-slate-800 dark:text-white uppercase tracking-wider">Portal Controls</span>
+              </div>
+
+              {/* Student Portal Toggle */}
+              <div className="flex items-center justify-between bg-slate-50 dark:bg-gray-800/60 border border-slate-200/50 dark:border-gray-700/50 rounded-xl px-4 py-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-bold text-slate-800 dark:text-white">Student Result Portal</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Enable or disable public student result checking portal</p>
+                </div>
+                <button
+                  onClick={() => togglePortalSetting("portalEnabled", !portalEnabled)}
+                  disabled={portalSettingsLoading}
+                  className="cursor-pointer disabled:opacity-50 transition-all"
+                >
+                  {portalEnabled ? (
+                    <ToggleRight className="w-10 h-10 text-emerald-500 drop-shadow-sm" />
+                  ) : (
+                    <ToggleLeft className="w-10 h-10 text-slate-400" />
+                  )}
+                </button>
+              </div>
+
+              {/* QR Code Toggle */}
+              <div className="flex items-center justify-between bg-slate-50 dark:bg-gray-800/60 border border-slate-200/50 dark:border-gray-700/50 rounded-xl px-4 py-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-bold text-slate-800 dark:text-white">QR Code Display</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Show or hide QR code on the student result page</p>
+                </div>
+                <button
+                  onClick={() => togglePortalSetting("qrEnabled", !qrEnabled)}
+                  disabled={portalSettingsLoading}
+                  className="cursor-pointer disabled:opacity-50 transition-all"
+                >
+                  {qrEnabled ? (
+                    <ToggleRight className="w-10 h-10 text-emerald-500 drop-shadow-sm" />
+                  ) : (
+                    <ToggleLeft className="w-10 h-10 text-slate-400" />
+                  )}
+                </button>
+              </div>
+
+              {/* Status indicator */}
+              <div className="flex items-center gap-3 text-[10px]">
+                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full font-bold border ${
+                  portalEnabled
+                    ? "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/40"
+                    : "bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-900/40"
+                }`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${portalEnabled ? "bg-emerald-500 animate-pulse" : "bg-rose-500"}`} />
+                  Portal {portalEnabled ? "Live" : "Offline"}
+                </span>
+                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full font-bold border ${
+                  qrEnabled
+                    ? "bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-900/40"
+                    : "bg-slate-100 dark:bg-gray-800 text-slate-500 dark:text-gray-500 border-slate-200 dark:border-gray-700"
+                }`}>
+                  QR {qrEnabled ? "Visible" : "Hidden"}
+                </span>
+              </div>
+            </div>
             {/* QR Code & Link Section */}
             <div className="bg-gradient-to-br from-[#5277f7]/5 to-indigo-500/5 dark:from-[#5277f7]/10 dark:to-indigo-500/10 border border-[#5277f7]/20 dark:border-[#5277f7]/15 rounded-2xl p-5">
               <div className="flex items-center gap-2 mb-4">

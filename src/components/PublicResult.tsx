@@ -261,6 +261,10 @@ export default function PublicResult() {
       }
 
       if (data.allowed === false) {
+        if (data.portalDisabled) {
+          setState({ kind: "error", message: data.message || "Result portal is currently disabled." });
+          return;
+        }
         setState({ kind: "blocked", remainingMinutes: data.remainingMinutes ?? 180 });
         return;
       }
