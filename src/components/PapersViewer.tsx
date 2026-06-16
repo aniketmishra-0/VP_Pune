@@ -49,6 +49,7 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
   const [apiError, setApiError] = useState<string | null>(null);
   const [availableSheets, setAvailableSheets] = useState<Array<{ name: string; url: string }>>([]);
   const [selectedSheetName, setSelectedSheetName] = useState<string>("");
+  const [serviceAccountEmail, setServiceAccountEmail] = useState<string | null>(null);
 
   // Sync state
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
@@ -157,6 +158,7 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
         setApiError(data.error || null);
         setAvailableSheets(data.sheets || []);
         setSelectedSheetName(data.currentSheet || "");
+        setServiceAccountEmail(data.serviceAccountEmail || null);
       }
     } catch (err: any) {
       console.error("[PapersViewer] Error fetching:", err);
@@ -252,7 +254,7 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
   return (
     <div className="space-y-6">
       {/* Header Panel */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white dark:bg-[#111827] p-6 rounded-3xl border border-slate-200/50 dark:border-gray-800/40 shadow-sm">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white dark:bg-[#111827] p-4 sm:p-6 rounded-2xl sm:rounded-3xl border border-slate-200/50 dark:border-gray-800/40 shadow-sm">
         <div className="space-y-1">
           <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white flex items-center gap-2">
             <FileText className="w-5 h-5 text-[#5277f7] dark:text-blue-400" />
@@ -321,15 +323,15 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
           <div className="space-y-1">
             <h4 className="text-xs font-bold uppercase tracking-wider">Sync Error</h4>
             <p className="text-xs leading-relaxed">{apiError}</p>
-            <p className="text-[10px] opacity-80 mt-1">
-              Please check if the sheet is shared as <strong>"Anyone with the link can view"</strong> or configure a new URL.
+            <p className="text-[10px] opacity-80 mt-1 leading-relaxed">
+              Please check if the sheet is shared as <strong>"Anyone with the link can view"</strong> (Viewer) or shared with your Google service account email: <strong className="select-all underline bg-rose-100/40 dark:bg-rose-950/40 px-1 py-0.5 rounded">{serviceAccountEmail || "loading..."}</strong>
             </p>
           </div>
         </div>
       )}
 
       {/* Search & Filter Controls */}
-      <div className="bg-white dark:bg-[#111827] p-5 rounded-3xl border border-slate-200/50 dark:border-gray-800/40 shadow-sm space-y-4">
+      <div className="bg-white dark:bg-[#111827] p-4 sm:p-5 rounded-2xl sm:rounded-3xl border border-slate-200/50 dark:border-gray-800/40 shadow-sm space-y-4">
         <div className="relative">
           <Search className="absolute left-3.5 top-3.5 w-4 h-4 text-slate-400" />
           <input

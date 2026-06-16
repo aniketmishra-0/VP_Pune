@@ -2021,7 +2021,7 @@ export default function App() {
         <div ref={mainCanvasRef} className={`flex-1 flex flex-col min-w-0 ${
           exportMode 
             ? "p-0 bg-white text-black h-auto overflow-visible" 
-            : "p-2.5 sm:p-4 md:p-5 pb-[calc(6rem+env(safe-area-inset-bottom,0px))] md:pb-5 bg-[#f4f7fc] dark:bg-[#090d16] overflow-y-auto custom-scrollbar"
+            : "p-2.5 sm:p-4 md:p-5 pb-[calc(4.5rem+env(safe-area-inset-bottom,0px))] md:pb-5 bg-[#f4f7fc] dark:bg-[#090d16] overflow-y-auto custom-scrollbar"
         } relative z-10`}>
           
           {/* Top general status notification banner */}

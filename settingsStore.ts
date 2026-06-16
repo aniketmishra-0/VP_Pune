@@ -69,6 +69,11 @@ export function isConfigured(): boolean {
   return getCredentials() !== null;
 }
 
+export function getServiceAccountEmail(): string | null {
+  const creds = getCredentials();
+  return creds ? creds.email : null;
+}
+
 function base64url(input: Buffer | string): string {
   return Buffer.from(input)
     .toString("base64")
@@ -79,7 +84,7 @@ function base64url(input: Buffer | string): string {
 
 let cachedToken: { token: string; exp: number } | null = null;
 
-async function getAccessToken(): Promise<string> {
+export async function getAccessToken(): Promise<string> {
   const creds = getCredentials();
   if (!creds) throw new Error("Service account credentials are not configured.");
 

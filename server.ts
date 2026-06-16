@@ -1210,7 +1210,16 @@ async function loadPapersDataForSheet(sheetName: string, url: string) {
   const cleanUrl = normalizeSpreadsheetUrl(url);
   console.log(`Starting Papers spreadsheet load for [${sheetName}] from: ${cleanUrl}`);
   try {
-    const res = await fetch(cleanUrl);
+    const headers: Record<string, string> = {};
+    if (settingsStore.isConfigured()) {
+      try {
+        const token = await settingsStore.getAccessToken();
+        headers["Authorization"] = `Bearer ${token}`;
+      } catch (tokenErr: any) {
+        console.warn(`[PapersConfig] Could not get settings access token for sheet [${sheetName}] fetch:`, tokenErr.message);
+      }
+    }
+    const res = await fetch(cleanUrl, { headers });
     if (!res.ok) {
       if (res.status === 401 || res.status === 403) {
         throw new Error(
@@ -3809,7 +3818,16 @@ async function loadTimetableData() {
   timetableError = null;
   try {
     const normalized = normalizeSpreadsheetUrl(url);
-    const res = await fetch(normalized);
+    const headers: Record<string, string> = {};
+    if (settingsStore.isConfigured()) {
+      try {
+        const token = await settingsStore.getAccessToken();
+        headers["Authorization"] = `Bearer ${token}`;
+      } catch (tokenErr: any) {
+        console.warn("Could not get access token for timetable sheet fetch:", tokenErr.message);
+      }
+    }
+    const res = await fetch(normalized, { headers });
     if (!res.ok) {
       if (res.status === 401 || res.status === 403) {
         throw new Error(
@@ -4874,6 +4892,7 @@ app.get("/api/papers", verifyRequest, async (req, res) => {
     sheets: cachedPapersSheets.map(s => ({ name: s.sheetName, url: s.sheetLink })),
     currentSheet: sheetName,
     url: getPapersSpreadsheetUrl(sheetName),
+    serviceAccountEmail: settingsStore.getServiceAccountEmail(),
   });
 });
 
