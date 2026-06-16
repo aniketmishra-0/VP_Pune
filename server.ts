@@ -3419,7 +3419,7 @@ app.post("/api/timetable/write-sheet", verifyRequest, superAdminOnly, async (req
  */
 app.post("/api/timetable/write-raw", verifyRequest, superAdminOnly, async (req, res) => {
   try {
-    const { tabName, values, formats } = req.body;
+    const { tabName, values, formats, sourceTabName } = req.body;
 
     if (!tabName || typeof tabName !== "string") {
       return res.status(400).json({ error: "'tabName' string is required." });
@@ -3430,170 +3430,183 @@ app.post("/api/timetable/write-raw", verifyRequest, superAdminOnly, async (req, 
 
     const spreadsheetId = settingsStore.TIMETABLE_SPREADSHEET_ID;
 
-    // 0. Delete existing tab with the same name (if any)
-    try {
-      const metaRes = await settingsStore.timetableApiFetch(spreadsheetId, "?fields=sheets.properties");
-      const existingSheets: { properties: { sheetId: number; title: string } }[] = metaRes.sheets || [];
-      const existing = existingSheets.find((s: any) => s.properties.title === tabName.trim());
-      if (existing) {
-        await settingsStore.timetableApiFetch(spreadsheetId, ":batchUpdate", {
-          method: "POST",
-          body: JSON.stringify({
-            requests: [{ deleteSheet: { sheetId: existing.properties.sheetId } }],
-          }),
-        });
-      }
-    } catch {
-      // If metadata fetch fails, just try creating
+    // Get all existing sheets metadata
+    const metaRes = await settingsStore.timetableApiFetch(spreadsheetId, "?fields=sheets.properties");
+    const existingSheets: { properties: { sheetId: number; title: string } }[] = metaRes.sheets || [];
+
+    // Find source tab to duplicate (use provided sourceTabName, or find the latest tab)
+    const srcName = sourceTabName || "";
+    let sourceSheet = srcName ? existingSheets.find((s: any) => s.properties.title === srcName) : null;
+
+    // If no specific source, try to find any existing timetable tab to duplicate
+    if (!sourceSheet && existingSheets.length > 0) {
+      // Use the last sheet as source (most recent timetable)
+      sourceSheet = existingSheets[existingSheets.length - 1];
     }
 
-    // 1. Create the new tab
-    const rowCount = Math.max(values.length, formats?.length || 0, 1);
-    const colCount = Math.max(
-      ...values.map((r: string[]) => r?.length || 0),
-      ...(formats || []).map((r: any[]) => r?.length || 0),
-      1
-    );
+    // Delete existing tab with the same target name (if any)
+    const existingTarget = existingSheets.find((s: any) => s.properties.title === tabName.trim());
+    if (existingTarget) {
+      await settingsStore.timetableApiFetch(spreadsheetId, ":batchUpdate", {
+        method: "POST",
+        body: JSON.stringify({
+          requests: [{ deleteSheet: { sheetId: existingTarget.properties.sheetId } }],
+        }),
+      });
+    }
 
-    const createRes = await settingsStore.timetableApiFetch(spreadsheetId, ":batchUpdate", {
-      method: "POST",
-      body: JSON.stringify({
-        requests: [
-          {
+    let newSheetId: number;
+
+    if (sourceSheet) {
+      // ═══ DUPLICATE APPROACH — Exact copy of source sheet ═══
+      console.log(`[write-raw] Duplicating source tab "${sourceSheet.properties.title}" → "${tabName.trim()}"`);
+
+      // Step 1: Duplicate the source sheet
+      const dupRes = await settingsStore.timetableApiFetch(spreadsheetId, ":batchUpdate", {
+        method: "POST",
+        body: JSON.stringify({
+          requests: [{
+            duplicateSheet: {
+              sourceSheetId: sourceSheet.properties.sheetId,
+              newSheetName: tabName.trim(),
+              insertSheetIndex: existingSheets.length, // Add at end
+            },
+          }],
+        }),
+      });
+
+      newSheetId = dupRes.replies[0].duplicateSheet.properties.sheetId;
+
+      // Step 2: Overwrite all cell values (keeps formatting intact)
+      await settingsStore.timetableApiFetch(
+        spreadsheetId,
+        `/values/${encodeURIComponent(tabName.trim())}!A1?valueInputOption=RAW`,
+        { method: "PUT", body: JSON.stringify({ values }) },
+      );
+
+      console.log(`[write-raw] Duplicated + updated values: "${tabName.trim()}" (${values.length} rows)`);
+    } else {
+      // ═══ FALLBACK — Create new sheet (no source to duplicate) ═══
+      console.log(`[write-raw] No source sheet found, creating new tab "${tabName.trim()}"`);
+
+      const rowCount = Math.max(values.length, formats?.length || 0, 50);
+      const colCount = Math.max(
+        ...values.map((r: string[]) => r?.length || 0),
+        ...(formats || []).map((r: any[]) => r?.length || 0),
+        50
+      );
+
+      const createRes = await settingsStore.timetableApiFetch(spreadsheetId, ":batchUpdate", {
+        method: "POST",
+        body: JSON.stringify({
+          requests: [{
             addSheet: {
               properties: {
                 title: tabName.trim(),
                 gridProperties: { rowCount, columnCount: colCount },
               },
             },
-          },
-        ],
-      }),
-    });
+          }],
+        }),
+      });
 
-    const newSheetId: number = createRes.replies[0].addSheet.properties.sheetId;
+      newSheetId = createRes.replies[0].addSheet.properties.sheetId;
 
-    // 2. Write raw values
-    await settingsStore.timetableApiFetch(
-      spreadsheetId,
-      `/values/${encodeURIComponent(tabName.trim())}!A1?valueInputOption=RAW`,
-      { method: "PUT", body: JSON.stringify({ values }) },
-    );
+      // Write values
+      await settingsStore.timetableApiFetch(
+        spreadsheetId,
+        `/values/${encodeURIComponent(tabName.trim())}!A1?valueInputOption=RAW`,
+        { method: "PUT", body: JSON.stringify({ values }) },
+      );
 
-    // 3. Apply formatting — use exact source formats if available
-    const formatRequests: any[] = [];
+      // Apply formatting from formats array or auto-detect
+      const formatRequests: any[] = [];
 
-    if (formats && Array.isArray(formats) && formats.length > 0) {
-      // ═══ EXACT COPY from source formatting ═══
-      for (let r = 0; r < formats.length; r++) {
-        const fmtRow = formats[r];
-        if (!fmtRow || !Array.isArray(fmtRow)) continue;
-        for (let c = 0; c < fmtRow.length; c++) {
-          const fmt = fmtRow[c];
-          if (!fmt) continue;
-
-          const cellFormat: any = {};
-          const fields: string[] = [];
-
-          if (fmt.bg) {
-            cellFormat.backgroundColor = fmt.bg;
-            fields.push("userEnteredFormat.backgroundColor");
-          }
-          if (fmt.tf) {
-            cellFormat.textFormat = {};
-            if (fmt.tf.bold) cellFormat.textFormat.bold = true;
-            if (fmt.tf.fontSize) cellFormat.textFormat.fontSize = fmt.tf.fontSize;
-            if (fmt.tf.fg) cellFormat.textFormat.foregroundColor = fmt.tf.fg;
-            fields.push("userEnteredFormat.textFormat");
-          }
-
-          if (fields.length > 0) {
-            formatRequests.push({
-              repeatCell: {
-                range: {
-                  sheetId: newSheetId,
-                  startRowIndex: r,
-                  endRowIndex: r + 1,
-                  startColumnIndex: c,
-                  endColumnIndex: c + 1,
+      if (formats && Array.isArray(formats) && formats.length > 0) {
+        for (let r = 0; r < formats.length; r++) {
+          const fmtRow = formats[r];
+          if (!fmtRow || !Array.isArray(fmtRow)) continue;
+          for (let c = 0; c < fmtRow.length; c++) {
+            const fmt = fmtRow[c];
+            if (!fmt) continue;
+            const cellFormat: any = {};
+            const fields: string[] = [];
+            if (fmt.bg) { cellFormat.backgroundColor = fmt.bg; fields.push("userEnteredFormat.backgroundColor"); }
+            if (fmt.tf) {
+              cellFormat.textFormat = {};
+              if (fmt.tf.bold) cellFormat.textFormat.bold = true;
+              if (fmt.tf.fontSize) cellFormat.textFormat.fontSize = fmt.tf.fontSize;
+              if (fmt.tf.fg) cellFormat.textFormat.foregroundColor = fmt.tf.fg;
+              fields.push("userEnteredFormat.textFormat");
+            }
+            if (fields.length > 0) {
+              formatRequests.push({
+                repeatCell: {
+                  range: { sheetId: newSheetId, startRowIndex: r, endRowIndex: r + 1, startColumnIndex: c, endColumnIndex: c + 1 },
+                  cell: { userEnteredFormat: cellFormat },
+                  fields: fields.join(","),
                 },
-                cell: { userEnteredFormat: cellFormat },
-                fields: fields.join(","),
-              },
-            });
-          }
-        }
-      }
-    } else {
-      // ═══ FALLBACK: auto-detect formatting from values ═══
-      const hex = (h: string) => {
-        const x = h.replace("#", "");
-        return {
-          red: parseInt(x.substring(0, 2), 16) / 255,
-          green: parseInt(x.substring(2, 4), 16) / 255,
-          blue: parseInt(x.substring(4, 6), 16) / 255,
-        };
-      };
-      const SC = {
-        HEADER: hex("#FFFF00"), ROOM: hex("#FF00FF"),
-        MON: hex("#FF8C00"), TUE: hex("#9933FF"), WED: hex("#00CC00"),
-        THU: hex("#00BFFF"), FRI: hex("#FF3366"), SAT: hex("#CC0000"),
-        HOLIDAY: hex("#FFFF00"), WHITE: hex("#FFFFFF"),
-      };
-      const DC: Record<string, any> = {
-        MONDAY: SC.MON, TUESDAY: SC.TUE, WEDNESDAY: SC.WED,
-        THURSDAY: SC.THU, FRIDAY: SC.FRI, SATURDAY: SC.SAT,
-      };
-      const DN = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
-      let curDay = "";
-
-      for (let r = 0; r < values.length; r++) {
-        const row = values[r] || [];
-        const col0 = String(row[0] || "").trim().toUpperCase();
-        if (DN.includes(col0)) curDay = col0;
-        for (let c = 0; c < row.length; c++) {
-          const val = String(row[c] || "").trim().toUpperCase();
-          let bg = SC.WHITE, bold = false;
-          if (r === 0 && c >= 2) { bg = SC.HEADER; bold = true; }
-          else if (r === 1 && c >= 2) { bg = SC.ROOM; bold = true; }
-          else if (r >= 2) {
-            if (c === 0 && DN.includes(val)) { bg = DC[val]; bold = true; }
-            else if (val === "HOLIDAY") { bg = SC.HOLIDAY; bold = true; }
-            else if (c >= 2 && val && curDay && DC[curDay] && val.length >= 2 && val.length <= 8) {
-              const d = DC[curDay];
-              bg = { red: Math.min(1, d.red * 0.3 + 0.7), green: Math.min(1, d.green * 0.3 + 0.7), blue: Math.min(1, d.blue * 0.3 + 0.7) };
+              });
             }
           }
-          if (bg !== SC.WHITE || bold) {
-            formatRequests.push({
-              repeatCell: {
-                range: { sheetId: newSheetId, startRowIndex: r, endRowIndex: r + 1, startColumnIndex: c, endColumnIndex: c + 1 },
-                cell: { userEnteredFormat: { backgroundColor: bg, textFormat: { bold, fontSize: 10 } } },
-                fields: "userEnteredFormat(backgroundColor,textFormat)",
-              },
-            });
+        }
+      } else {
+        // Auto-detect formatting
+        const hex = (h: string) => {
+          const x = h.replace("#", "");
+          return { red: parseInt(x.substring(0, 2), 16) / 255, green: parseInt(x.substring(2, 4), 16) / 255, blue: parseInt(x.substring(4, 6), 16) / 255 };
+        };
+        const SC = { HEADER: hex("#FFFF00"), ROOM: hex("#FF00FF"), MON: hex("#FF8C00"), TUE: hex("#9933FF"), WED: hex("#00CC00"), THU: hex("#00BFFF"), FRI: hex("#FF3366"), SAT: hex("#CC0000"), HOLIDAY: hex("#FFFF00"), WHITE: hex("#FFFFFF") };
+        const DC: Record<string, any> = { MONDAY: SC.MON, TUESDAY: SC.TUE, WEDNESDAY: SC.WED, THURSDAY: SC.THU, FRIDAY: SC.FRI, SATURDAY: SC.SAT };
+        const DN = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
+        let curDay = "";
+        for (let r = 0; r < values.length; r++) {
+          const row = values[r] || [];
+          const col0 = String(row[0] || "").trim().toUpperCase();
+          if (DN.includes(col0)) curDay = col0;
+          for (let c = 0; c < row.length; c++) {
+            const val = String(row[c] || "").trim().toUpperCase();
+            let bg = SC.WHITE, bold = false;
+            if (r === 0 && c >= 2) { bg = SC.HEADER; bold = true; }
+            else if (r === 1 && c >= 2) { bg = SC.ROOM; bold = true; }
+            else if (r >= 2) {
+              if (c === 0 && DN.includes(val)) { bg = DC[val]; bold = true; }
+              else if (val === "HOLIDAY") { bg = SC.HOLIDAY; bold = true; }
+              else if (c >= 2 && val && curDay && DC[curDay] && val.length >= 2 && val.length <= 8) {
+                const d = DC[curDay];
+                bg = { red: Math.min(1, d.red * 0.3 + 0.7), green: Math.min(1, d.green * 0.3 + 0.7), blue: Math.min(1, d.blue * 0.3 + 0.7) };
+              }
+            }
+            if (bg !== SC.WHITE || bold) {
+              formatRequests.push({
+                repeatCell: {
+                  range: { sheetId: newSheetId, startRowIndex: r, endRowIndex: r + 1, startColumnIndex: c, endColumnIndex: c + 1 },
+                  cell: { userEnteredFormat: { backgroundColor: bg, textFormat: { bold, fontSize: 10 } } },
+                  fields: "userEnteredFormat(backgroundColor,textFormat)",
+                },
+              });
+            }
           }
         }
       }
-    }
 
-    // Send formatting in batches of 5000
-    if (formatRequests.length > 0) {
-      for (let i = 0; i < formatRequests.length; i += 5000) {
-        const chunk = formatRequests.slice(i, i + 5000);
-        await settingsStore.timetableApiFetch(spreadsheetId, ":batchUpdate", {
-          method: "POST",
-          body: JSON.stringify({ requests: chunk }),
-        });
+      if (formatRequests.length > 0) {
+        for (let i = 0; i < formatRequests.length; i += 5000) {
+          const chunk = formatRequests.slice(i, i + 5000);
+          await settingsStore.timetableApiFetch(spreadsheetId, ":batchUpdate", {
+            method: "POST",
+            body: JSON.stringify({ requests: chunk }),
+          });
+        }
       }
     }
 
     const admin = String(req.headers["x-user-email"] || "").trim().toLowerCase();
-    if (admin) logActivity(admin, "timetable_write_raw", `Wrote formatted tab "${tabName}" (${formatRequests.length} format cells)`);
+    if (admin) logActivity(admin, "timetable_write_raw", `Wrote tab "${tabName}" ${sourceSheet ? `(duplicated from "${sourceSheet.properties.title}")` : "(new)"}`);
 
     res.json({
       success: true,
-      message: `Timetable written to tab "${tabName}" with exact formatting.`,
+      message: `Timetable written to tab "${tabName}" ${sourceSheet ? "✓ (exact copy + updated values)" : "(new sheet)"}`,
       sheetId: newSheetId,
     });
   } catch (err: any) {

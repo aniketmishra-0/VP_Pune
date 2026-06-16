@@ -499,7 +499,7 @@ export default function SheetEditorPage({ adminHeaders }: SheetEditorPageProps) 
         body: JSON.stringify({
           tabName: sheetCopyName.trim(),
           values: sheetData,
-          formats: sheetFormats || undefined,
+          sourceTabName: sheetSourceTab || undefined,
         }),
       });
       const d = await r.json();

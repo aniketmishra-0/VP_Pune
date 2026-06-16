@@ -747,7 +747,7 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
         body: JSON.stringify({
           tabName: sheetCopyName.trim(),
           values: sheetData,
-          formats: sheetFormats || undefined,
+          sourceTabName: sheetSourceTab || undefined,
         }),
       });
       const d = await r.json();
