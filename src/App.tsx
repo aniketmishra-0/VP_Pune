@@ -41,6 +41,7 @@ import {
   Shield,
   Users,
   Zap,
+  QrCode,
 } from "lucide-react";
 import { Student, Dropdowns, TestRecord, Profile } from "./types";
 import AdminSettings, { Role, SessionUser } from "./components/AdminSettings";
@@ -53,6 +54,7 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import TimetableConfig from "./components/TimetableConfig";
 import SheetEditorPage from "./components/SheetEditorPage";
 import PublicResult from "./components/PublicResult";
+import PortalAdmin from "./components/PortalAdmin";
 
 function PWLogo({ size = "h-10 w-10", textSize = "text-sm", className = "" }: { size?: string, textSize?: string, className?: string }) {
   const [hasError, setHasError] = React.useState(false);
@@ -361,7 +363,7 @@ export default function App() {
   const [subsheetCenters, setSubsheetCenters] = useState<Array<{ center: string; patterns: string[] }>>([]);
   const [staffAccess, setStaffAccess] = useState<Array<{ email: string; centers: string[] }>>([]);
   const [activeSheets, setActiveSheets] = useState<Array<{ name: string; sourceUrl: string; center: string }>>([]);
-  const [adminTab, setAdminTab] = useState<"config" | "debugger" | "guide" | "timetable">("config");
+  const [adminTab, setAdminTab] = useState<"config" | "debugger" | "guide" | "timetable" | "portal">("config");
   const [newUrlInput, setNewUrlInput] = useState<string>("");
   const [debuggerFilter, setDebuggerFilter] = useState<string>("");
   const [openCenter, setOpenCenter] = useState<string | null>(null);
@@ -3230,6 +3232,17 @@ export default function App() {
                         <Calendar className="w-3.5 h-3.5" />
                         Time Table
                       </button>
+                      <button
+                        onClick={() => setAdminTab("portal")}
+                        className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap ${
+                          adminTab === "portal"
+                            ? "bg-white dark:bg-gray-800 text-[#5277f7] dark:text-white shadow-sm"
+                            : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white"
+                        }`}
+                      >
+                        <QrCode className="w-3.5 h-3.5" />
+                        Result Portal
+                      </button>
                     </div>
 
                     {/* Mappings Configurator Section */}
@@ -4053,6 +4066,10 @@ export default function App() {
 
                     {adminTab === "timetable" && (
                       <TimetableConfig adminHeaders={adminHeaders} />
+                    )}
+
+                    {adminTab === "portal" && (
+                      <PortalAdmin currentUser={{ email: loggedInUser?.email || "", role: userRole } as SessionUser} />
                     )}
                   </div>
                 );
