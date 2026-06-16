@@ -6,6 +6,8 @@ import {
   RefreshCw,
   Users,
   X,
+  ToggleLeft,
+  ToggleRight,
 } from "lucide-react";
 
 interface TimetableConfigProps {
@@ -21,6 +23,8 @@ export default function TimetableConfig({ adminHeaders }: TimetableConfigProps) 
   const [teacherSaved, setTeacherSaved] = useState<null | "saving" | "saved" | "error">(null);
   const [teacherMsg, setTeacherMsg] = useState("");
   const [urlValue, setUrlValue] = useState("");
+  const [autoTimetable, setAutoTimetable] = useState(true);
+  const [autoToggling, setAutoToggling] = useState(false);
 
   // Load existing teachers + URL
   useEffect(() => {
@@ -39,6 +43,7 @@ export default function TimetableConfig({ adminHeaders }: TimetableConfigProps) 
         if (r.ok) {
           const d = await r.json();
           if (d.url) setUrlValue(d.url);
+          if (typeof d.autoTimetable === "boolean") setAutoTimetable(d.autoTimetable);
         }
       } catch {}
     })();
@@ -162,6 +167,48 @@ export default function TimetableConfig({ adminHeaders }: TimetableConfigProps) 
         >
           <RefreshCw className="w-3 h-3" /> Refresh Data
         </button>
+      </div>
+
+      {/* Auto-Timetable Toggle */}
+      <div className="bg-white dark:bg-[#111827] rounded-2xl border border-slate-200/50 dark:border-gray-800/40 p-4 md:p-5 shadow-sm">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-7 h-7 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+              <Calendar className="w-3.5 h-3.5 text-emerald-500" />
+            </div>
+            <div>
+              <h3 className="text-xs font-bold text-slate-700 dark:text-slate-200">Auto Timetable for Teachers</h3>
+              <p className="text-[10px] text-slate-400 mt-0.5">
+                {autoTimetable ? "Teachers apna timetable login ke baad automatically dekhte hain" : "Teachers ko manually code search karna padega"}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={async () => {
+              setAutoToggling(true);
+              try {
+                const r = await fetch("/api/timetable/toggle-auto", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", ...adminHeaders() },
+                  body: JSON.stringify({ enabled: !autoTimetable }),
+                });
+                if (r.ok) {
+                  const d = await r.json();
+                  setAutoTimetable(d.enabled);
+                }
+              } catch {}
+              setAutoToggling(false);
+            }}
+            disabled={autoToggling}
+            className="cursor-pointer transition-all hover:scale-105 active:scale-95 disabled:opacity-50"
+          >
+            {autoTimetable ? (
+              <ToggleRight className="w-10 h-10 text-emerald-500" />
+            ) : (
+              <ToggleLeft className="w-10 h-10 text-slate-300 dark:text-gray-600" />
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Teacher Name-Code Management */}

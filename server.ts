@@ -2936,6 +2936,12 @@ app.get("/api/timetable/my-code", verifyRequest, async (req, res) => {
     const email = String(req.headers["x-user-email"] || "").trim().toLowerCase();
     if (!email) return res.json({ code: null, reason: "No email provided" });
 
+    // Check if feature is enabled
+    const config = getAppConfig() as any;
+    if (config.TEACHER_AUTO_TIMETABLE === false) {
+      return res.json({ code: null, reason: "Feature disabled by admin" });
+    }
+
     const faculty = await settingsStore.readFacultyDetails();
     const match = faculty.find(f => f.email.toLowerCase() === email && f.code);
 
@@ -3009,12 +3015,35 @@ app.get("/api/timetable/stats", verifyRequest, superAdminOnly, (_req, res) => {
  * Return the current timetable configuration & status.
  */
 app.get("/api/timetable/config", verifyRequest, (_req, res) => {
+  const config = getAppConfig() as any;
   res.json({
     url: getTimetableUrl(),
     lastLoaded: timetableLastLoaded,
     isLoading: timetableLoading,
     error: timetableError,
+    autoTimetable: config.TEACHER_AUTO_TIMETABLE !== false, // default ON
   });
+});
+
+/**
+ * POST /api/timetable/toggle-auto
+ * Super admin toggle: enable/disable auto-timetable for teachers.
+ * Body: { enabled: boolean }
+ */
+app.post("/api/timetable/toggle-auto", verifyRequest, superAdminOnly, (req, res) => {
+  try {
+    const { enabled } = req.body;
+    const config = getAppConfig() as any;
+    config.TEACHER_AUTO_TIMETABLE = !!enabled;
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), "utf-8");
+
+    const admin = String(req.headers["x-user-email"] || "").trim().toLowerCase();
+    if (admin) logActivity(admin, "toggle_auto_timetable", `Auto-timetable ${enabled ? "enabled" : "disabled"}`);
+
+    res.json({ success: true, enabled: !!enabled });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 /**
