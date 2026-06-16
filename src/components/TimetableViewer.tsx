@@ -382,7 +382,7 @@ export default function TimetableViewer({ adminHeaders }: TimetableViewerProps) 
 
       {/* ═══ Schedule Cards ═══ */}
       {selectedCode && lectures.length > 0 && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-3">
+        <div className="mt-3">
           {groupedByDay.length > 1 && (
             <div className="flex gap-3 mb-2.5 px-0.5">
               <button onClick={() => setExpandedDays(new Set(groupedByDay.map(([d]) => d)))} className="text-xs font-bold text-[#5277f7] cursor-pointer hover:underline">Expand All</button>
@@ -396,7 +396,7 @@ export default function TimetableViewer({ adminHeaders }: TimetableViewerProps) 
               const isExpanded = expandedDays.has(day);
               const colors = DAY_COLORS[day] || { dot: "bg-slate-400", bg: "border-l-slate-400" };
               return (
-                <motion.div key={day} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: di * 0.05 }}
+                <div key={day}
                   className={`bg-white dark:bg-[#111827] rounded-xl border border-slate-200/50 dark:border-gray-800/40 shadow-sm overflow-hidden border-l-[3px] ${colors.bg}`}
                 >
                   <button onClick={() => toggleDay(day)}
@@ -467,11 +467,11 @@ export default function TimetableViewer({ adminHeaders }: TimetableViewerProps) 
                       </motion.div>
                     )}
                   </AnimatePresence>
-                </motion.div>
+                </div>
               );
             })}
           </div>
-        </motion.div>
+        </div>
       )}
 
       {/* Empty states */}

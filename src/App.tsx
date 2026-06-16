@@ -1840,8 +1840,6 @@ export default function App() {
               {isSuperAdmin && featureFlags.timetableGenerator && (
               <button
                 onClick={() => { setActiveView("timetableGen"); setErrorMessage(null); }}
-                onMouseEnter={() => importTimetableGenerator()}
-                onTouchStart={() => importTimetableGenerator()}
                 className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all cursor-pointer ${
                   activeView === "timetableGen"
                     ? "bg-[#5277f7] text-white shadow-lg shadow-[#5277f7]/20"
@@ -1857,8 +1855,6 @@ export default function App() {
               {isSuperAdmin && featureFlags.sheetEditor && (
               <button
                 onClick={() => { setActiveView("sheetEditor"); setErrorMessage(null); }}
-                onMouseEnter={() => importSheetEditorPage()}
-                onTouchStart={() => importSheetEditorPage()}
                 className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all cursor-pointer ${
                   activeView === "sheetEditor"
                     ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/20"

@@ -487,11 +487,8 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({
   };
 
   return (
-    <motion.div
+    <div
       key="settings"
-      initial={{ opacity: 0, y: 15 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -15 }}
       className="max-w-4xl mx-auto w-full space-y-3 sm:space-y-5"
     >
       <button
@@ -1425,7 +1422,7 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({
           </motion.div>
         )}
       </AnimatePresence>
-    </motion.div>
+    </div>
   );
 };
 
