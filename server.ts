@@ -3407,6 +3407,90 @@ app.post("/api/timetable/write-sheet", verifyRequest, superAdminOnly, async (req
 
 
 /**
+ * POST /api/timetable/write-raw
+ * Write raw 2D string values to a new tab in the timetable spreadsheet.
+ * No colour formatting is applied – just plain values.
+ *
+ * Body: {
+ *   tabName: string,       // e.g. "Raw Export 2026"
+ *   values: string[][]     // 2D array of cell values
+ * }
+ */
+app.post("/api/timetable/write-raw", verifyRequest, superAdminOnly, async (req, res) => {
+  try {
+    const { tabName, values } = req.body;
+
+    if (!tabName || typeof tabName !== "string") {
+      return res.status(400).json({ error: "'tabName' string is required." });
+    }
+    if (!values || !Array.isArray(values) || values.length === 0) {
+      return res.status(400).json({ error: "'values' 2D array is required." });
+    }
+
+    const spreadsheetId = settingsStore.TIMETABLE_SPREADSHEET_ID;
+
+    // 0. Delete existing tab with the same name (if any)
+    try {
+      const metaRes = await settingsStore.timetableApiFetch(spreadsheetId, "?fields=sheets.properties");
+      const existingSheets: { properties: { sheetId: number; title: string } }[] = metaRes.sheets || [];
+      const existing = existingSheets.find((s: any) => s.properties.title === tabName.trim());
+      if (existing) {
+        await settingsStore.timetableApiFetch(spreadsheetId, ":batchUpdate", {
+          method: "POST",
+          body: JSON.stringify({
+            requests: [{ deleteSheet: { sheetId: existing.properties.sheetId } }],
+          }),
+        });
+      }
+    } catch {
+      // If metadata fetch fails, just try creating
+    }
+
+    // 1. Create the new tab
+    const rowCount = Math.max(values.length, 1);
+    const colCount = Math.max(values[0]?.length || 1, 1);
+
+    const createRes = await settingsStore.timetableApiFetch(spreadsheetId, ":batchUpdate", {
+      method: "POST",
+      body: JSON.stringify({
+        requests: [
+          {
+            addSheet: {
+              properties: {
+                title: tabName.trim(),
+                gridProperties: { rowCount, columnCount: colCount },
+              },
+            },
+          },
+        ],
+      }),
+    });
+
+    const newSheetId: number = createRes.replies[0].addSheet.properties.sheetId;
+
+    // 2. Write raw values
+    await settingsStore.timetableApiFetch(
+      spreadsheetId,
+      `/values/${encodeURIComponent(tabName.trim())}!A1?valueInputOption=RAW`,
+      { method: "PUT", body: JSON.stringify({ values }) },
+    );
+
+    const admin = String(req.headers["x-user-email"] || "").trim().toLowerCase();
+    if (admin) logActivity(admin, "timetable_write_raw", `Wrote raw tab "${tabName}"`);
+
+    res.json({
+      success: true,
+      message: `Raw values written to tab "${tabName}".`,
+      sheetId: newSheetId,
+    });
+  } catch (err: any) {
+    console.error("[/api/timetable/write-raw] Error:", err.message);
+    res.status(500).json({ error: "Failed to write raw values to sheet: " + err.message });
+  }
+});
+
+
+/**
  * GET /api/timetable/tabs
  * Return all weekly timetable tab titles.
  */

@@ -4,7 +4,7 @@ import {
   Calendar, ChevronLeft, ChevronRight, Check, AlertCircle,
   RefreshCw, Users, Settings, Eye, FileSpreadsheet, Zap,
   AlertTriangle, CheckCircle2, Loader2, Sun, CloudOff, Hash,
-  Sliders, Trash2, Plus, Download, Sparkles,
+  Sliders, Trash2, Plus, Download, Sparkles, X, Save,
 } from "lucide-react";
 
 // ─── Types ──────────────────────────────────────────────────────────────
@@ -253,6 +253,14 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
   const [selectedLoadTab, setSelectedLoadTab] = useState("");
   const [loadingTab, setLoadingTab] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+
+  // Sheet Editor — live spreadsheet editing
+  const [sheetData, setSheetData] = useState<string[][] | null>(null);
+  const [sheetSourceTab, setSheetSourceTab] = useState("");
+  const [sheetEditingCell, setSheetEditingCell] = useState<{ r: number; c: number } | null>(null);
+  const [sheetCopyName, setSheetCopyName] = useState("");
+  const [sheetSaving, setSheetSaving] = useState(false);
+  const [sheetSaveResult, setSheetSaveResult] = useState<{ success: boolean; message: string } | null>(null);
 
   // Step 5 — Export
   const [tabName, setTabName] = useState("");
@@ -684,6 +692,78 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
       setLoadingTab(false);
     }
   }, [selectedLoadTab, allBatches, batchRooms, adminHeaders, faculty.length]);
+
+  // ─── Sheet Editor: Load raw values ─────────────────────────────────
+  const handleLoadSheetEditor = useCallback(async () => {
+    if (!selectedLoadTab) return;
+    setLoadingTab(true);
+    setLoadError(null);
+    setSheetSaveResult(null);
+    try {
+      const r = await fetch(`/api/timetable/tab-values?tabName=${encodeURIComponent(selectedLoadTab)}`, {
+        headers: adminHeaders()
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const d = await r.json();
+      if (!d.success) throw new Error(d.error || "Failed to load tab values");
+
+      const values: string[][] = d.values || [];
+      if (values.length < 2) {
+        throw new Error("Sheet has too few rows");
+      }
+
+      // Normalize: make sure all rows have the same number of columns
+      const maxCols = Math.max(...values.map(row => row.length));
+      const normalized = values.map(row => {
+        const padded = [...row];
+        while (padded.length < maxCols) padded.push("");
+        return padded;
+      });
+
+      setSheetData(normalized);
+      setSheetSourceTab(selectedLoadTab);
+      setSheetCopyName(`${selectedLoadTab} (Copy)`);
+      setSheetEditingCell(null);
+    } catch (err: any) {
+      setLoadError(err.message || "Failed to load sheet");
+    } finally {
+      setLoadingTab(false);
+    }
+  }, [selectedLoadTab, adminHeaders]);
+
+  // ─── Sheet Editor: Save as copy ────────────────────────────────────
+  const handleSaveAsCopy = useCallback(async () => {
+    if (!sheetData || !sheetCopyName.trim()) return;
+    setSheetSaving(true);
+    setSheetSaveResult(null);
+    try {
+      const r = await fetch("/api/timetable/write-raw", {
+        method: "POST",
+        headers: { ...adminHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tabName: sheetCopyName.trim(),
+          values: sheetData,
+        }),
+      });
+      const d = await r.json();
+      if (!r.ok || !d.success) throw new Error(d.error || "Failed to save");
+      setSheetSaveResult({ success: true, message: `Saved as "${sheetCopyName.trim()}" ✓` });
+    } catch (err: any) {
+      setSheetSaveResult({ success: false, message: err.message || "Save failed" });
+    } finally {
+      setSheetSaving(false);
+    }
+  }, [sheetData, sheetCopyName, adminHeaders]);
+
+  // ─── Sheet Editor: Update cell ─────────────────────────────────────
+  const handleSheetCellChange = useCallback((r: number, c: number, value: string) => {
+    setSheetData(prev => {
+      if (!prev) return prev;
+      const copy = prev.map(row => [...row]);
+      copy[r][c] = value;
+      return copy;
+    });
+  }, []);
 
   // ─── Fetch Faculty ────────────────────────────────────────────────
 
@@ -1131,12 +1211,12 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
               <GlassCard title="Load Existing Week to Edit" icon={<FileSpreadsheet className="w-3.5 h-3.5 text-emerald-500" />}>
                 <div className="space-y-4">
                   <p className="text-[11px] text-slate-400 font-mono">
-                    Google Sheets se pehle se bana hua kisi bhi week ka timetable load karke edit ya duplicate karein.
+                    Kisi bhi week ka sheet yahan load karein, directly edit karein, aur "Save as Copy" se new tab mein save karein.
                   </p>
                   <div className="flex flex-col sm:flex-row gap-3">
                     <select
                       value={selectedLoadTab}
-                      onChange={(e) => setSelectedLoadTab(e.target.value)}
+                      onChange={(e) => { setSelectedLoadTab(e.target.value); setLoadError(null); setSheetData(null); setSheetSaveResult(null); }}
                       className="flex-1 bg-slate-50 dark:bg-gray-900/40 rounded-xl border border-slate-200 dark:border-gray-800 px-4 py-3 text-xs text-slate-700 dark:text-slate-200 outline-none focus:border-[#5277f7] transition-colors"
                     >
                       <option value="">-- Choose Week / Subsheet --</option>
@@ -1145,14 +1225,14 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
                       ))}
                     </select>
                     <button
-                      onClick={handleLoadTab}
+                      onClick={handleLoadSheetEditor}
                       disabled={!selectedLoadTab || loadingTab}
                       className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-5 py-3 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 cursor-pointer shadow-lg shadow-emerald-500/15"
                     >
                       {loadingTab ? (
                         <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading...</>
                       ) : (
-                        <><Download className="w-3.5 h-3.5" /> Load & Edit</>
+                        <><Download className="w-3.5 h-3.5" /> Load Sheet</>
                       )}
                     </button>
                   </div>
@@ -1164,6 +1244,130 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
                   )}
                 </div>
               </GlassCard>
+
+              {/* ─── Inline Sheet Editor ─── */}
+              {sheetData && (
+                <GlassCard
+                  title={`Editing: ${sheetSourceTab}`}
+                  icon={<FileSpreadsheet className="w-3.5 h-3.5 text-[#5277f7]" />}
+                  action={
+                    <button
+                      onClick={() => { setSheetData(null); setSheetSourceTab(""); setSheetSaveResult(null); }}
+                      className="flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-red-500 cursor-pointer transition-colors"
+                    >
+                      <X className="w-3 h-3" />
+                      Close
+                    </button>
+                  }
+                >
+                  <div className="space-y-4">
+                    {/* Scrollable table */}
+                    <div className="overflow-auto max-h-[65vh] rounded-xl border border-slate-200/50 dark:border-gray-800/50">
+                      <table className="w-full border-collapse text-[10px] font-mono">
+                        <tbody>
+                          {sheetData.map((row, rIdx) => (
+                            <tr key={rIdx} className={rIdx === 0 ? "bg-[#5277f7]/10 dark:bg-[#5277f7]/5 sticky top-0 z-10" : rIdx === 1 ? "bg-slate-100/50 dark:bg-gray-800/30" : ""}>
+                              {row.map((cell, cIdx) => {
+                                const isEditing = sheetEditingCell?.r === rIdx && sheetEditingCell?.c === cIdx;
+                                const isHeader = rIdx === 0;
+                                const isDay = cIdx === 0 && rIdx >= 2 && cell.trim().length > 0;
+                                return (
+                                  <td
+                                    key={cIdx}
+                                    className={`border border-slate-200/40 dark:border-gray-800/40 px-1.5 py-1 min-w-[45px] max-w-[100px] transition-all ${
+                                      isHeader ? "font-bold text-[#5277f7] dark:text-[#7b9bff] text-center" :
+                                      isDay ? "font-bold text-slate-700 dark:text-slate-300 bg-slate-50/50 dark:bg-gray-800/20" :
+                                      "text-slate-600 dark:text-slate-300"
+                                    } ${!isEditing ? "cursor-pointer hover:bg-[#5277f7]/5" : ""}`}
+                                    onClick={() => {
+                                      if (!isEditing) setSheetEditingCell({ r: rIdx, c: cIdx });
+                                    }}
+                                  >
+                                    {isEditing ? (
+                                      <input
+                                        type="text"
+                                        defaultValue={cell}
+                                        autoFocus
+                                        onBlur={(e) => {
+                                          handleSheetCellChange(rIdx, cIdx, e.target.value);
+                                          setSheetEditingCell(null);
+                                        }}
+                                        onKeyDown={(e) => {
+                                          if (e.key === "Enter") {
+                                            handleSheetCellChange(rIdx, cIdx, (e.target as HTMLInputElement).value);
+                                            // Move down
+                                            setSheetEditingCell(rIdx + 1 < sheetData.length ? { r: rIdx + 1, c: cIdx } : null);
+                                          } else if (e.key === "Tab") {
+                                            e.preventDefault();
+                                            handleSheetCellChange(rIdx, cIdx, (e.target as HTMLInputElement).value);
+                                            // Move right
+                                            if (cIdx + 1 < row.length) {
+                                              setSheetEditingCell({ r: rIdx, c: cIdx + 1 });
+                                            } else if (rIdx + 1 < sheetData.length) {
+                                              setSheetEditingCell({ r: rIdx + 1, c: 0 });
+                                            }
+                                          } else if (e.key === "Escape") {
+                                            setSheetEditingCell(null);
+                                          }
+                                        }}
+                                        className="w-full bg-white dark:bg-gray-900 border border-[#5277f7] rounded px-1 py-0.5 text-[10px] outline-none text-slate-800 dark:text-white"
+                                      />
+                                    ) : (
+                                      <span className="block truncate" title={cell}>{cell || "\u00A0"}</span>
+                                    )}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Save as Copy controls */}
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-2 border-t border-slate-100 dark:border-gray-800/40">
+                      <div className="flex-1">
+                        <label className="text-[9px] font-bold tracking-widest uppercase text-slate-400 font-mono block mb-1">New Tab Name</label>
+                        <input
+                          type="text"
+                          value={sheetCopyName}
+                          onChange={(e) => setSheetCopyName(e.target.value)}
+                          placeholder="e.g. 22nd-27th June 2026"
+                          className="w-full bg-slate-50 dark:bg-gray-900/40 rounded-xl border border-slate-200 dark:border-gray-800 px-4 py-2.5 text-xs text-slate-700 dark:text-slate-200 outline-none focus:border-[#5277f7] transition-colors font-mono"
+                        />
+                      </div>
+                      <button
+                        onClick={handleSaveAsCopy}
+                        disabled={sheetSaving || !sheetCopyName.trim()}
+                        className="bg-gradient-to-r from-[#5277f7] to-[#7c3aed] text-white font-bold text-xs px-6 py-2.5 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 cursor-pointer shadow-lg shadow-[#5277f7]/20 hover:shadow-xl active:scale-[0.98] mt-auto"
+                      >
+                        {sheetSaving ? (
+                          <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving...</>
+                        ) : (
+                          <><Save className="w-3.5 h-3.5" /> Save as Copy</>
+                        )}
+                      </button>
+                    </div>
+
+                    {sheetSaveResult && (
+                      <div className={`flex items-center gap-2 rounded-xl px-3 py-2.5 ${
+                        sheetSaveResult.success
+                          ? "bg-emerald-500/10 border border-emerald-500/20"
+                          : "bg-red-500/10 border border-red-500/20"
+                      }`}>
+                        {sheetSaveResult.success ? (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                        ) : (
+                          <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                        )}
+                        <p className={`text-[11px] ${sheetSaveResult.success ? "text-emerald-400" : "text-red-400"}`}>
+                          {sheetSaveResult.message}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </GlassCard>
+              )}
             </div>
           )}
 
