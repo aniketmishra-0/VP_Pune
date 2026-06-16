@@ -3408,11 +3408,11 @@ app.post("/api/timetable/write-sheet", verifyRequest, superAdminOnly, async (req
 
 /**
  * POST /api/timetable/write-raw
- * Write raw 2D string values to a new tab in the timetable spreadsheet.
- * No colour formatting is applied – just plain values.
+ * Write raw 2D string values to a new tab in the timetable spreadsheet
+ * WITH full colour formatting matching the original sheet layout.
  *
  * Body: {
- *   tabName: string,       // e.g. "Raw Export 2026"
+ *   tabName: string,       // e.g. "22nd-27th June 2026"
  *   values: string[][]     // 2D array of cell values
  * }
  */
@@ -3448,7 +3448,7 @@ app.post("/api/timetable/write-raw", verifyRequest, superAdminOnly, async (req, 
 
     // 1. Create the new tab
     const rowCount = Math.max(values.length, 1);
-    const colCount = Math.max(values[0]?.length || 1, 1);
+    const colCount = Math.max(...values.map((r: string[]) => r?.length || 0), 1);
 
     const createRes = await settingsStore.timetableApiFetch(spreadsheetId, ":batchUpdate", {
       method: "POST",
@@ -3475,17 +3475,150 @@ app.post("/api/timetable/write-raw", verifyRequest, superAdminOnly, async (req, 
       { method: "PUT", body: JSON.stringify({ values }) },
     );
 
+    // 3. Apply colour formatting to match original sheet
+    const hex = (h: string) => {
+      const x = h.replace("#", "");
+      return {
+        red: parseInt(x.substring(0, 2), 16) / 255,
+        green: parseInt(x.substring(2, 4), 16) / 255,
+        blue: parseInt(x.substring(4, 6), 16) / 255,
+      };
+    };
+
+    const SHEET_COLORS = {
+      HEADER:  hex("#FFFF00"),  // Yellow — batch name row
+      ROOM:    hex("#FF00FF"),  // Magenta — room row
+      MON:     hex("#FF8C00"),  // Orange
+      TUE:     hex("#9933FF"),  // Purple
+      WED:     hex("#00CC00"),  // Green
+      THU:     hex("#00BFFF"),  // Cyan
+      FRI:     hex("#FF3366"),  // Pink
+      SAT:     hex("#CC0000"),  // Red
+      SEP:     hex("#00FF00"),  // Green — JEE/NEET separator
+      HOLIDAY: hex("#FFFF00"),  // Yellow
+      WHITE:   hex("#FFFFFF"),
+    };
+
+    const DAY_COLORS: Record<string, typeof SHEET_COLORS.MON> = {
+      MONDAY: SHEET_COLORS.MON,    TUESDAY: SHEET_COLORS.TUE,
+      WEDNESDAY: SHEET_COLORS.WED, THURSDAY: SHEET_COLORS.THU,
+      FRIDAY: SHEET_COLORS.FRI,    SATURDAY: SHEET_COLORS.SAT,
+    };
+
+    const DAY_NAMES = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
+    const formatRequests: any[] = [];
+    let currentDay = "";
+
+    for (let r = 0; r < values.length; r++) {
+      const row = values[r] || [];
+      const isHeaderRow = r === 0;
+      const isRoomRow = r === 1;
+
+      // Detect day from column 0
+      const col0 = String(row[0] || "").trim().toUpperCase();
+      if (DAY_NAMES.includes(col0)) currentDay = col0;
+
+      // Check if this row has HOLIDAY
+      const isHolidayRow = row.some((cell: string) => String(cell).trim().toUpperCase() === "HOLIDAY");
+
+      for (let c = 0; c < row.length; c++) {
+        const cellVal = String(row[c] || "").trim().toUpperCase();
+        let bgColor = SHEET_COLORS.WHITE;
+        let isBold = false;
+        let fontSize = 10;
+
+        if (isHeaderRow) {
+          // Row 0: batch name headers — yellow, bold
+          if (c >= 2) {
+            bgColor = SHEET_COLORS.HEADER;
+            isBold = true;
+            fontSize = 10;
+          }
+        } else if (isRoomRow) {
+          // Row 1: room numbers — magenta, bold
+          if (c >= 2) {
+            bgColor = SHEET_COLORS.ROOM;
+            isBold = true;
+            fontSize = 9;
+          }
+        } else if (r >= 2) {
+          // Data rows
+          if (c === 0 && DAY_NAMES.includes(cellVal)) {
+            // Day name cell — day color, bold
+            bgColor = DAY_COLORS[cellVal] || SHEET_COLORS.WHITE;
+            isBold = true;
+          } else if (isHolidayRow && cellVal === "HOLIDAY") {
+            bgColor = SHEET_COLORS.HOLIDAY;
+            isBold = true;
+          } else if (c >= 2 && cellVal && currentDay) {
+            // Teacher cells — light day color (only for first 3 slots per day)
+            const dayColor = DAY_COLORS[currentDay];
+            if (dayColor && cellVal.length >= 2 && cellVal.length <= 8) {
+              // Use a lighter version of the day color for teacher cells
+              bgColor = {
+                red: Math.min(1, dayColor.red * 0.3 + 0.7),
+                green: Math.min(1, dayColor.green * 0.3 + 0.7),
+                blue: Math.min(1, dayColor.blue * 0.3 + 0.7),
+              };
+            }
+          }
+
+          // JEE/NEET separator check
+          if (cellVal === "JEE" || cellVal === "NEET" || cellVal === "DROPPER") {
+            bgColor = SHEET_COLORS.SEP;
+            isBold = true;
+          }
+        }
+
+        // Only emit formatting if not plain white
+        if (bgColor !== SHEET_COLORS.WHITE || isBold) {
+          formatRequests.push({
+            repeatCell: {
+              range: {
+                sheetId: newSheetId,
+                startRowIndex: r,
+                endRowIndex: r + 1,
+                startColumnIndex: c,
+                endColumnIndex: c + 1,
+              },
+              cell: {
+                userEnteredFormat: {
+                  backgroundColor: bgColor,
+                  textFormat: {
+                    bold: isBold,
+                    fontSize: fontSize,
+                  },
+                },
+              },
+              fields: "userEnteredFormat(backgroundColor,textFormat)",
+            },
+          });
+        }
+      }
+    }
+
+    // Send formatting in batches of 5000
+    if (formatRequests.length > 0) {
+      for (let i = 0; i < formatRequests.length; i += 5000) {
+        const chunk = formatRequests.slice(i, i + 5000);
+        await settingsStore.timetableApiFetch(spreadsheetId, ":batchUpdate", {
+          method: "POST",
+          body: JSON.stringify({ requests: chunk }),
+        });
+      }
+    }
+
     const admin = String(req.headers["x-user-email"] || "").trim().toLowerCase();
-    if (admin) logActivity(admin, "timetable_write_raw", `Wrote raw tab "${tabName}"`);
+    if (admin) logActivity(admin, "timetable_write_raw", `Wrote formatted tab "${tabName}" (${formatRequests.length} format cells)`);
 
     res.json({
       success: true,
-      message: `Raw values written to tab "${tabName}".`,
+      message: `Timetable written to tab "${tabName}" with formatting.`,
       sheetId: newSheetId,
     });
   } catch (err: any) {
     console.error("[/api/timetable/write-raw] Error:", err.message);
-    res.status(500).json({ error: "Failed to write raw values to sheet: " + err.message });
+    res.status(500).json({ error: "Failed to write timetable to sheet: " + err.message });
   }
 });
 
