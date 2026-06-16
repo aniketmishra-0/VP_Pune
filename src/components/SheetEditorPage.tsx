@@ -592,7 +592,7 @@ export default function SheetEditorPage({ adminHeaders }: SheetEditorPageProps) 
       const monthsFull = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
       // ═══ SMART DATE LOGIC ═══
-      // Always calculate next Monday from TODAY (not +7 from loaded sheet)
+      // Always calculate next Monday from TODAY
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       const dayOfWeek = today.getDay(); // 0=Sun, 1=Mon, ...
@@ -606,42 +606,24 @@ export default function SheetEditorPage({ adminHeaders }: SheetEditorPageProps) 
         nextMonday = new Date(today.getTime() + 1 * 24 * 60 * 60 * 1000);
       } else {
         // Tue-Sat — find next Monday
-        const daysUntilMonday = 8 - dayOfWeek; // Tue=6, Wed=5, Thu=4, Fri=3, Sat=2
+        const daysUntilMonday = 8 - dayOfWeek;
         nextMonday = new Date(today.getTime() + daysUntilMonday * 24 * 60 * 60 * 1000);
       }
 
-      // Check if loaded sheet ALREADY has this week's dates (don't advance if so)
-      let loadedMonday: Date | null = null;
-      for (let rx = 2; rx < normalized.length; rx++) {
-        const col0 = (normalized[rx][0] || "").trim().toUpperCase();
-        if (col0 === "MONDAY" && normalized[rx][1]) {
-          const dateStr = normalized[rx][1].replace(/(\d+)(st|nd|rd|th)/i, "$1");
-          const parsed = new Date(dateStr);
-          if (!isNaN(parsed.getTime())) { loadedMonday = parsed; loadedMonday.setHours(0, 0, 0, 0); }
-          break;
-        }
-      }
-
-      // If loaded sheet already has next Monday's date, don't change dates
-      const loadedIsNextWeek = loadedMonday && loadedMonday.getTime() === nextMonday.getTime();
-
-      // Update dates in the data
+      // Always update dates to next Monday
       const copy = normalized.map((r: string[]) => [...r]);
-
-      if (!loadedIsNextWeek) {
-        let dayOffset = 0;
-        for (let rx = 2; rx < copy.length; rx++) {
-          const cellDay = (copy[rx][0] || "").trim().toUpperCase();
-          if (DAY_NAMES.includes(cellDay)) {
-            const dateObj = new Date(nextMonday);
-            dateObj.setDate(dateObj.getDate() + dayOffset);
-            const dayNum = dateObj.getDate();
-            const suffix = dayNum === 1 || dayNum === 21 || dayNum === 31 ? "st" :
-                           dayNum === 2 || dayNum === 22 ? "nd" :
-                           dayNum === 3 || dayNum === 23 ? "rd" : "th";
-            copy[rx][1] = `${dayNum}${suffix}-${months[dateObj.getMonth()]}-${dateObj.getFullYear()}`;
-            dayOffset++;
-          }
+      let dayOffset = 0;
+      for (let rx = 2; rx < copy.length; rx++) {
+        const cellDay = (copy[rx][0] || "").trim().toUpperCase();
+        if (DAY_NAMES.includes(cellDay)) {
+          const dateObj = new Date(nextMonday);
+          dateObj.setDate(dateObj.getDate() + dayOffset);
+          const dayNum = dateObj.getDate();
+          const suffix = dayNum === 1 || dayNum === 21 || dayNum === 31 ? "st" :
+                         dayNum === 2 || dayNum === 22 ? "nd" :
+                         dayNum === 3 || dayNum === 23 ? "rd" : "th";
+          copy[rx][1] = `${dayNum}${suffix}-${months[dateObj.getMonth()]}-${dateObj.getFullYear()}`;
+          dayOffset++;
         }
       }
 
@@ -780,7 +762,7 @@ export default function SheetEditorPage({ adminHeaders }: SheetEditorPageProps) 
           </div>
 
           <p className="text-[11px] text-slate-400">
-            Kisi bhi week ka sheet load karein, edit karein, aur "Save as Copy" se new tab mein save karein.
+            Sheet load karein → edit karein → "💾 Save" se same tab mein save karein. <span className="text-amber-500 font-medium">⚠️ "Copy of" tabs mein galat colors hain — original tab select karein!</span>
           </p>
 
           <div className="flex flex-col sm:flex-row gap-3">
