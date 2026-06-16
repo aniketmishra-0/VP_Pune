@@ -2307,17 +2307,7 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
                       </GlassCard>
                     )}
 
-                    {/* HF Status */}
-                    {!aiResolving && aiSuggestions.length > 0 && !hfAvailable && (
-                      <div className="text-[10px] text-slate-600 bg-slate-800/30 rounded-lg px-3 py-2 border border-slate-700/30">
-                        💡 <strong>Tip:</strong> Add <code className="bg-slate-700/50 px-1 rounded text-teal-400">HF_TOKEN</code> in HuggingFace Space secrets to enable Mistral-7B AI analysis alongside Pattern AI.
-                      </div>
-                    )}
-                    {hfError && (
-                      <div className="text-[10px] text-amber-500/80 bg-amber-500/5 rounded-lg px-3 py-2 border border-amber-500/10">
-                        ⚠ HuggingFace AI: {hfError} — Pattern AI suggestions are still available above.
-                      </div>
-                    )}
+                    {/* HF Status — hidden from UI (not actionable for end users) */}
                   </div>
 
                   {/* Preview Grid */}
