@@ -3437,22 +3437,7 @@ app.post("/api/timetable/update-tab", verifyRequest, superAdminOnly, async (req,
       return res.status(404).json({ error: `Tab "${tabName}" not found in spreadsheet.` });
     }
 
-    // Clear existing values first, then write new values
-    // This handles cases where new data has fewer rows/cols than existing
-    const maxCols = Math.max(...values.map((r: string[]) => r?.length || 0), 1);
-    const clearRange = `${encodeURIComponent(tabName.trim())}!A1:${String.fromCharCode(64 + Math.min(maxCols, 26))}${values.length + 10}`;
-
-    try {
-      await settingsStore.timetableApiFetch(
-        spreadsheetId,
-        `/values/${clearRange}:clear`,
-        { method: "POST", body: JSON.stringify({}) },
-      );
-    } catch {
-      // Clear might fail if range is out of bounds, that's okay
-    }
-
-    // Write new values
+    // Directly overwrite values — formatting (colors, borders, fonts) stays UNTOUCHED
     await settingsStore.timetableApiFetch(
       spreadsheetId,
       `/values/${encodeURIComponent(tabName.trim())}!A1?valueInputOption=RAW`,
@@ -3462,11 +3447,11 @@ app.post("/api/timetable/update-tab", verifyRequest, superAdminOnly, async (req,
     const admin = String(req.headers["x-user-email"] || "").trim().toLowerCase();
     if (admin) logActivity(admin, "timetable_update_tab", `Updated tab "${tabName}" in-place (${values.length} rows)`);
 
-    console.log(`[update-tab] Overwritten "${tabName}" with ${values.length} rows`);
+    console.log(`[update-tab] Overwritten "${tabName}" with ${values.length} rows — formatting preserved`);
 
     res.json({
       success: true,
-      message: `Tab "${tabName}" updated successfully ✓`,
+      message: `Tab "${tabName}" updated ✓ (formatting preserved)`,
     });
   } catch (err: any) {
     console.error("[/api/timetable/update-tab] Error:", err.message);
