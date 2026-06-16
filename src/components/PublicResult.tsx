@@ -270,6 +270,8 @@ export default function PublicResult() {
         // Show success toast popup
         setShowSuccessToast(true);
         setTimeout(() => setShowSuccessToast(false), 4000);
+        // Scroll to top to avoid jump
+        window.scrollTo({ top: 0, behavior: "instant" });
       } else {
         setState({ kind: "error", message: "No results found for this registration number." });
       }
@@ -468,174 +470,183 @@ export default function PublicResult() {
               </motion.div>
             )}
 
-            {/* Result State */}
-            {state.kind === "result" && (
+            {/* Result State — Portfolio Design */}
+            {state.kind === "result" && (() => {
+              const p = state.student.profile;
+              const tests = state.student.tests;
+              const validGrades = tests.filter(t => t.score !== "N/A" && t.score !== undefined && t.score !== "" && t.score !== "-");
+              const overallScored = validGrades.reduce((sum, t) => sum + (parseFloat(String(t.score)) || 0), 0);
+              const overallMax = validGrades.reduce((sum, t) => sum + (parseFloat(String(t.outOf)) || 0), 0);
+              const avgPct = overallMax > 0 ? (overallScored / overallMax) * 100 : 0;
+              const rankValues = validGrades.map(t => parseInt(String(t.centerRank))).filter(r => !isNaN(r) && r > 0);
+              const bestRank = rankValues.length > 0 ? Math.min(...rankValues) : null;
+              const allSubjects = [...new Set(tests.flatMap(t => (t.subjectScores || []).map(s => s.subject)))];
+
+              return (
               <motion.div
                 key="result"
-                initial={{ opacity: 0, y: 30 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.5 }}
-                className="w-full max-w-4xl mt-6 space-y-5"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.4 }}
+                className="w-full max-w-5xl mt-4 space-y-4"
               >
-                {/* Profile Card */}
-                <GlassCard className="p-5 md:p-6">
-                  <div className="flex items-start gap-4">
-                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#5277f7] to-indigo-500 flex items-center justify-center shrink-0 shadow-lg shadow-[#5277f7]/25">
-                      <User className="w-6 h-6 text-white" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h2 className="text-lg md:text-xl font-extrabold text-white font-display truncate">
-                        {state.student.profile.name}
+                {/* HERO PORTFOLIO CARD */}
+                <div className="bg-gradient-to-br from-[#0f172a] via-[#1e293b] to-[#0f172a] rounded-2xl border border-white/10 p-5 md:p-6 relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-64 h-64 bg-radial-gradient from-blue-500/10 to-transparent rounded-full blur-2xl pointer-events-none" />
+
+                  <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 relative z-10">
+                    <div className="space-y-3 flex-1 min-w-0">
+                      <span className="inline-flex gap-1.5 px-2.5 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[9px] font-bold uppercase tracking-wider font-mono">
+                        Student Assessment Portfolio
+                      </span>
+                      <h2 className="text-xl md:text-2xl font-black tracking-tight font-display bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent">
+                        {p.name}
                       </h2>
-                      <p className="text-xs text-slate-400 font-mono mt-0.5">
-                        Reg. No: {state.student.profile.regNo}
-                      </p>
-                      <div className="flex flex-wrap gap-2 mt-3">
-                        <Badge>
-                          <BookOpen className="w-3 h-3" />
-                          {state.student.profile.batch}
-                        </Badge>
-                        <Badge>
-                          <MapPin className="w-3 h-3" />
-                          {state.student.profile.center}
-                        </Badge>
-                        {state.student.profile.stream && (
-                          <Badge className="bg-indigo-500/15 text-indigo-300 border-indigo-500/20">
-                            <Layers className="w-3 h-3" />
-                            {state.student.profile.stream}
-                          </Badge>
-                        )}
-                        {state.student.profile.class && (
-                          <Badge className="bg-violet-500/15 text-violet-300 border-violet-500/20">
-                            <GraduationCap className="w-3 h-3" />
-                            Class {state.student.profile.class}
-                          </Badge>
-                        )}
+
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-y-3 gap-x-4 w-full pt-2 border-t border-white/5">
+                        <div className="space-y-0.5 min-w-0">
+                          <span className="text-[9px] uppercase tracking-widest font-mono font-bold text-slate-400 block">Registration ID</span>
+                          <span className="text-xs font-semibold tracking-wide font-mono text-slate-200 block">{p.regNo || "N/A"}</span>
+                        </div>
+                        <div className="space-y-0.5 min-w-0">
+                          <span className="text-[9px] uppercase tracking-widest font-mono font-bold text-slate-400 block">Assess Stream</span>
+                          <span className="inline-flex font-black text-[9px] px-2 py-0.5 rounded-full tracking-wider uppercase text-blue-400 bg-blue-500/10 border border-blue-500/20 font-mono">
+                            {p.stream || "FOUNDATION"}
+                          </span>
+                        </div>
+                        <div className="space-y-0.5 min-w-0">
+                          <span className="text-[9px] uppercase tracking-widest font-mono font-bold text-slate-400 block">Mapped Center</span>
+                          <span className="text-xs font-semibold text-slate-200 truncate block">{p.center || "Pimpri PW Vidyapeeth"}</span>
+                        </div>
+                        <div className="space-y-0.5 min-w-0">
+                          <span className="text-[9px] uppercase tracking-widest font-mono font-bold text-slate-400 block">Study Division</span>
+                          <span className="text-xs font-bold text-indigo-300 truncate block">{p.batch || "N/A"}</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </GlassCard>
 
-                {/* Stats Row */}
-                {stats && (
-                  <div className="grid grid-cols-3 gap-3">
-                    <StatCard
-                      icon={BarChart3}
-                      label="Exams"
-                      value={stats.total}
-                      accent="bg-[#5277f7]/15 text-[#5277f7]"
-                    />
-                    <StatCard
-                      icon={Trophy}
-                      label="Best Rank"
-                      value={stats.bestRank}
-                      accent="bg-amber-500/15 text-amber-400"
-                    />
-                    <StatCard
-                      icon={TrendingUp}
-                      label="Avg %"
-                      value={stats.avg === "–" ? "–" : `${stats.avg}%`}
-                      accent="bg-emerald-500/15 text-emerald-400"
-                    />
-                  </div>
-                )}
-
-                {/* Tests Table */}
-                <GlassCard className="overflow-hidden">
-                  <div className="px-5 py-4 border-b border-white/5 flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-lg bg-[#5277f7]/15 flex items-center justify-center">
-                      <Award className="w-4 h-4 text-[#5277f7]" />
+                    {/* Latest Rank Badge */}
+                    <div className="rounded-xl p-3 flex flex-col items-center justify-center shrink-0 text-center w-full md:w-36 bg-white/5 backdrop-blur-md border border-white/10 shadow-md">
+                      <span className="text-[9px] uppercase tracking-widest font-mono font-bold text-slate-400 block mb-0.5">Latest Rank</span>
+                      <span className="text-xl md:text-2xl font-black flex items-center gap-1 font-display tracking-tight text-amber-400 drop-shadow-md">
+                        <Award className="w-5 h-5 text-yellow-400 shrink-0" />
+                        {bestRank ? `#${bestRank}` : "N/A"}
+                      </span>
                     </div>
-                    <div>
-                      <h3 className="text-sm font-bold text-white">Academic Assessment</h3>
-                      <p className="text-[10px] text-slate-500">
-                        Complete examination history
-                      </p>
+                  </div>
+                </div>
+
+                {/* KPI METRICS */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="bg-[#111827] rounded-xl p-3 md:p-3.5 border border-gray-800/80 shadow-xs hover:shadow-md transition-all border-b-4 border-b-blue-500">
+                    <span className="text-[9px] text-gray-500 uppercase tracking-widest font-mono font-bold block mb-0.5">AGGREGATE RATINGS</span>
+                    <div className="text-lg md:text-2xl font-black text-white font-display">
+                      {avgPct > 0 ? `${avgPct.toFixed(1)}%` : "0.0%"}
+                    </div>
+                    <div className="w-full bg-gray-800 rounded-full h-1 mt-2 overflow-hidden">
+                      <div className="bg-blue-500 h-1 rounded-full transition-all" style={{ width: `${Math.min(100, avgPct)}%` }} />
+                    </div>
+                  </div>
+
+                  <div className="bg-[#111827] rounded-xl p-3 md:p-3.5 border border-gray-800/80 shadow-xs hover:shadow-md transition-all border-b-4 border-b-emerald-500">
+                    <span className="text-[9px] text-gray-500 uppercase tracking-widest font-mono font-bold block mb-0.5">TOTAL EXAMINATIONS</span>
+                    <div className="text-lg md:text-2xl font-black text-white font-display">
+                      {tests.length} <span className="text-[10px] text-gray-400 font-medium">Recorded</span>
+                    </div>
+                    <p className="text-[9px] text-gray-500 mt-2 leading-none">Complete stream timeline</p>
+                  </div>
+
+                  <div className="bg-[#111827] rounded-xl p-3 md:p-3.5 border border-gray-800/80 shadow-xs hover:shadow-md transition-all border-b-4 border-b-violet-500">
+                    <span className="text-[9px] text-gray-500 uppercase tracking-widest font-mono font-bold block mb-0.5">OPTIMAL POSITION</span>
+                    <div className="text-lg md:text-2xl font-black text-violet-400 font-display">
+                      {bestRank ? `#${bestRank}` : "N/A"}
+                    </div>
+                    <p className="text-[9px] text-gray-500 mt-2 leading-none">Best center rank record</p>
+                  </div>
+
+                  <div className="bg-[#111827] rounded-xl p-3 md:p-3.5 border border-gray-800/80 shadow-xs hover:shadow-md transition-all border-b-4 border-b-amber-500">
+                    <span className="text-[9px] text-gray-500 uppercase tracking-widest font-mono font-bold block mb-0.5">AVG SCORE</span>
+                    <div className="text-lg md:text-2xl font-black text-amber-400 font-display">
+                      {avgPct > 0 ? `${avgPct.toFixed(1)}%` : "—"}
+                    </div>
+                    <p className="text-[9px] text-amber-400/85 mt-2 leading-none font-semibold">Overall performance index</p>
+                  </div>
+                </div>
+
+                {/* ASSESSMENT TABLE */}
+                <div className="bg-[#111827] rounded-2xl border border-gray-800/80 shadow-md overflow-hidden">
+                  {/* Table Header */}
+                  <div className="hidden md:flex px-4 py-2.5 bg-gray-900/10 border-b border-gray-800/80 items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-1.5 h-3.5 bg-blue-500 rounded-full" />
+                      <h3 className="text-xs font-extrabold text-white uppercase tracking-wider font-display">
+                        Academic Assessment Index
+                      </h3>
+                    </div>
+                    <span className="text-[9px] font-mono font-bold px-2.5 py-0.5 rounded-full bg-gray-800 text-gray-400 border border-gray-700/50">
+                      {tests.length} Examinations recorded
+                    </span>
+                  </div>
+
+                  {/* Mobile header */}
+                  <div className="md:hidden px-4 py-3 border-b border-gray-800/80">
+                    <div className="flex items-center gap-2">
+                      <div className="w-1.5 h-3.5 bg-blue-500 rounded-full" />
+                      <h3 className="text-xs font-extrabold text-white uppercase tracking-wider">Academic Assessment Index</h3>
                     </div>
                   </div>
 
                   {/* Desktop Table */}
                   <div className="hidden md:block overflow-x-auto custom-scrollbar">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="border-b border-white/5">
-                          <th className="text-left py-3 px-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider w-10">
-                            #
-                          </th>
-                          <th className="text-left py-3 px-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider min-w-[80px]">
-                            Date
-                          </th>
-                          <th className="text-left py-3 px-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider min-w-[200px]">
-                            Test Name
-                          </th>
-                          <th className="text-center py-3 px-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                            Max
-                          </th>
-                          <th className="text-center py-3 px-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                            Score
-                          </th>
-                          <th className="text-center py-3 px-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider min-w-[140px]">
-                            Subjects
-                          </th>
-                          <th className="text-center py-3 px-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                            Rank
-                          </th>
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead className="bg-gray-800/60 text-[9px] tracking-wider uppercase border-b border-gray-800/70 text-slate-400 font-semibold">
+                        <tr>
+                          <th className="px-3 py-2 text-left">Date</th>
+                          <th className="px-3 py-2 text-left min-w-[190px]">Test Name</th>
+                          <th className="px-3 py-2 text-center">Max Marks</th>
+                          <th className="px-3 py-2 text-center font-bold">Obtained</th>
+                          <th className="px-3 py-2 text-left text-blue-400 font-extrabold min-w-[130px]">Avg Score %</th>
+                          {allSubjects.map(sub => (
+                            <th key={sub} className="px-3 py-2 text-right capitalize">{sub}</th>
+                          ))}
+                          <th className="px-3 py-2 text-center font-bold">Rank</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {state.student.tests.map((test, idx) => {
+                        {tests.map((test, idx) => {
                           const s = parseSafe(test.score);
                           const o = parseSafe(test.outOf);
+                          const pct = o > 0 ? (s / o) * 100 : 0;
                           return (
-                            <tr
-                              key={idx}
-                              className="border-b border-white/[0.03] hover:bg-white/[0.03] transition-colors"
-                            >
-                              <td className="py-3 px-4 text-slate-500 font-mono text-[10px]">
-                                {idx + 1}
+                            <tr key={idx} className="border-b border-gray-800/40 hover:bg-white/[0.02] transition-colors">
+                              <td className="px-3 py-2.5 text-slate-400 font-mono text-[10px] whitespace-nowrap">{test.date || "–"}</td>
+                              <td className="px-3 py-2.5">
+                                <span className="text-blue-400 font-semibold text-[11px]">• {test.name}</span>
+                                {test.testClass && <span className="text-[9px] text-slate-500 block">{test.testClass}</span>}
                               </td>
-                              <td className="py-3 px-4 text-slate-300 font-mono text-[11px]">
-                                {test.date || "–"}
-                              </td>
-                              <td className="py-3 px-4">
-                                <p className="text-white font-semibold text-[11px] leading-snug">
-                                  {test.name}
-                                </p>
-                                {test.testClass && (
-                                  <p className="text-[9px] text-slate-500 mt-0.5">
-                                    {test.testClass}
-                                  </p>
-                                )}
-                              </td>
-                              <td className="py-3 px-4 text-center text-slate-300 font-mono">
-                                {o || "–"}
-                              </td>
-                              <td className={`py-3 px-4 text-center font-bold font-mono ${scoreColor(s, o)}`}>
-                                {s || "–"}
-                              </td>
-                              <td className="py-3 px-4 text-center">
-                                {test.subjectScores && test.subjectScores.length > 0 ? (
-                                  <div className="flex flex-wrap gap-1 justify-center">
-                                    {test.subjectScores.map((sub, si) => (
-                                      <span
-                                        key={si}
-                                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white/5 text-[9px] text-slate-300"
-                                      >
-                                        <span className="text-slate-500">{sub.subject}:</span>
-                                        <span className="font-bold font-mono">{sub.score}</span>
-                                      </span>
-                                    ))}
+                              <td className="px-3 py-2.5 text-center text-slate-300 font-mono">{o || "–"}</td>
+                              <td className={`px-3 py-2.5 text-center font-bold font-mono ${scoreColor(s, o)}`}>{s || "–"}</td>
+                              <td className="px-3 py-2.5">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[11px] font-bold text-blue-400 font-mono w-12">{pct > 0 ? `${pct.toFixed(1)}%` : "–"}</span>
+                                  <div className="flex-1 bg-gray-800 rounded-full h-1 overflow-hidden">
+                                    <div className="bg-blue-500 h-1 rounded-full" style={{ width: `${Math.min(100, pct)}%` }} />
                                   </div>
-                                ) : (
-                                  <span className="text-slate-600">–</span>
-                                )}
+                                </div>
                               </td>
-                              <td className="py-3 px-4 text-center">
+                              {allSubjects.map(sub => {
+                                const subScore = (test.subjectScores || []).find(ss => ss.subject === sub);
+                                return (
+                                  <td key={sub} className="px-3 py-2.5 text-right text-slate-300 font-mono text-[11px]">
+                                    {subScore ? subScore.score : "–"}
+                                  </td>
+                                );
+                              })}
+                              <td className="px-3 py-2.5 text-center">
                                 {parseSafe(test.centerRank) > 0 ? (
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 font-bold text-[10px] font-mono">
-                                    <Star className="w-2.5 h-2.5" />
-                                    {test.centerRank}
+                                  <span className="inline-flex items-center gap-0.5 font-black text-amber-400 text-[11px] font-mono">
+                                    <Award className="w-3 h-3" />#{test.centerRank}
                                   </span>
                                 ) : (
                                   <span className="text-slate-600">–</span>
@@ -649,85 +660,48 @@ export default function PublicResult() {
                   </div>
 
                   {/* Mobile Cards */}
-                  <div className="md:hidden divide-y divide-white/[0.04]">
-                    {state.student.tests.map((test, idx) => {
+                  <div className="md:hidden divide-y divide-gray-800/40">
+                    {tests.map((test, idx) => {
                       const s = parseSafe(test.score);
                       const o = parseSafe(test.outOf);
+                      const pct = o > 0 ? (s / o) * 100 : 0;
                       const isExpanded = expandedRows.has(idx);
                       const hasSubjects = test.subjectScores && test.subjectScores.length > 0;
-
                       return (
-                        <div
-                          key={idx}
-                          className="px-4 py-3.5 hover:bg-white/[0.02] transition-colors"
-                        >
-                          <div
-                            className="flex items-start justify-between gap-3 cursor-pointer"
-                            onClick={() => (hasSubjects ? toggleRow(idx) : undefined)}
-                          >
+                        <div key={idx} className="px-4 py-3.5 hover:bg-white/[0.02] transition-colors">
+                          <div className="flex items-start justify-between gap-3 cursor-pointer" onClick={() => hasSubjects && toggleRow(idx)}>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 mb-1">
-                                <span className="text-[9px] font-mono text-slate-600 bg-white/5 px-1.5 py-0.5 rounded">
-                                  #{idx + 1}
-                                </span>
                                 {test.date && (
                                   <span className="text-[10px] text-slate-500 font-mono flex items-center gap-1">
-                                    <CalendarDays className="w-2.5 h-2.5" />
-                                    {test.date}
+                                    <CalendarDays className="w-2.5 h-2.5" />{test.date}
                                   </span>
                                 )}
                               </div>
-                              <p className="text-[12px] text-white font-semibold leading-snug">
-                                {test.name}
-                              </p>
-                              {test.testClass && (
-                                <p className="text-[9px] text-slate-500 mt-0.5">
-                                  {test.testClass}
-                                </p>
-                              )}
+                              <p className="text-[12px] text-blue-400 font-semibold leading-snug">• {test.name}</p>
                             </div>
                             <div className="flex flex-col items-end gap-1 shrink-0">
                               <span className={`text-sm font-extrabold font-mono ${scoreColor(s, o)}`}>
-                                {s || "–"}
-                                <span className="text-[10px] text-slate-500 font-normal">
-                                  /{o || "–"}
-                                </span>
+                                {s || "–"}<span className="text-[10px] text-slate-500 font-normal">/{o || "–"}</span>
                               </span>
+                              <span className="text-[10px] font-bold text-blue-400 font-mono">{pct > 0 ? `${pct.toFixed(1)}%` : ""}</span>
                               {parseSafe(test.centerRank) > 0 && (
                                 <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-amber-400 font-mono">
-                                  <Star className="w-2.5 h-2.5" />
-                                  Rank {test.centerRank}
+                                  <Award className="w-2.5 h-2.5" />#{test.centerRank}
                                 </span>
                               )}
-                              {hasSubjects && (
-                                isExpanded ? (
-                                  <ChevronUp className="w-3.5 h-3.5 text-slate-500" />
-                                ) : (
-                                  <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
-                                )
-                              )}
+                              {hasSubjects && (isExpanded ? <ChevronUp className="w-3.5 h-3.5 text-slate-500" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-500" />)}
                             </div>
                           </div>
-
-                          {/* Expanded subjects */}
                           <AnimatePresence>
                             {isExpanded && hasSubjects && (
-                              <motion.div
-                                initial={{ height: 0, opacity: 0 }}
-                                animate={{ height: "auto", opacity: 1 }}
-                                exit={{ height: 0, opacity: 0 }}
-                                transition={{ duration: 0.2 }}
-                                className="overflow-hidden"
-                              >
-                                <div className="flex flex-wrap gap-1.5 mt-2.5 pt-2.5 border-t border-white/5">
+                              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden">
+                                <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-white/5">
                                   {test.subjectScores!.map((sub, si) => (
-                                    <span
-                                      key={si}
-                                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-white/5 text-[10px] text-slate-300 border border-white/5"
-                                    >
-                                      <span className="text-slate-500">{sub.subject}</span>
-                                      <span className="font-bold font-mono">{sub.score}</span>
-                                    </span>
+                                    <div key={si} className="bg-white/5 rounded-lg px-3 py-2 flex justify-between items-center">
+                                      <span className="text-[10px] text-slate-400">{sub.subject}</span>
+                                      <span className="text-[11px] font-bold text-white font-mono">{sub.score}</span>
+                                    </div>
                                   ))}
                                 </div>
                               </motion.div>
@@ -738,15 +712,16 @@ export default function PublicResult() {
                     })}
                   </div>
 
-                  {state.student.tests.length === 0 && (
+                  {tests.length === 0 && (
                     <div className="py-12 text-center">
                       <BookOpen className="w-8 h-8 text-slate-600 mx-auto mb-2" />
                       <p className="text-sm text-slate-500">No examination records found.</p>
                     </div>
                   )}
-                </GlassCard>
+                </div>
               </motion.div>
-            )}
+              );
+            })()}
           </AnimatePresence>
         </main>
 
