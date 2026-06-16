@@ -3409,16 +3409,17 @@ app.post("/api/timetable/write-sheet", verifyRequest, superAdminOnly, async (req
 /**
  * POST /api/timetable/write-raw
  * Write raw 2D string values to a new tab in the timetable spreadsheet
- * WITH full colour formatting matching the original sheet layout.
+ * WITH exact colour formatting copied from the source sheet.
  *
  * Body: {
  *   tabName: string,       // e.g. "22nd-27th June 2026"
- *   values: string[][]     // 2D array of cell values
+ *   values: string[][],    // 2D array of cell values
+ *   formats?: any[][]      // Optional: 2D array of cell formats from source
  * }
  */
 app.post("/api/timetable/write-raw", verifyRequest, superAdminOnly, async (req, res) => {
   try {
-    const { tabName, values } = req.body;
+    const { tabName, values, formats } = req.body;
 
     if (!tabName || typeof tabName !== "string") {
       return res.status(400).json({ error: "'tabName' string is required." });
@@ -3475,124 +3476,99 @@ app.post("/api/timetable/write-raw", verifyRequest, superAdminOnly, async (req, 
       { method: "PUT", body: JSON.stringify({ values }) },
     );
 
-    // 3. Apply colour formatting to match original sheet
-    const hex = (h: string) => {
-      const x = h.replace("#", "");
-      return {
-        red: parseInt(x.substring(0, 2), 16) / 255,
-        green: parseInt(x.substring(2, 4), 16) / 255,
-        blue: parseInt(x.substring(4, 6), 16) / 255,
-      };
-    };
-
-    const SHEET_COLORS = {
-      HEADER:  hex("#FFFF00"),  // Yellow — batch name row
-      ROOM:    hex("#FF00FF"),  // Magenta — room row
-      MON:     hex("#FF8C00"),  // Orange
-      TUE:     hex("#9933FF"),  // Purple
-      WED:     hex("#00CC00"),  // Green
-      THU:     hex("#00BFFF"),  // Cyan
-      FRI:     hex("#FF3366"),  // Pink
-      SAT:     hex("#CC0000"),  // Red
-      SEP:     hex("#00FF00"),  // Green — JEE/NEET separator
-      HOLIDAY: hex("#FFFF00"),  // Yellow
-      WHITE:   hex("#FFFFFF"),
-    };
-
-    const DAY_COLORS: Record<string, typeof SHEET_COLORS.MON> = {
-      MONDAY: SHEET_COLORS.MON,    TUESDAY: SHEET_COLORS.TUE,
-      WEDNESDAY: SHEET_COLORS.WED, THURSDAY: SHEET_COLORS.THU,
-      FRIDAY: SHEET_COLORS.FRI,    SATURDAY: SHEET_COLORS.SAT,
-    };
-
-    const DAY_NAMES = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
+    // 3. Apply formatting — use exact source formats if available
     const formatRequests: any[] = [];
-    let currentDay = "";
 
-    for (let r = 0; r < values.length; r++) {
-      const row = values[r] || [];
-      const isHeaderRow = r === 0;
-      const isRoomRow = r === 1;
+    if (formats && Array.isArray(formats) && formats.length > 0) {
+      // ═══ EXACT COPY from source formatting ═══
+      for (let r = 0; r < formats.length; r++) {
+        const fmtRow = formats[r];
+        if (!fmtRow || !Array.isArray(fmtRow)) continue;
+        for (let c = 0; c < fmtRow.length; c++) {
+          const fmt = fmtRow[c];
+          if (!fmt) continue;
 
-      // Detect day from column 0
-      const col0 = String(row[0] || "").trim().toUpperCase();
-      if (DAY_NAMES.includes(col0)) currentDay = col0;
+          const cellFormat: any = {};
+          const fields: string[] = [];
 
-      // Check if this row has HOLIDAY
-      const isHolidayRow = row.some((cell: string) => String(cell).trim().toUpperCase() === "HOLIDAY");
-
-      for (let c = 0; c < row.length; c++) {
-        const cellVal = String(row[c] || "").trim().toUpperCase();
-        let bgColor = SHEET_COLORS.WHITE;
-        let isBold = false;
-        let fontSize = 10;
-
-        if (isHeaderRow) {
-          // Row 0: batch name headers — yellow, bold
-          if (c >= 2) {
-            bgColor = SHEET_COLORS.HEADER;
-            isBold = true;
-            fontSize = 10;
+          if (fmt.bg) {
+            cellFormat.backgroundColor = fmt.bg;
+            fields.push("userEnteredFormat.backgroundColor");
           }
-        } else if (isRoomRow) {
-          // Row 1: room numbers — magenta, bold
-          if (c >= 2) {
-            bgColor = SHEET_COLORS.ROOM;
-            isBold = true;
-            fontSize = 9;
-          }
-        } else if (r >= 2) {
-          // Data rows
-          if (c === 0 && DAY_NAMES.includes(cellVal)) {
-            // Day name cell — day color, bold
-            bgColor = DAY_COLORS[cellVal] || SHEET_COLORS.WHITE;
-            isBold = true;
-          } else if (isHolidayRow && cellVal === "HOLIDAY") {
-            bgColor = SHEET_COLORS.HOLIDAY;
-            isBold = true;
-          } else if (c >= 2 && cellVal && currentDay) {
-            // Teacher cells — light day color (only for first 3 slots per day)
-            const dayColor = DAY_COLORS[currentDay];
-            if (dayColor && cellVal.length >= 2 && cellVal.length <= 8) {
-              // Use a lighter version of the day color for teacher cells
-              bgColor = {
-                red: Math.min(1, dayColor.red * 0.3 + 0.7),
-                green: Math.min(1, dayColor.green * 0.3 + 0.7),
-                blue: Math.min(1, dayColor.blue * 0.3 + 0.7),
-              };
-            }
+          if (fmt.tf) {
+            cellFormat.textFormat = {};
+            if (fmt.tf.bold) cellFormat.textFormat.bold = true;
+            if (fmt.tf.fontSize) cellFormat.textFormat.fontSize = fmt.tf.fontSize;
+            if (fmt.tf.fg) cellFormat.textFormat.foregroundColor = fmt.tf.fg;
+            fields.push("userEnteredFormat.textFormat");
           }
 
-          // JEE/NEET separator check
-          if (cellVal === "JEE" || cellVal === "NEET" || cellVal === "DROPPER") {
-            bgColor = SHEET_COLORS.SEP;
-            isBold = true;
+          if (fields.length > 0) {
+            formatRequests.push({
+              repeatCell: {
+                range: {
+                  sheetId: newSheetId,
+                  startRowIndex: r,
+                  endRowIndex: r + 1,
+                  startColumnIndex: c,
+                  endColumnIndex: c + 1,
+                },
+                cell: { userEnteredFormat: cellFormat },
+                fields: fields.join(","),
+              },
+            });
           }
         }
+      }
+    } else {
+      // ═══ FALLBACK: auto-detect formatting from values ═══
+      const hex = (h: string) => {
+        const x = h.replace("#", "");
+        return {
+          red: parseInt(x.substring(0, 2), 16) / 255,
+          green: parseInt(x.substring(2, 4), 16) / 255,
+          blue: parseInt(x.substring(4, 6), 16) / 255,
+        };
+      };
+      const SC = {
+        HEADER: hex("#FFFF00"), ROOM: hex("#FF00FF"),
+        MON: hex("#FF8C00"), TUE: hex("#9933FF"), WED: hex("#00CC00"),
+        THU: hex("#00BFFF"), FRI: hex("#FF3366"), SAT: hex("#CC0000"),
+        HOLIDAY: hex("#FFFF00"), WHITE: hex("#FFFFFF"),
+      };
+      const DC: Record<string, any> = {
+        MONDAY: SC.MON, TUESDAY: SC.TUE, WEDNESDAY: SC.WED,
+        THURSDAY: SC.THU, FRIDAY: SC.FRI, SATURDAY: SC.SAT,
+      };
+      const DN = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
+      let curDay = "";
 
-        // Only emit formatting if not plain white
-        if (bgColor !== SHEET_COLORS.WHITE || isBold) {
-          formatRequests.push({
-            repeatCell: {
-              range: {
-                sheetId: newSheetId,
-                startRowIndex: r,
-                endRowIndex: r + 1,
-                startColumnIndex: c,
-                endColumnIndex: c + 1,
+      for (let r = 0; r < values.length; r++) {
+        const row = values[r] || [];
+        const col0 = String(row[0] || "").trim().toUpperCase();
+        if (DN.includes(col0)) curDay = col0;
+        for (let c = 0; c < row.length; c++) {
+          const val = String(row[c] || "").trim().toUpperCase();
+          let bg = SC.WHITE, bold = false;
+          if (r === 0 && c >= 2) { bg = SC.HEADER; bold = true; }
+          else if (r === 1 && c >= 2) { bg = SC.ROOM; bold = true; }
+          else if (r >= 2) {
+            if (c === 0 && DN.includes(val)) { bg = DC[val]; bold = true; }
+            else if (val === "HOLIDAY") { bg = SC.HOLIDAY; bold = true; }
+            else if (c >= 2 && val && curDay && DC[curDay] && val.length >= 2 && val.length <= 8) {
+              const d = DC[curDay];
+              bg = { red: Math.min(1, d.red * 0.3 + 0.7), green: Math.min(1, d.green * 0.3 + 0.7), blue: Math.min(1, d.blue * 0.3 + 0.7) };
+            }
+          }
+          if (bg !== SC.WHITE || bold) {
+            formatRequests.push({
+              repeatCell: {
+                range: { sheetId: newSheetId, startRowIndex: r, endRowIndex: r + 1, startColumnIndex: c, endColumnIndex: c + 1 },
+                cell: { userEnteredFormat: { backgroundColor: bg, textFormat: { bold, fontSize: 10 } } },
+                fields: "userEnteredFormat(backgroundColor,textFormat)",
               },
-              cell: {
-                userEnteredFormat: {
-                  backgroundColor: bgColor,
-                  textFormat: {
-                    bold: isBold,
-                    fontSize: fontSize,
-                  },
-                },
-              },
-              fields: "userEnteredFormat(backgroundColor,textFormat)",
-            },
-          });
+            });
+          }
         }
       }
     }
@@ -3613,7 +3589,7 @@ app.post("/api/timetable/write-raw", verifyRequest, superAdminOnly, async (req, 
 
     res.json({
       success: true,
-      message: `Timetable written to tab "${tabName}" with formatting.`,
+      message: `Timetable written to tab "${tabName}" with exact formatting.`,
       sheetId: newSheetId,
     });
   } catch (err: any) {
@@ -3646,7 +3622,7 @@ app.get("/api/timetable/tabs", verifyRequest, superAdminOnly, async (req, res) =
 
 /**
  * GET /api/timetable/tab-values
- * Return raw 2D values of a specific tab
+ * Return raw 2D values AND formatting of a specific tab
  */
 app.get("/api/timetable/tab-values", verifyRequest, superAdminOnly, async (req, res) => {
   try {
@@ -3654,11 +3630,46 @@ app.get("/api/timetable/tab-values", verifyRequest, superAdminOnly, async (req, 
     if (!tabName) {
       return res.status(400).json({ error: "tabName parameter is required" });
     }
-    const data = await settingsStore.timetableApiFetch(
+
+    // Fetch values
+    const valData = await settingsStore.timetableApiFetch(
       settingsStore.TIMETABLE_SPREADSHEET_ID,
       `/values/${encodeURIComponent(tabName)}`
     );
-    res.json({ success: true, values: data.values || [] });
+    const values: string[][] = valData.values || [];
+
+    // Fetch formatting (backgroundColor + textFormat per cell)
+    let formats: any[][] = [];
+    try {
+      const fmtData = await settingsStore.timetableApiFetch(
+        settingsStore.TIMETABLE_SPREADSHEET_ID,
+        `?ranges=${encodeURIComponent(tabName)}&fields=sheets.data.rowData.values.userEnteredFormat`
+      );
+      const rowData = fmtData?.sheets?.[0]?.data?.[0]?.rowData || [];
+      formats = rowData.map((row: any) => {
+        return (row.values || []).map((cell: any) => {
+          const fmt = cell?.userEnteredFormat;
+          if (!fmt) return null;
+          // Only keep bg color + text format (bold, fontSize)
+          const result: any = {};
+          if (fmt.backgroundColor) {
+            result.bg = fmt.backgroundColor;
+          }
+          if (fmt.textFormat) {
+            result.tf = {};
+            if (fmt.textFormat.bold) result.tf.bold = true;
+            if (fmt.textFormat.fontSize) result.tf.fontSize = fmt.textFormat.fontSize;
+            if (fmt.textFormat.foregroundColor) result.tf.fg = fmt.textFormat.foregroundColor;
+          }
+          return Object.keys(result).length > 0 ? result : null;
+        });
+      });
+    } catch (fmtErr: any) {
+      console.warn("[tab-values] Could not fetch formatting:", fmtErr.message);
+      // Continue without formatting — values are still useful
+    }
+
+    res.json({ success: true, values, formats });
   } catch (err: any) {
     res.status(500).json({ error: `Failed to fetch data for tab "${req.query.tabName}": ` + err.message });
   }

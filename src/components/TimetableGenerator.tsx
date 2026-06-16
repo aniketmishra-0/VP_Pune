@@ -257,6 +257,7 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
 
   // Sheet Editor — live spreadsheet editing
   const [sheetData, setSheetData] = useState<string[][] | null>(null);
+  const [sheetFormats, setSheetFormats] = useState<any[][] | null>(null);
   const [sheetSourceTab, setSheetSourceTab] = useState("");
   const [sheetEditingCell, setSheetEditingCell] = useState<{ r: number; c: number } | null>(null);
   const [sheetCopyName, setSheetCopyName] = useState("");
@@ -722,6 +723,7 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
       });
 
       setSheetData(normalized);
+      setSheetFormats(d.formats || null);
       setSheetSourceTab(selectedLoadTab);
       setSheetCopyName(`${selectedLoadTab} (Copy)`);
       setSheetEditingCell(null);
@@ -744,17 +746,18 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
         body: JSON.stringify({
           tabName: sheetCopyName.trim(),
           values: sheetData,
+          formats: sheetFormats || undefined,
         }),
       });
       const d = await r.json();
       if (!r.ok || !d.success) throw new Error(d.error || "Failed to save");
-      setSheetSaveResult({ success: true, message: `Saved as "${sheetCopyName.trim()}" ✓` });
+      setSheetSaveResult({ success: true, message: `Saved as "${sheetCopyName.trim()}" with exact formatting ✓` });
     } catch (err: any) {
       setSheetSaveResult({ success: false, message: err.message || "Save failed" });
     } finally {
       setSheetSaving(false);
     }
-  }, [sheetData, sheetCopyName, adminHeaders]);
+  }, [sheetData, sheetFormats, sheetCopyName, adminHeaders]);
 
   // ─── Sheet Editor: Update cell ─────────────────────────────────────
   const handleSheetCellChange = useCallback((r: number, c: number, value: string) => {
@@ -1405,7 +1408,7 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
                   <div className="flex flex-col sm:flex-row gap-3">
                     <select
                       value={selectedLoadTab}
-                      onChange={(e) => { setSelectedLoadTab(e.target.value); setLoadError(null); setSheetData(null); setSheetSaveResult(null); }}
+                      onChange={(e) => { setSelectedLoadTab(e.target.value); setLoadError(null); setSheetData(null); setSheetFormats(null); setSheetSaveResult(null); }}
                       className="flex-1 bg-slate-50 dark:bg-gray-900/40 rounded-xl border border-slate-200 dark:border-gray-800 px-4 py-3 text-xs text-slate-700 dark:text-slate-200 outline-none focus:border-[#5277f7] transition-colors"
                     >
                       <option value="">-- Choose Week / Subsheet --</option>
@@ -1453,7 +1456,7 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
                           Undo
                         </button>
                         <button
-                          onClick={() => { setSheetData(null); setSheetSourceTab(""); setSheetSaveResult(null); setSheetUndoStack([]); }}
+                          onClick={() => { setSheetData(null); setSheetFormats(null); setSheetSourceTab(""); setSheetSaveResult(null); setSheetUndoStack([]); }}
                           className="flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-red-500 cursor-pointer transition-colors"
                         >
                           <X className="w-3 h-3" />
@@ -1585,14 +1588,30 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
                                   const isHighlighted = sheetFindText && cell.toUpperCase() === sheetFindText.toUpperCase();
                                   const isDay = cIdx === 0 && rIdx >= 2 && cell.trim().length > 0;
 
+                                  // Get source formatting for this cell
+                                  const cellFmt = sheetFormats?.[rIdx]?.[cIdx];
+                                  const inlineStyle: React.CSSProperties = {};
+                                  if (cellFmt?.bg && !isConflict && !isHighlighted) {
+                                    const bg = cellFmt.bg;
+                                    inlineStyle.backgroundColor = `rgba(${Math.round((bg.red || 0) * 255)}, ${Math.round((bg.green || 0) * 255)}, ${Math.round((bg.blue || 0) * 255)}, 0.45)`;
+                                  }
+                                  if (cellFmt?.tf?.bold) {
+                                    inlineStyle.fontWeight = "bold";
+                                  }
+                                  if (cellFmt?.tf?.fg) {
+                                    const fg = cellFmt.tf.fg;
+                                    inlineStyle.color = `rgb(${Math.round((fg.red || 0) * 255)}, ${Math.round((fg.green || 0) * 255)}, ${Math.round((fg.blue || 0) * 255)})`;
+                                  }
+
                                   return (
                                     <td
                                       key={cIdx}
+                                      style={inlineStyle}
                                       className={`border border-slate-200/30 dark:border-gray-800/30 px-1.5 py-[3px] min-w-[42px] max-w-[90px] transition-all ${
-                                        isHeaderRow ? "font-bold text-[#5277f7] dark:text-[#7b9bff] text-center text-[9px] py-1.5" :
-                                        isRoomRow ? "font-bold text-[9px] text-slate-400 text-center" :
-                                        isDay ? `font-bold text-slate-700 dark:text-slate-200 bg-slate-50/30 dark:bg-gray-900/20 ${rowDayColor}` :
-                                        "text-slate-700 dark:text-slate-200"
+                                        isHeaderRow && !cellFmt ? "font-bold text-[#5277f7] dark:text-[#7b9bff] text-center text-[9px] py-1.5" :
+                                        isRoomRow && !cellFmt ? "font-bold text-[9px] text-slate-400 text-center" :
+                                        isDay && !cellFmt ? `font-bold text-slate-700 dark:text-slate-200 bg-slate-50/30 dark:bg-gray-900/20 ${rowDayColor}` :
+                                        !cellFmt ? "text-slate-700 dark:text-slate-200" : ""
                                       } ${isConflict ? "!bg-red-500/15 !text-red-600 dark:!text-red-400 ring-1 ring-red-500/30 ring-inset" : ""}
                                       ${isHighlighted ? "!bg-amber-400/20 !text-amber-700 dark:!text-amber-300 ring-1 ring-amber-400/40 ring-inset" : ""}
                                       ${!isEditing && !isHeaderRow ? "cursor-pointer hover:bg-[#5277f7]/5" : ""}`}
@@ -1628,7 +1647,7 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
                                           className="w-full bg-white dark:bg-gray-900 border border-[#5277f7] rounded px-1 py-0.5 text-[10px] outline-none text-slate-800 dark:text-white"
                                         />
                                       ) : (
-                                        <span className="block truncate" title={cell}>{cell || "\u00A0"}</span>
+                                        <span className="block whitespace-nowrap" title={cell}>{cell || "\u00A0"}</span>
                                       )}
                                     </td>
                                   );
