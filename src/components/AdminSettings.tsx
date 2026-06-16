@@ -111,12 +111,14 @@ const RoleIcon = ({ role }: { role: Role }) =>
 
 interface AdminSettingsProps {
   currentUser: SessionUser;
+  isSuperAdmin?: boolean;
   onClose: () => void;
   onUnreadChange?: (n: number) => void;
 }
 
 const AdminSettings: React.FC<AdminSettingsProps> = ({
   currentUser,
+  isSuperAdmin = false,
   onClose,
   onUnreadChange,
 }) => {
@@ -537,7 +539,8 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({
                             <span className="text-[9px] font-mono font-bold text-slate-400 uppercase shrink-0">
                               Role:
                             </span>
-                            {(["admin", "teacher", "staff"] as Role[]).map((r) => (
+                            {/* Only super-admin can assign admin role; other admins see teacher/staff only */}
+                            {(["admin", "teacher", "staff"] as Role[]).filter(r => r !== "admin" || isSuperAdmin).map((r) => (
                               <button
                                 key={r}
                                 onClick={(e) => {
@@ -728,7 +731,7 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[10px] font-mono font-bold text-slate-400 uppercase">Assign role:</span>
-              {(["staff", "teacher", "admin"] as Role[]).map((r) => (
+              {(["staff", "teacher", "admin"] as Role[]).filter(r => r !== "admin" || isSuperAdmin).map((r) => (
                 <button
                   key={r}
                   onClick={() => setBulkRole(r)}

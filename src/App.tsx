@@ -49,6 +49,7 @@ import FloatingEducationBg from "./components/FloatingEducationBg";
 import InstallPrompt from "./components/InstallPrompt";
 import TimetableViewer from "./components/TimetableViewer";
 import TimetableGenerator from "./components/TimetableGenerator";
+import ErrorBoundary from "./components/ErrorBoundary";
 import TimetableConfig from "./components/TimetableConfig";
 
 function PWLogo({ size = "h-10 w-10", textSize = "text-sm", className = "" }: { size?: string, textSize?: string, className?: string }) {
@@ -1740,8 +1741,8 @@ export default function App() {
                 <GraduationCap className="w-5 h-5" />
               </button>
 
-              {/* Assessment Sub-Sheets Directory Tab — super-admin only */}
-              {isSuperAdmin && (
+              {/* Assessment Sub-Sheets Directory Tab — admin only */}
+              {isAdmin && (
               <button
                 onClick={() => { setActiveView("sheetsList"); setErrorMessage(null); }}
                 className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all cursor-pointer ${
@@ -1765,8 +1766,8 @@ export default function App() {
                 <RefreshCw className={`w-5 h-5 ${isRefreshing ? "animate-spin text-[#5277f7]" : ""}`} />
               </button>
 
-              {/* Configuration Settings Tab — super-admin only */}
-              {isSuperAdmin && (
+              {/* Configuration Settings Tab — admin only */}
+              {isAdmin && (
               <button
                 onClick={() => { setActiveView("admin"); setErrorMessage(null); }}
                 className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all cursor-pointer ${
@@ -3043,7 +3044,7 @@ export default function App() {
             </motion.div>
           )}
 
-          {activeView === "admin" && isSuperAdmin && (
+          {activeView === "admin" && isAdmin && (
             <motion.div
               key="admin"
               initial={{ opacity: 0, y: 15 }}
@@ -4062,7 +4063,9 @@ export default function App() {
               exit={{ opacity: 0, y: -15 }}
               className="space-y-6 max-w-7xl mx-auto py-2 w-full text-slate-800 dark:text-slate-100"
             >
-              <TimetableGenerator adminHeaders={adminHeaders} />
+              <ErrorBoundary fallbackTitle="Timetable Generator crashed">
+                <TimetableGenerator adminHeaders={adminHeaders} />
+              </ErrorBoundary>
             </motion.div>
           )}
 
@@ -4113,8 +4116,8 @@ export default function App() {
             <span className="text-[10px] font-semibold tracking-tight font-sans leading-tight">Directory</span>
           </button>
 
-          {/* Sheets Directory Tab — super-admin only */}
-          {isSuperAdmin && (
+          {/* Sheets Directory Tab — admin only */}
+          {isAdmin && (
           <button
             onClick={() => { setActiveView("sheetsList"); setErrorMessage(null); }}
             className={`flex flex-col items-center justify-center gap-1 w-14 py-1 rounded-xl transition-all cursor-pointer outline-none ${
@@ -4128,8 +4131,8 @@ export default function App() {
           </button>
           )}
 
-          {/* Config Settings Tab — super-admin only */}
-          {isSuperAdmin && (
+          {/* Config Settings Tab — admin only */}
+          {isAdmin && (
           <button
             onClick={() => { setActiveView("admin"); setErrorMessage(null); }}
             className={`flex flex-col items-center justify-center gap-1 w-14 py-1 rounded-xl transition-all cursor-pointer outline-none ${
@@ -4180,6 +4183,7 @@ export default function App() {
           <div className="min-h-full flex items-start justify-center py-2 sm:py-4">
             <AdminSettings
               currentUser={{ email: loggedInUser.email, name: loggedInUser.name, role: userRole, center: userCenter } as SessionUser}
+              isSuperAdmin={isSuperAdmin}
               onClose={() => setShowAdminPanel(false)}
               onUnreadChange={(n) => setNotifUnread(n)}
             />

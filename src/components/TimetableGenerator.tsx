@@ -454,8 +454,12 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
       const first = swapSelection;
       const second = { day, slotId, batchCode };
       
-      const teacher1 = previewGrid?.lookup.get(`${first.day}-${first.slotId}-${first.batchCode}`) || "";
-      const teacher2 = previewGrid?.lookup.get(`${second.day}-${second.slotId}-${second.batchCode}`) || "";
+      // Build lookup directly from generatedSlots (avoids forward reference to previewGrid)
+      const findTeacher = (d: string, s: number, bc: string) =>
+        generatedSlots.find(sl => sl.day === d && sl.slotNum === s && sl.batchCode === bc)?.teacherCode || "";
+      
+      const teacher1 = findTeacher(first.day, first.slotId, first.batchCode);
+      const teacher2 = findTeacher(second.day, second.slotId, second.batchCode);
       
       const sec1 = allBatches.find(b => b.code === first.batchCode)?.section || "JEE";
       const sec2 = allBatches.find(b => b.code === second.batchCode)?.section || "JEE";
@@ -466,7 +470,7 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
       setSwapSelection(null);
       setIsSwapMode(false);
     }
-  }, [swapSelection, previewGrid, allBatches, handleCellEdit]);
+  }, [swapSelection, generatedSlots, allBatches, handleCellEdit]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

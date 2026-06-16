@@ -2309,6 +2309,11 @@ app.post("/api/admin/users/role", (req, res) => {
   if (!email || !VALID_ROLES.includes(role)) {
     return res.status(400).json({ error: "Valid email and role (admin/teacher/staff) required." });
   }
+  // Only super-admins can assign the "admin" role
+  const requesterEmail = String(req.headers["x-user-email"] || "").trim().toLowerCase();
+  if (role === "admin" && !isSuperAdmin(requesterEmail)) {
+    return res.status(403).json({ error: "Only the super-admin can assign admin privileges." });
+  }
   const existing = appState.users[email];
   // Prevent demoting the last remaining admin
   if (existing && existing.role === "admin" && role !== "admin") {
@@ -2344,6 +2349,11 @@ app.post("/api/admin/users/bulk", (req, res) => {
   const center = req.body?.center !== undefined ? String(req.body.center).trim() : "";
   if (!VALID_ROLES.includes(role)) {
     return res.status(400).json({ error: "Invalid role." });
+  }
+  // Only super-admins can bulk-assign the "admin" role
+  const bulkRequester = String(req.headers["x-user-email"] || "").trim().toLowerCase();
+  if (role === "admin" && !isSuperAdmin(bulkRequester)) {
+    return res.status(403).json({ error: "Only the super-admin can assign admin privileges." });
   }
   // Split on commas, semicolons, whitespace or newlines
   const candidates = raw
