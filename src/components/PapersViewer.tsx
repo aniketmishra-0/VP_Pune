@@ -14,6 +14,8 @@ import {
   X,
   Copy,
   Check,
+  Folder,
+  FolderOpen,
 } from "lucide-react";
 
 interface PaperLink {
@@ -91,6 +93,11 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
     }
 
     return url;
+  }, []);
+
+  const isFolderUrl = useCallback((url: string): boolean => {
+    if (!url) return false;
+    return url.includes("drive.google.com") && url.includes("/folders/");
   }, []);
 
   const handleCopyLink = useCallback((url: string) => {
@@ -753,14 +760,66 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
                 </div>
               </div>
 
-              {/* Modal Body (IFrame Preview) */}
+              {/* Modal Body (IFrame Preview or Folder View) */}
               <div className="flex-1 bg-slate-50 dark:bg-gray-950 p-4 relative">
-                <iframe
-                  src={getEmbedUrl(previewDoc.url)}
-                  className="w-full h-full border-0 rounded-2xl bg-white dark:bg-[#111827] shadow-inner"
-                  allow="autoplay"
-                  title="PDF Preview"
-                />
+                {isFolderUrl(previewDoc.url) ? (
+                  <div className="w-full h-full flex items-center justify-center overflow-y-auto">
+                    <div className="w-full max-w-md bg-white dark:bg-[#111827] rounded-3xl shadow-xl border border-slate-200/50 dark:border-gray-800/40 p-8 flex flex-col items-center text-center">
+                      <div className="relative mb-6">
+                        {/* Decorative glowing background */}
+                        <div className="absolute inset-0 bg-[#5277f7]/10 dark:bg-blue-500/10 rounded-full blur-2xl w-24 h-24 -translate-x-2 -translate-y-2" />
+                        
+                        <div className="relative w-20 h-20 bg-blue-50 dark:bg-blue-950/40 rounded-2xl flex items-center justify-center border border-blue-100 dark:border-blue-900/30">
+                          <FolderOpen className="w-10 h-10 text-[#5277f7] dark:text-blue-400 animate-pulse" />
+                        </div>
+                      </div>
+
+                      <h3 className="text-base font-bold text-slate-800 dark:text-white mb-2">
+                        Google Drive Folder
+                      </h3>
+                      
+                      <p className="text-xs text-slate-500 dark:text-gray-400 max-w-sm mb-6 leading-relaxed">
+                        This link contains a folder with multiple papers or files. Due to security restrictions, folders cannot be previewed directly inside the application.
+                      </p>
+
+                      <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+                        <a
+                          href={previewDoc.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 bg-[#5277f7] hover:bg-blue-600 text-white rounded-xl text-xs font-bold transition-all shadow-md hover:shadow-lg shadow-blue-500/10 hover:shadow-blue-500/20 active:scale-95 cursor-pointer"
+                        >
+                          <ExternalLink className="w-4 h-4" />
+                          Open Folder
+                        </a>
+                        
+                        <button
+                          onClick={() => handleCopyLink(previewDoc.url)}
+                          className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 bg-slate-50 hover:bg-slate-100 dark:bg-gray-800 dark:hover:bg-gray-700 text-slate-700 dark:text-gray-250 rounded-xl text-xs font-bold border border-slate-200/50 dark:border-gray-700 transition-all cursor-pointer active:scale-95"
+                        >
+                          {copied ? (
+                            <>
+                              <Check className="w-4 h-4 text-emerald-500" />
+                              Copied!
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-4 h-4 text-slate-400" />
+                              Copy Link
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <iframe
+                    src={getEmbedUrl(previewDoc.url)}
+                    className="w-full h-full border-0 rounded-2xl bg-white dark:bg-[#111827] shadow-inner"
+                    allow="autoplay"
+                    title="PDF Preview"
+                  />
+                )}
               </div>
             </motion.div>
           </motion.div>
