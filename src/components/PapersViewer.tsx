@@ -579,6 +579,11 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
                                 Phase {paper.phase}
                               </span>
                             )}
+                            {selectedSheetName && (
+                              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-300 border border-violet-100/20 uppercase">
+                                {selectedSheetName}
+                              </span>
+                            )}
                           </div>
                         </div>
                       </td>
@@ -739,6 +744,11 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
                       Phase {paper.phase}
                     </span>
                   )}
+                  {selectedSheetName && (
+                    <span className="px-1.5 py-0.5 rounded text-[8px] font-bold bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-300 border border-violet-100/20 uppercase">
+                      {selectedSheetName}
+                    </span>
+                  )}
                 </div>
 
                 <hr className="border-slate-100 dark:border-gray-800/30" />
@@ -813,7 +823,9 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.95, opacity: 0, y: 20 }}
               className={`relative w-full bg-white dark:bg-[#111827] rounded-3xl shadow-2xl flex flex-col overflow-hidden border border-slate-200/50 dark:border-gray-800/40 z-10 transition-all duration-300 ${
-                isFolderUrl(previewDoc.url) ? "max-w-md h-auto mx-4 my-auto" : "max-w-6xl h-[85vh]"
+                isFolderUrl(previewDoc.url)
+                  ? "max-w-md h-auto mx-4 my-auto md:mx-auto"
+                  : "max-w-md h-auto mx-4 my-auto md:max-w-6xl md:h-[85vh] md:mx-auto"
               }`}
             >
               {/* Modal Header */}
@@ -831,38 +843,40 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  {!isFolderUrl(previewDoc.url) && (
-                    <>
-                      <button
-                        onClick={() => handleCopyLink(previewDoc.url)}
-                        className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-gray-800 rounded-xl transition-all cursor-pointer flex items-center gap-1 text-[10px] font-bold"
-                        title="Copy direct Google Drive URL"
-                      >
-                        {copied ? (
-                          <>
-                            <Check className="w-4 h-4 text-emerald-500" />
-                            Copied!
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="w-4 h-4" />
-                            Copy Link
-                          </>
-                        )}
-                      </button>
+                  <div className="hidden md:flex items-center gap-2">
+                    {!isFolderUrl(previewDoc.url) && (
+                      <>
+                        <button
+                          onClick={() => handleCopyLink(previewDoc.url)}
+                          className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-gray-800 rounded-xl transition-all cursor-pointer flex items-center gap-1 text-[10px] font-bold"
+                          title="Copy direct Google Drive URL"
+                        >
+                          {copied ? (
+                            <>
+                              <Check className="w-4 h-4 text-emerald-500" />
+                              Copied!
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-4 h-4" />
+                              Copy Link
+                            </>
+                          )}
+                        </button>
 
-                      <a
-                        href={previewDoc.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="p-2 text-[#5277f7] hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 hover:bg-slate-100 dark:hover:bg-gray-800 rounded-xl transition-all cursor-pointer flex items-center gap-1 text-[10px] font-bold"
-                        title="Open full document in a new tab"
-                      >
-                        <ExternalLink className="w-4 h-4" />
-                        Open Tab
-                      </a>
-                    </>
-                  )}
+                        <a
+                          href={previewDoc.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-2 text-[#5277f7] hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 hover:bg-slate-100 dark:hover:bg-gray-800 rounded-xl transition-all cursor-pointer flex items-center gap-1 text-[10px] font-bold"
+                          title="Open full document in a new tab"
+                        >
+                          <ExternalLink className="w-4 h-4" />
+                          Open Tab
+                        </a>
+                      </>
+                    )}
+                  </div>
 
                   <button
                     onClick={() => setPreviewDoc(null)}
@@ -875,7 +889,11 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
               </div>
 
               {/* Modal Body (IFrame Preview or Folder View) */}
-              <div className={`flex-1 bg-slate-50 dark:bg-gray-950 p-4 relative ${isFolderUrl(previewDoc.url) ? "flex items-center justify-center min-h-[300px]" : ""}`}>
+              <div className={`flex-1 bg-slate-50 dark:bg-gray-950 p-4 relative ${
+                isFolderUrl(previewDoc.url)
+                  ? "flex items-center justify-center min-h-[300px]"
+                  : "flex md:block items-center justify-center min-h-[300px] md:min-h-0"
+              }`}>
                 {isFolderUrl(previewDoc.url) ? (
                   <div className="w-full flex flex-col items-center text-center p-4">
                     <div className="relative mb-5">
@@ -925,12 +943,66 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
                     </div>
                   </div>
                 ) : (
-                  <iframe
-                    src={getEmbedUrl(previewDoc.url)}
-                    className="w-full h-full border-0 rounded-2xl bg-white dark:bg-[#111827] shadow-inner"
-                    allow="autoplay"
-                    title="PDF Preview"
-                  />
+                  <>
+                    {/* Desktop View: IFrame */}
+                    <div className="hidden md:block w-full h-full">
+                      <iframe
+                        src={getEmbedUrl(previewDoc.url)}
+                        className="w-full h-full border-0 rounded-2xl bg-white dark:bg-[#111827] shadow-inner"
+                        allow="autoplay"
+                        title="PDF Preview"
+                      />
+                    </div>
+
+                    {/* Mobile View: File Preview Card */}
+                    <div className="block md:hidden w-full flex flex-col items-center text-center p-4">
+                      <div className="relative mb-5">
+                        {/* Decorative glowing background */}
+                        <div className="absolute inset-0 bg-[#5277f7]/10 dark:bg-blue-500/10 rounded-full blur-2xl w-20 h-20 -translate-x-2 -translate-y-2" />
+                        
+                        <div className="relative w-16 h-16 bg-blue-50 dark:bg-blue-950/40 rounded-2xl flex items-center justify-center border border-blue-100 dark:border-blue-900/30">
+                          <FileText className={`w-8 h-8 ${previewDoc.type === "QP" ? "text-blue-500" : "text-emerald-500"}`} />
+                        </div>
+                      </div>
+
+                      <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-2">
+                        PDF Document Preview
+                      </h3>
+                      
+                      <p className="text-xs text-slate-500 dark:text-gray-400 max-w-sm mb-6 leading-relaxed">
+                        This document is ready to view. On mobile devices, opening the file in a new tab provides the best reading experience.
+                      </p>
+
+                      <div className="flex flex-col gap-3 w-full justify-center">
+                        <a
+                          href={previewDoc.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-full flex items-center justify-center gap-2 px-5 py-2.5 bg-[#5277f7] hover:bg-blue-600 text-white rounded-xl text-xs font-bold transition-all shadow-md active:scale-95 cursor-pointer"
+                        >
+                          <ExternalLink className="w-4 h-4" />
+                          Open Document
+                        </a>
+                        
+                        <button
+                          onClick={() => handleCopyLink(previewDoc.url)}
+                          className="w-full flex items-center justify-center gap-2 px-5 py-2.5 bg-white hover:bg-slate-100 dark:bg-gray-800 dark:hover:bg-gray-700 text-slate-700 dark:text-gray-250 rounded-xl text-xs font-bold border border-slate-200/50 dark:border-gray-700 transition-all cursor-pointer active:scale-95"
+                        >
+                          {copied ? (
+                            <>
+                              <Check className="w-4 h-4 text-emerald-500" />
+                              Copied!
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-4 h-4" />
+                              Copy Link
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </>
                 )}
               </div>
             </motion.div>
