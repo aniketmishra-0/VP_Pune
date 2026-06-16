@@ -845,3 +845,174 @@ export async function writeTimetableToSheet(
   return { sheetId: newSheetId };
 }
 
+/* ===== Device Bindings (Public Result Portal — 3hr cooldown) ===== */
+
+export const DEVICE_BINDINGS_TAB = "DeviceBindings";
+
+export interface DeviceBindingRow {
+  regNo: string;
+  deviceIdShort: string;   // first 12 chars of fingerprint hash (for display)
+  ip: string;
+  bindingType: string;     // "device" or "ip"
+  lockedAt: string;        // ISO timestamp
+  expiresAt: string;       // ISO timestamp
+  status: string;          // "active" or "expired"
+}
+
+const DB_HEADER = ["Reg No", "Device ID", "IP Address", "Type", "Locked At", "Expires At", "Status"];
+
+async function ensureDeviceBindingsTab(): Promise<void> {
+  await ensureTab(DEVICE_BINDINGS_TAB);
+  // Make sure header exists
+  let data: any;
+  try {
+    data = await apiFetch(`/values/${encodeURIComponent(DEVICE_BINDINGS_TAB)}!A1:G1`);
+  } catch {
+    data = {};
+  }
+  const rows: any[][] = data.values || [];
+  const hasHeader = rows.length > 0 && String(rows[0][0] || "").trim().toLowerCase().includes("reg");
+  if (!hasHeader) {
+    await apiFetch(`/values/${encodeURIComponent(DEVICE_BINDINGS_TAB)}!A1?valueInputOption=RAW`, {
+      method: "PUT",
+      body: JSON.stringify({ values: [DB_HEADER] }),
+    });
+  }
+}
+
+/**
+ * Write (prepend) new device binding rows to the DeviceBindings tab.
+ * Newest entries appear at top, below header.
+ */
+export async function writeDeviceBindings(
+  entries: DeviceBindingRow[]
+): Promise<void> {
+  if (entries.length === 0) return;
+  await ensureDeviceBindingsTab();
+
+  const values = entries.map((e) => [
+    e.regNo,
+    e.deviceIdShort,
+    e.ip,
+    e.bindingType,
+    e.lockedAt,
+    e.expiresAt,
+    e.status,
+  ]);
+
+  const sheetId = await getSheetId(DEVICE_BINDINGS_TAB);
+  if (sheetId == null) {
+    // Fallback: append
+    await apiFetch(
+      `/values/${encodeURIComponent(DEVICE_BINDINGS_TAB)}!A1:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
+      { method: "POST", body: JSON.stringify({ values }) }
+    );
+    return;
+  }
+
+  // Insert blank rows below header, then fill
+  await apiFetch(":batchUpdate", {
+    method: "POST",
+    body: JSON.stringify({
+      requests: [
+        {
+          insertDimension: {
+            range: { sheetId, dimension: "ROWS", startIndex: 1, endIndex: 1 + values.length },
+            inheritFromBefore: false,
+          },
+        },
+      ],
+    }),
+  });
+
+  await apiFetch(`/values/${encodeURIComponent(DEVICE_BINDINGS_TAB)}!A2?valueInputOption=RAW`, {
+    method: "PUT",
+    body: JSON.stringify({ values }),
+  });
+}
+
+/**
+ * Read all device binding rows from the sheet.
+ */
+export async function readDeviceBindings(): Promise<DeviceBindingRow[]> {
+  await ensureDeviceBindingsTab();
+  let data: any;
+  try {
+    data = await apiFetch(`/values/${encodeURIComponent(DEVICE_BINDINGS_TAB)}!A1:G50000`);
+  } catch {
+    return [];
+  }
+  const rows: any[][] = data.values || [];
+  let start = 0;
+  if (rows.length > 0 && /reg/i.test(String(rows[0][0] || ""))) start = 1;
+
+  const out: DeviceBindingRow[] = [];
+  for (let i = start; i < rows.length; i++) {
+    const r = rows[i] || [];
+    const regNo = String(r[0] || "").trim();
+    if (!regNo) continue;
+    out.push({
+      regNo,
+      deviceIdShort: String(r[1] || "").trim(),
+      ip: String(r[2] || "").trim(),
+      bindingType: String(r[3] || "").trim(),
+      lockedAt: String(r[4] || "").trim(),
+      expiresAt: String(r[5] || "").trim(),
+      status: String(r[6] || "active").trim(),
+    });
+  }
+  return out;
+}
+
+/**
+ * Remove expired entries from the DeviceBindings sheet.
+ * Reads all rows, filters out expired, rewrites the tab.
+ */
+export async function removeExpiredDeviceBindings(): Promise<number> {
+  const all = await readDeviceBindings();
+  const now = Date.now();
+  const active = all.filter((b) => new Date(b.expiresAt).getTime() > now);
+  const removed = all.length - active.length;
+
+  if (removed > 0) {
+    const values = [
+      DB_HEADER,
+      ...active.map((e) => [e.regNo, e.deviceIdShort, e.ip, e.bindingType, e.lockedAt, e.expiresAt, e.status]),
+    ];
+    await rewriteTab(DEVICE_BINDINGS_TAB, values, "G");
+  }
+
+  return removed;
+}
+
+/**
+ * Remove all bindings for a specific registration number.
+ */
+export async function removeDeviceBindingsByRegNo(regNo: string): Promise<number> {
+  const all = await readDeviceBindings();
+  const cleanReg = regNo.trim().toLowerCase();
+  const remaining = all.filter((b) => b.regNo.toLowerCase() !== cleanReg);
+  const removed = all.length - remaining.length;
+
+  if (removed > 0) {
+    const values = [
+      DB_HEADER,
+      ...remaining.map((e) => [e.regNo, e.deviceIdShort, e.ip, e.bindingType, e.lockedAt, e.expiresAt, e.status]),
+    ];
+    await rewriteTab(DEVICE_BINDINGS_TAB, values, "G");
+  }
+
+  return removed;
+}
+
+/**
+ * Clear ALL device bindings (admin action).
+ */
+export async function clearAllDeviceBindings(): Promise<number> {
+  const all = await readDeviceBindings();
+  const count = all.length;
+  if (count > 0) {
+    await rewriteTab(DEVICE_BINDINGS_TAB, [DB_HEADER], "G");
+  }
+  return count;
+}

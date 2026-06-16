@@ -52,6 +52,7 @@ import TimetableGenerator from "./components/TimetableGenerator";
 import ErrorBoundary from "./components/ErrorBoundary";
 import TimetableConfig from "./components/TimetableConfig";
 import SheetEditorPage from "./components/SheetEditorPage";
+import PublicResult from "./components/PublicResult";
 
 function PWLogo({ size = "h-10 w-10", textSize = "text-sm", className = "" }: { size?: string, textSize?: string, className?: string }) {
   const [hasError, setHasError] = React.useState(false);
@@ -214,6 +215,15 @@ function formatFullTestName(name: string): string {
 }
 
 export default function App() {
+  // Early exit: if the URL path is /result, render the standalone public student result portal
+  const isPublicResultPage = React.useMemo(() => {
+    return window.location.pathname.toLowerCase().startsWith("/result");
+  }, []);
+
+  if (isPublicResultPage) {
+    return <PublicResult />;
+  }
+
   const getFullNameFromEmail = (email: string) => {
     if (!email) return "Physics Wallah Staff";
     const prefix = email.split("@")[0];

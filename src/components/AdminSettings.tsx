@@ -20,7 +20,15 @@ import {
   Eye,
   Pencil,
   ShieldCheck,
+  QrCode,
+  Printer,
+  Copy,
+  Link,
+  Smartphone,
+  Globe,
+  ShieldAlert,
 } from "lucide-react";
+import QRCode from "qrcode";
 
 export type Role = "admin" | "teacher" | "staff";
 
@@ -64,10 +72,11 @@ interface SheetSync {
   lastSync: string;
 }
 
-type Tab = "users" | "activity" | "notifications" | "sync" | "export" | "import";
+type Tab = "users" | "activity" | "notifications" | "sync" | "export" | "import" | "portal";
 
 const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "users", label: "User Roles", icon: Users },
+  { id: "portal", label: "Result Portal", icon: QrCode },
   { id: "activity", label: "Activity Log", icon: Activity },
   { id: "notifications", label: "Notifications", icon: Bell },
   { id: "sync", label: "Last Sync", icon: Clock },
@@ -144,6 +153,15 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({
   // User pending deletion (drives the confirmation dialog)
   const [pendingDelete, setPendingDelete] = useState<AppUser | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Portal tab state
+  const [portalQr, setPortalQr] = useState<string>("");
+  const [portalCopied, setPortalCopied] = useState(false);
+  const [deviceBindings, setDeviceBindings] = useState<any[]>([]);
+  const [bindingsCount, setBindingsCount] = useState(0);
+  const [bindingsLoading, setBindingsLoading] = useState(false);
+  const [resetRegInput, setResetRegInput] = useState("");
+  const [resetResult, setResetResult] = useState<string | null>(null);
 
   const toggleExpand = useCallback(
     (email: string) => setExpandedEmail((cur) => (cur === email ? null : email)),
@@ -303,6 +321,77 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({
       setBulkResult(data);
       flash(`${data.added.length} added, ${data.updated.length} updated`);
       setBulkText("");
+    } catch (e: any) {
+      setError(e.message);
+    }
+  };
+
+  // ---- Portal functions ----
+  // Generate QR code when portal tab opens
+  useEffect(() => {
+    if (tab !== "portal" || portalQr) return;
+    const pageUrl = `${window.location.origin}/result`;
+    QRCode.toDataURL(pageUrl, {
+      width: 512,
+      margin: 2,
+      color: { dark: "#0f172a", light: "#ffffff" },
+    })
+      .then(setPortalQr)
+      .catch(() => setPortalQr(""));
+  }, [tab, portalQr]);
+
+  // Auto-load bindings when portal tab opens
+  useEffect(() => {
+    if (tab === "portal") loadBindings();
+  }, [tab]);
+
+  const loadBindings = async () => {
+    setBindingsLoading(true);
+    try {
+      const res = await fetch("/api/device-bindings", { headers: authHeaders() });
+      if (!res.ok) throw new Error("Failed to load bindings");
+      const data = await res.json();
+      const entries = Object.entries(data.bindings || {}).map(([key, val]: [string, any]) => ({
+        ...val,
+        key: val.key || (key.startsWith("ip_") ? "IP-based" : "Device-based"),
+      }));
+      setDeviceBindings(entries);
+      setBindingsCount(data.count || entries.length);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setBindingsLoading(false);
+    }
+  };
+
+  const resetBinding = async (regNo: string) => {
+    if (!regNo.trim()) return;
+    try {
+      const res = await fetch("/api/device-bindings/reset", {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ regNo: regNo.trim() }),
+      });
+      const data = await res.json();
+      setResetResult(data.message || `Cleared bindings for ${regNo}`);
+      setResetRegInput("");
+      setTimeout(() => setResetResult(null), 4000);
+      loadBindings();
+    } catch (e: any) {
+      setError(e.message);
+    }
+  };
+
+  const clearAllBindings = async () => {
+    if (!confirm("Are you sure you want to clear ALL device locks? This will allow every device to search again.")) return;
+    try {
+      const res = await fetch("/api/device-bindings/reset-all", {
+        method: "POST",
+        headers: authHeaders(),
+      });
+      const data = await res.json();
+      flash(data.message || "All bindings cleared");
+      loadBindings();
     } catch (e: any) {
       setError(e.message);
     }
@@ -701,6 +790,192 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({
                   <span className="text-xs font-extrabold text-slate-800 dark:text-white block">CSV (.csv)</span>
                   <span className="text-[10px] text-slate-400">Flattened single file</span>
                 </div>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ---- RESULT PORTAL ---- */}
+        {tab === "portal" && (
+          <div className="mt-1 space-y-5">
+            {/* QR Code & Link Section */}
+            <div className="bg-gradient-to-br from-[#5277f7]/5 to-indigo-500/5 dark:from-[#5277f7]/10 dark:to-indigo-500/10 border border-[#5277f7]/20 dark:border-[#5277f7]/15 rounded-2xl p-5">
+              <div className="flex items-center gap-2 mb-4">
+                <QrCode className="w-4 h-4 text-[#5277f7]" />
+                <span className="text-xs font-extrabold text-slate-800 dark:text-white uppercase tracking-wider">Student Result QR Code</span>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-center gap-5">
+                {/* QR */}
+                {portalQr ? (
+                  <div className="bg-white rounded-2xl p-3 shadow-md shrink-0">
+                    <img src={portalQr} alt="Result QR" className="w-36 h-36 sm:w-40 sm:h-40" />
+                  </div>
+                ) : (
+                  <div className="w-40 h-40 bg-slate-100 dark:bg-gray-800 rounded-2xl flex items-center justify-center">
+                    <RefreshCw className="w-5 h-5 text-slate-400 animate-spin" />
+                  </div>
+                )}
+
+                <div className="flex flex-col gap-3 flex-1 w-full">
+                  {/* URL */}
+                  <div className="bg-white/60 dark:bg-gray-800/60 border border-slate-200/50 dark:border-gray-700/50 rounded-xl px-3 py-2.5">
+                    <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">Portal Link</p>
+                    <p className="text-xs text-[#5277f7] font-mono break-all select-all font-bold">
+                      {window.location.origin}/result
+                    </p>
+                  </div>
+
+                  {/* Buttons */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(`${window.location.origin}/result`);
+                        setPortalCopied(true);
+                        setTimeout(() => setPortalCopied(false), 2000);
+                      }}
+                      className="flex items-center justify-center gap-1.5 py-2.5 bg-slate-100 dark:bg-gray-800 hover:bg-slate-200 dark:hover:bg-gray-700 border border-slate-200 dark:border-gray-700 rounded-xl text-[10px] font-bold text-slate-600 dark:text-slate-300 transition-all cursor-pointer"
+                    >
+                      {portalCopied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                      {portalCopied ? "Copied!" : "Copy Link"}
+                    </button>
+                    <button
+                      onClick={() => {
+                        const printWin = window.open('', '_blank');
+                        if (!printWin || !portalQr) return;
+                        printWin.document.write(`<!DOCTYPE html><html><head><title>PW Vidyapeeth - Result QR</title>
+                          <style>
+                            body { font-family: 'Inter', system-ui, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: #fff; color: #0f172a; }
+                            .card { border: 3px solid #0f172a; border-radius: 24px; padding: 40px; text-align: center; max-width: 400px; }
+                            .logo { font-size: 32px; font-weight: 900; color: #5277f7; margin-bottom: 8px; letter-spacing: -1px; }
+                            .subtitle { font-size: 14px; color: #64748b; margin-bottom: 24px; }
+                            .qr { width: 280px; height: 280px; margin: 0 auto 20px; }
+                            .url { font-family: monospace; font-size: 13px; color: #5277f7; background: #f1f5f9; padding: 10px 16px; border-radius: 12px; word-break: break-all; }
+                            .instructions { margin-top: 20px; font-size: 13px; color: #475569; line-height: 1.6; }
+                            .step { display: flex; align-items: flex-start; gap: 8px; text-align: left; margin-top: 8px; }
+                            .step-num { background: #5277f7; color: white; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; }
+                            @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+                          </style></head><body>
+                          <div class="card">
+                            <div class="logo">PW Vidyapeeth Pune</div>
+                            <div class="subtitle">Student Result Portal</div>
+                            <img src="${portalQr}" class="qr" alt="QR Code" />
+                            <div class="url">${window.location.origin}/result</div>
+                            <div class="instructions">
+                              <strong>How to check your result:</strong>
+                              <div class="step"><span class="step-num">1</span><span>Scan QR code or open the link above</span></div>
+                              <div class="step"><span class="step-num">2</span><span>Enter your Registration Number</span></div>
+                              <div class="step"><span class="step-num">3</span><span>View your exam results instantly</span></div>
+                            </div>
+                          </div>
+                        </body></html>`);
+                        printWin.document.close();
+                        setTimeout(() => printWin.print(), 500);
+                      }}
+                      className="flex items-center justify-center gap-1.5 py-2.5 bg-[#5277f7]/10 dark:bg-[#5277f7]/20 hover:bg-[#5277f7]/20 dark:hover:bg-[#5277f7]/30 border border-[#5277f7]/20 dark:border-[#5277f7]/30 rounded-xl text-[10px] font-bold text-[#5277f7] transition-all cursor-pointer"
+                    >
+                      <Printer className="w-3.5 h-3.5" />
+                      Print QR
+                    </button>
+                  </div>
+
+                  <p className="text-[9px] text-slate-400 dark:text-slate-500 leading-relaxed">
+                    Share this link or print the QR for notice board. Students scan → enter Reg ID → see result. One device can view only 1 result per 3 hours.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Device Bindings Management */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Smartphone className="w-4 h-4 text-amber-500" />
+                  <span className="text-xs font-extrabold text-slate-800 dark:text-white uppercase tracking-wider">Active Device Locks</span>
+                  <span className="text-[10px] font-bold text-amber-500 bg-amber-50 dark:bg-amber-950/30 px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-900/40">
+                    {bindingsCount}
+                  </span>
+                </div>
+                <button
+                  onClick={loadBindings}
+                  disabled={bindingsLoading}
+                  className="text-[10px] font-bold text-[#5277f7] hover:text-[#4062dd] flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3 h-3 ${bindingsLoading ? "animate-spin" : ""}`} />
+                  Refresh
+                </button>
+              </div>
+
+              {/* Bindings List */}
+              {deviceBindings.length > 0 ? (
+                <div className="space-y-2 max-h-60 overflow-y-auto">
+                  {deviceBindings.map((b: any, i: number) => (
+                    <div
+                      key={i}
+                      className="flex items-center justify-between gap-2 bg-slate-50 dark:bg-gray-800/60 border border-slate-200/50 dark:border-gray-700/50 rounded-xl px-3 py-2.5"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        {b.key === "IP-based" ? (
+                          <Globe className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                        ) : (
+                          <Smartphone className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                        )}
+                        <div className="min-w-0">
+                          <span className="text-[11px] font-bold text-slate-800 dark:text-white block truncate">{b.regNo}</span>
+                          <span className="text-[9px] text-slate-400">
+                            {b.key} · expires {relTime(b.expiresAt).replace(" ago", " left")}
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => resetBinding(b.regNo)}
+                        className="text-[9px] font-bold text-rose-500 hover:text-rose-600 bg-rose-50 dark:bg-rose-950/30 hover:bg-rose-100 dark:hover:bg-rose-950/50 border border-rose-200 dark:border-rose-900/40 px-2 py-1 rounded-lg cursor-pointer transition-all shrink-0"
+                      >
+                        Reset
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-6 text-slate-400 dark:text-slate-600">
+                  <ShieldAlert className="w-6 h-6 mx-auto mb-2 opacity-40" />
+                  <p className="text-[11px] font-medium">No active device locks</p>
+                  <p className="text-[9px] mt-1">Click refresh to load current bindings</p>
+                </div>
+              )}
+
+              {/* Reset specific student */}
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={resetRegInput}
+                  onChange={(e) => setResetRegInput(e.target.value)}
+                  placeholder="Enter Reg No to unlock..."
+                  className="flex-1 bg-slate-50 dark:bg-gray-800/60 border border-slate-200/60 dark:border-gray-700/60 rounded-xl px-3 py-2.5 text-[11px] text-slate-800 dark:text-white font-mono focus:outline-none focus:border-[#5277f7] placeholder-slate-400"
+                />
+                <button
+                  onClick={() => resetBinding(resetRegInput)}
+                  disabled={!resetRegInput.trim()}
+                  className="bg-amber-500 hover:bg-amber-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-extrabold py-2.5 px-4 rounded-xl text-[10px] uppercase tracking-wider font-display cursor-pointer flex items-center gap-1.5 shrink-0"
+                >
+                  <ShieldAlert className="w-3.5 h-3.5" />
+                  Unlock
+                </button>
+              </div>
+
+              {resetResult && (
+                <div className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/30 rounded-xl px-3 py-2">
+                  ✓ {resetResult}
+                </div>
+              )}
+
+              {/* Clear all button */}
+              <button
+                onClick={clearAllBindings}
+                className="w-full flex items-center justify-center gap-2 py-2.5 bg-rose-50 dark:bg-rose-950/20 hover:bg-rose-100 dark:hover:bg-rose-950/30 border border-rose-200 dark:border-rose-900/30 rounded-xl text-[10px] font-bold text-rose-600 dark:text-rose-400 cursor-pointer transition-all"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Clear All Device Locks ({bindingsCount})
               </button>
             </div>
           </div>

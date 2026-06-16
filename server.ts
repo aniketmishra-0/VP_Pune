@@ -4,12 +4,14 @@ import { createServer as createViteServer } from "vite";
 import * as XLSX from "xlsx";
 import crypto from "crypto";
 import fs from "fs";
+import cookieParser from "cookie-parser";
 import "dotenv/config";
 import * as settingsStore from "./settingsStore";
 import type { Role } from "./settingsStore";
 import { generateTimetable, aiResolveConflicts, setHistoricalPatterns, getPatternStats, buildPatternsFromSheetData, type GeneratorConfig, type GeneratedSlot, type BatchInfo } from "./timetableGenerator";
 
 const app = express();
+app.use(cookieParser());
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 // Security variables and token generation ciphers
@@ -1876,6 +1878,466 @@ app.post("/api/refresh", verifyRequest, async (req, res) => {
     return res.status(500).json({ error: loadError });
   }
   res.json({ success: true, lastLoaded, batchesCount: dropdowns.batches.length });
+});
+
+// ============================================================
+//  PUBLIC STUDENT RESULT PORTAL — Device-locked self-service
+// ============================================================
+
+const DEVICE_COOLDOWN_MS = 3 * 60 * 60 * 1000; // 3 hours
+
+interface DeviceBinding {
+  regNo: string;
+  ip: string;
+  lockedAt: string;  // ISO
+  expiresAt: string; // ISO
+}
+
+// In-memory cache for fast lookups — synced to Google Sheet (DeviceBindings tab)
+let deviceBindings: Record<string, DeviceBinding> = {};
+
+// Load existing bindings from Google Sheet on startup
+(async function loadDeviceBindingsFromSheet() {
+  if (!settingsStore.isConfigured()) return;
+  try {
+    const rows = await settingsStore.readDeviceBindings();
+    const now = Date.now();
+    for (const row of rows) {
+      if (new Date(row.expiresAt).getTime() <= now) continue; // skip expired
+      // Rebuild the in-memory key: for "device" type use deviceIdShort, for "ip" type use ip-based key
+      const key = row.bindingType === "ip"
+        ? `ip_${crypto.createHash("sha256").update(row.ip).digest("hex").slice(0, 24)}`
+        : row.deviceIdShort; // deviceIdShort stores the full deviceId hash for device bindings
+      deviceBindings[key] = {
+        regNo: row.regNo,
+        ip: row.ip,
+        lockedAt: row.lockedAt,
+        expiresAt: row.expiresAt,
+      };
+    }
+    console.log(`Loaded ${Object.keys(deviceBindings).length} active device bindings from Google Sheet.`);
+  } catch (err) {
+    console.warn("Could not load device bindings from sheet:", (err as Error).message);
+  }
+})();
+
+// Debounced flush of in-memory bindings to Google Sheet
+let deviceBindingsFlushTimer: NodeJS.Timeout | null = null;
+let pendingDeviceBindingRows: settingsStore.DeviceBindingRow[] = [];
+
+function flushDeviceBindingsToSheet() {
+  if (!settingsStore.isConfigured()) return;
+  if (deviceBindingsFlushTimer) clearTimeout(deviceBindingsFlushTimer);
+  deviceBindingsFlushTimer = setTimeout(async () => {
+    if (pendingDeviceBindingRows.length === 0) return;
+    const batch = pendingDeviceBindingRows.slice();
+    pendingDeviceBindingRows = [];
+    try {
+      await settingsStore.writeDeviceBindings(batch);
+    } catch (err) {
+      // Requeue so nothing is lost
+      pendingDeviceBindingRows = batch.concat(pendingDeviceBindingRows);
+      console.error("Failed to write device bindings to sheet:", (err as Error).message);
+    }
+  }, 3000);
+}
+
+function saveDeviceBindings() {
+  // No-op for local JSON — all persistence now goes through Google Sheet
+}
+
+// Cleanup expired entries every 30 minutes — both in-memory and Google Sheet
+setInterval(async () => {
+  const now = Date.now();
+  let changed = false;
+  for (const key of Object.keys(deviceBindings)) {
+    if (new Date(deviceBindings[key].expiresAt).getTime() <= now) {
+      delete deviceBindings[key];
+      changed = true;
+    }
+  }
+  // Also clean up the Google Sheet
+  if (settingsStore.isConfigured()) {
+    try {
+      const removed = await settingsStore.removeExpiredDeviceBindings();
+      if (removed > 0) {
+        console.log(`[device-cleanup] Removed ${removed} expired bindings from Google Sheet.`);
+      }
+    } catch (err) {
+      console.warn("[device-cleanup] Sheet cleanup failed:", (err as Error).message);
+    }
+  }
+}, 30 * 60 * 1000);
+
+function getClientIP(req: express.Request): string {
+  const forwarded = req.headers["x-forwarded-for"];
+  if (forwarded) {
+    const first = (Array.isArray(forwarded) ? forwarded[0] : forwarded).split(",")[0].trim();
+    if (first) return first;
+  }
+  return req.socket?.remoteAddress || req.ip || "unknown";
+}
+
+// Public result endpoint — no login required, device-locked
+app.post("/api/student-public", express.json(), (req, res) => {
+  const { regNo, deviceId } = req.body || {};
+
+  if (!regNo || typeof regNo !== "string" || !regNo.trim()) {
+    return res.status(400).json({ allowed: false, message: "Registration number is required." });
+  }
+
+  if (!deviceId || typeof deviceId !== "string") {
+    return res.status(400).json({ allowed: false, message: "Device identification failed." });
+  }
+
+  const cleanRegNo = regNo.trim();
+  const clientIP = getClientIP(req);
+  const now = Date.now();
+
+  // --- Multi-layer device check ---
+  // Check by deviceId fingerprint
+  const existingByDevice = deviceBindings[deviceId];
+  if (existingByDevice && new Date(existingByDevice.expiresAt).getTime() > now) {
+    if (existingByDevice.regNo.toLowerCase() !== cleanRegNo.toLowerCase()) {
+      const remainMs = new Date(existingByDevice.expiresAt).getTime() - now;
+      const remainMinutes = Math.ceil(remainMs / 60000);
+      return res.json({
+        allowed: false,
+        remainingMinutes: remainMinutes,
+        expiresAt: existingByDevice.expiresAt,
+        message: `This device has already viewed a result. Please wait ${Math.floor(remainMinutes / 60)}h ${remainMinutes % 60}m before searching another registration.`
+      });
+    }
+    // Same device + same regNo → allowed (refresh case)
+  }
+
+  // Check by IP address — prevents copy-paste-to-another-browser bypass
+  const ipKey = `ip_${crypto.createHash("sha256").update(clientIP).digest("hex").slice(0, 24)}`;
+  const existingByIP = deviceBindings[ipKey];
+  if (existingByIP && new Date(existingByIP.expiresAt).getTime() > now) {
+    if (existingByIP.regNo.toLowerCase() !== cleanRegNo.toLowerCase()) {
+      const remainMs = new Date(existingByIP.expiresAt).getTime() - now;
+      const remainMinutes = Math.ceil(remainMs / 60000);
+      return res.json({
+        allowed: false,
+        remainingMinutes: remainMinutes,
+        expiresAt: existingByIP.expiresAt,
+        message: `Another result was recently viewed from this network. Please wait ${Math.floor(remainMinutes / 60)}h ${remainMinutes % 60}m.`
+      });
+    }
+    // Same IP + same regNo → allowed (same student, same network)
+  }
+
+  // --- Look up the student in memory ---
+  if (memorySheets.length === 0) {
+    if (isLoading) {
+      return res.status(503).json({ allowed: false, message: "Database is loading. Please try again in a few seconds." });
+    }
+    return res.status(503).json({ allowed: false, message: "Database is temporarily unavailable." });
+  }
+
+  try {
+    const searchReg = cleanRegNo.toLowerCase();
+    const profilesMap: Record<string, any> = {};
+    const testsMap: Record<string, any[]> = {};
+    let foundReg = "";
+
+    // Sheet metadata
+    const sheetMetaMap = new Map<string, { date: string; testClass: string; cleanName: string; originalSheetName: string }>();
+    memorySheets.forEach((sheetObj) => {
+      const sheetName = sheetObj.name;
+      const dateRegex = /^(\d{1,2})(?:st|nd|rd|th)?\s+(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s*(.*)$/i;
+      const dateMatch = sheetName.match(dateRegex);
+      let extractedDate = "N/A";
+      let testClass = "N/A";
+      let cleanTestName = sheetName;
+      if (dateMatch) {
+        const day = dateMatch[1];
+        const month = dateMatch[2];
+        const capitalizedMonth = month.charAt(0).toUpperCase() + month.slice(1).toLowerCase();
+        extractedDate = `${day.padStart(2, "0")} ${capitalizedMonth}`;
+        const remains = dateMatch[3].trim();
+        const classRegex = /^(\d{1,2}(?:st|nd|rd|th)?\s+(?:JEE|NEET|COE)(?:\s+(?:Phase\s*\d+|P\s*[-_]?\s*\d+|COE))*)\s*(.*)$/i;
+        const classMatch = remains.match(classRegex);
+        if (classMatch) {
+          testClass = classMatch[1].trim();
+          cleanTestName = expandTestName(classMatch[2].trim() || "Test");
+        } else {
+          cleanTestName = expandTestName(remains || "Test");
+        }
+      }
+      sheetMetaMap.set(sheetName, { date: extractedDate, testClass, cleanName: cleanTestName, originalSheetName: sheetName });
+    });
+
+    // STEP 1: Find student by reg no across ALL sheets (no center filtering for public)
+    memorySheets.forEach((sheetObj) => {
+      const data = sheetObj.data;
+      const sheetName = sheetObj.name;
+      if (!isTestSheet(sheetName)) return;
+      const headerInfo = findHeaderRow(data);
+      if (!headerInfo) return;
+      const headers = headerInfo.headers;
+      const rIdx = headerInfo.index;
+      const idxReg = findColumnIndex(headers, ["reg no", "roll no"]);
+      const idxName = findColumnIndex(headers, ["student name", "name"]);
+      const idxBatch = findColumnIndex(headers, ["batch"]);
+      if (idxReg === -1) return;
+
+      for (let i = rIdx + 1; i < data.length; i++) {
+        const row = data[i];
+        if (!row) continue;
+        const reg = String(row[idxReg] || "").trim();
+        if (reg.toLowerCase() === searchReg) {
+          foundReg = reg;
+          const name = idxName !== -1 ? String(row[idxName] || "").trim() : "";
+          const batch = idxBatch !== -1 ? String(row[idxBatch] || "").trim() : "";
+          if (!profilesMap[reg]) {
+            profilesMap[reg] = { regNo: reg, name: name || "N/A", batch: batch || "N/A", center: sheetObj.center || "Pimpri PW Vidyapeeth" };
+          } else {
+            if (name && name !== "N/A" && name !== "#N/A" && (profilesMap[reg].name === "N/A" || profilesMap[reg].name === "#N/A")) profilesMap[reg].name = name;
+            if (batch && batch !== "N/A" && !profilesMap[reg].batch) profilesMap[reg].batch = batch;
+          }
+        }
+      }
+    });
+
+    if (!foundReg) {
+      return res.status(404).json({ allowed: false, message: "No student found with this Registration Number." });
+    }
+
+    testsMap[foundReg] = [];
+
+    // STEP 2: Extract test marks
+    memorySheets.forEach((sheetObj) => {
+      const data = sheetObj.data;
+      const sheetName = sheetObj.name;
+      if (!isTestSheet(sheetName)) return;
+      const headerInfo = findHeaderRow(data);
+      if (!headerInfo) return;
+      const headers = headerInfo.headers;
+      const rIdx = headerInfo.index;
+      const idxReg = findColumnIndex(headers, ["reg no", "roll no"]);
+      if (idxReg === -1) return;
+
+      const originalHeaders = data[headerInfo.index] || [];
+      const subjectCols: { name: string; index: number; normalized: string }[] = [];
+      originalHeaders.forEach((rawHeader: any, index: number) => {
+        const parsedHeader = String(rawHeader || "").trim();
+        if (parsedHeader && isSubjectHeader(parsedHeader)) {
+          subjectCols.push({ name: parsedHeader, index, normalized: normalizeHeader(parsedHeader) });
+        }
+      });
+
+      const isNEETSheet = /neet/i.test(sheetName) || headers.includes("botany") || headers.includes("zoology");
+      const isJEESheet = !isNEETSheet && (/jee/i.test(sheetName) || headers.includes("mathematics") || headers.includes("maths"));
+      const isFoundationSheet = !isNEETSheet && !isJEESheet && (/foundation/i.test(sheetName) || /fnd/i.test(sheetName) || /class\s*(?:6|7|8|9|10)/i.test(sheetName) || headers.includes("science") || headers.includes("sst") || headers.includes("social studies") || headers.includes("mat") || headers.includes("mental ability") || headers.includes("english"));
+      const sheetStream = isNEETSheet ? "NEET" : isFoundationSheet ? "Foundation" : "JEE";
+
+      const idxScore = findColumnIndex(headers, ["score", "total marks", "marks"]);
+      const idxOutOf = findColumnIndex(headers, ["out of", "max marks"]);
+      const idxUnattempted = findColumnIndex(headers, ["unattempted", "unattempt"]);
+      const idxRank = findColumnIndex(headers, ["center rank", "rank"]);
+      const idxBatch = findColumnIndex(headers, ["batch"]);
+      const idxPhy = findColumnIndex(headers, ["physics", "avg physics %", "physics marks"]);
+      const idxChem = findColumnIndex(headers, ["chemistry", "chemisytry", "avg chemistry %", "chemistry marks"]);
+      const idxMaths = findColumnIndex(headers, ["mathematics", "maths", "avg maths %"]);
+      const idxBot = findColumnIndex(headers, ["botany", "botany marks"]);
+      const idxZoo = findColumnIndex(headers, ["zoology", "zoology marks"]);
+
+      for (let j = rIdx + 1; j < data.length; j++) {
+        const row = data[j];
+        if (!row) continue;
+        const reg = String(row[idxReg] || "").trim();
+        if (reg !== foundReg) continue;
+
+        const sheetMeta = sheetMetaMap.get(sheetName) || { date: "N/A", testClass: "N/A", cleanName: sheetName, originalSheetName: sheetName };
+        const studBatch = idxBatch !== -1 ? String(row[idxBatch] || "").trim() : (profilesMap[reg]?.batch || "");
+        const batchInfo = parseBatchInfo(studBatch);
+        const testStream = batchInfo ? batchInfo.stream : sheetStream;
+
+        const testObj: any = {
+          date: sheetMeta.date,
+          testClass: sheetMeta.testClass && sheetMeta.testClass !== "N/A" && sheetMeta.testClass !== "-" ? sheetMeta.testClass : (batchInfo ? batchInfo.class : "N/A"),
+          name: sheetMeta.cleanName,
+          originalSheetName: sheetMeta.originalSheetName,
+          type: "Test",
+          outOf: idxOutOf !== -1 && row[idxOutOf] !== undefined && row[idxOutOf] !== "" ? row[idxOutOf] : testStream === "JEE" ? 300 : testStream === "NEET" ? 720 : 100,
+          score: idxScore !== -1 && row[idxScore] !== undefined ? row[idxScore] : "N/A",
+          avgScore: "N/A",
+          sub1: idxPhy !== -1 && row[idxPhy] !== undefined ? row[idxPhy] : "-",
+          sub2: idxChem !== -1 && row[idxChem] !== undefined ? row[idxChem] : "-",
+          sub3: testStream === "JEE" ? (idxMaths !== -1 && row[idxMaths] !== undefined ? row[idxMaths] : "-") : (idxBot !== -1 && row[idxBot] !== undefined ? row[idxBot] : "-"),
+          sub4: testStream === "NEET" && idxZoo !== -1 && row[idxZoo] !== undefined ? row[idxZoo] : "-",
+          unattempted: idxUnattempted !== -1 && row[idxUnattempted] !== undefined ? row[idxUnattempted] : "-",
+          centerRank: idxRank !== -1 && row[idxRank] !== undefined ? row[idxRank] : "-",
+          subjectScores: subjectCols.map((col) => ({ subject: col.name, score: row[col.index] !== undefined && row[col.index] !== "" ? row[col.index] : "-" })),
+          stream: testStream,
+          center: sheetObj.center || "Pimpri PW Vidyapeeth",
+        };
+
+        if (testObj.score !== "N/A" && testObj.score !== "") {
+          const scoreParsed = parseFloat(testObj.score);
+          const outOfParsed = parseFloat(testObj.outOf);
+          if (!isNaN(scoreParsed) && !isNaN(outOfParsed) && outOfParsed > 0) {
+            testObj.avgScore = String((scoreParsed / outOfParsed) * 100);
+          }
+        }
+
+        testsMap[foundReg].push(testObj);
+      }
+    });
+
+    const sTests = testsMap[foundReg] || [];
+    const updatedTests = sTests.map((t: any) => ({ ...t, type: t.name || "Test" }));
+
+    updatedTests.sort((a, b) => {
+      const dateA = parseSheetDate(a.originalSheetName || "");
+      const dateB = parseSheetDate(b.originalSheetName || "");
+      if (dateA.month !== dateB.month) return dateA.month - dateB.month;
+      return dateA.day - dateB.day;
+    });
+
+    const profile = profilesMap[foundReg];
+    const detectedInfo = detectStreamAndClass(profile.batch, updatedTests.flatMap((t: any) => (t.subjectScores || []).map((s: any) => s.subject)));
+    profile.stream = detectedInfo.stream;
+    profile.class = detectedInfo.class;
+
+    let latestCenter = profile.center || "Pimpri PW Vidyapeeth";
+    if (updatedTests.length > 0) {
+      const latestTest = updatedTests[updatedTests.length - 1];
+      if (latestTest && latestTest.center) latestCenter = latestTest.center;
+    }
+    profile.center = latestCenter;
+
+    // Don't include shareToken in public response (security)
+    delete profile.shareToken;
+
+    // --- Bind device + IP ---
+    const expiresAt = new Date(now + DEVICE_COOLDOWN_MS).toISOString();
+    const lockedAtISO = new Date(now).toISOString();
+    deviceBindings[deviceId] = { regNo: foundReg, ip: clientIP, lockedAt: lockedAtISO, expiresAt };
+    deviceBindings[ipKey] = { regNo: foundReg, ip: clientIP, lockedAt: lockedAtISO, expiresAt };
+
+    // Set HttpOnly cookie for server-side device tracking (survives JS clear)
+    res.cookie("_vp_device", deviceId, {
+      httpOnly: true,
+      secure: false, // Set to true in production with HTTPS
+      sameSite: "lax",
+      maxAge: DEVICE_COOLDOWN_MS,
+    });
+
+    // Queue for Google Sheet persistence
+    pendingDeviceBindingRows.push(
+      { regNo: foundReg, deviceIdShort: deviceId, ip: clientIP, bindingType: "device", lockedAt: lockedAtISO, expiresAt, status: "active" },
+      { regNo: foundReg, deviceIdShort: deviceId, ip: clientIP, bindingType: "ip", lockedAt: lockedAtISO, expiresAt, status: "active" }
+    );
+    flushDeviceBindingsToSheet();
+
+    // Log public access
+    console.log(`[public-result] RegNo=${foundReg} IP=${clientIP} DeviceID=${deviceId.slice(0, 8)}...`);
+
+    return res.json({
+      allowed: true,
+      student: { profile, tests: updatedTests },
+      expiresAt,
+    });
+
+  } catch (err: any) {
+    console.error("[public-result] Error:", err);
+    return res.status(500).json({ allowed: false, message: "Internal server error." });
+  }
+});
+
+// Check device binding via cookie (for link copy-paste detection)
+app.post("/api/student-public-check", express.json(), (req, res) => {
+  const cookieDeviceId = req.cookies?._vp_device;
+  const { deviceId, regNo } = req.body || {};
+  const clientIP = getClientIP(req);
+  const now = Date.now();
+
+  // Check cookie-based device binding
+  if (cookieDeviceId && deviceBindings[cookieDeviceId]) {
+    const binding = deviceBindings[cookieDeviceId];
+    if (new Date(binding.expiresAt).getTime() > now && binding.regNo.toLowerCase() !== (regNo || "").toLowerCase()) {
+      const remainMs = new Date(binding.expiresAt).getTime() - now;
+      return res.json({ bound: true, remainingMinutes: Math.ceil(remainMs / 60000), expiresAt: binding.expiresAt, boundRegNo: binding.regNo.slice(0, 3) + "***" });
+    }
+  }
+
+  // Check IP-based binding
+  const ipKey = `ip_${crypto.createHash("sha256").update(clientIP).digest("hex").slice(0, 24)}`;
+  if (deviceBindings[ipKey]) {
+    const binding = deviceBindings[ipKey];
+    if (new Date(binding.expiresAt).getTime() > now) {
+      const remainMs = new Date(binding.expiresAt).getTime() - now;
+      return res.json({ bound: true, remainingMinutes: Math.ceil(remainMs / 60000), expiresAt: binding.expiresAt, boundRegNo: binding.regNo.slice(0, 3) + "***" });
+    }
+  }
+
+  return res.json({ bound: false });
+});
+
+// Admin: View all device bindings (for debugging/management)
+app.get("/api/device-bindings", verifyRequest, (req, res) => {
+  const now = Date.now();
+  const active: Record<string, any> = {};
+  for (const [key, val] of Object.entries(deviceBindings)) {
+    if (new Date(val.expiresAt).getTime() > now) {
+      active[key] = { ...val, key: key.startsWith("ip_") ? "IP-based" : "Device-based" };
+    }
+  }
+  res.json({ bindings: active, count: Object.keys(active).length });
+});
+
+// Admin: Reset device bindings for a specific registration
+app.post("/api/device-bindings/reset", verifyRequest, express.json(), async (req, res) => {
+  const { regNo } = req.body || {};
+  if (!regNo) return res.status(400).json({ error: "Registration number required." });
+
+  const cleanReg = String(regNo).trim().toLowerCase();
+  let removed = 0;
+  for (const key of Object.keys(deviceBindings)) {
+    if (deviceBindings[key].regNo.toLowerCase() === cleanReg) {
+      delete deviceBindings[key];
+      removed++;
+    }
+  }
+
+  // Also remove from Google Sheet
+  if (settingsStore.isConfigured()) {
+    try {
+      await settingsStore.removeDeviceBindingsByRegNo(regNo);
+    } catch (err) {
+      console.warn("[device-reset] Sheet cleanup failed:", (err as Error).message);
+    }
+  }
+
+  const adminEmail = String(req.headers["x-user-email"] || "").trim();
+  console.log(`[device-reset] Admin=${adminEmail} cleared ${removed} bindings for RegNo=${regNo}`);
+  logActivity(adminEmail, "device_reset", `Cleared bindings for RegNo: ${regNo}`);
+
+  res.json({ success: true, removed, message: `Cleared ${removed} device binding(s) for ${regNo}.` });
+});
+
+// Admin: Clear ALL device bindings
+app.post("/api/device-bindings/reset-all", verifyRequest, async (req, res) => {
+  const count = Object.keys(deviceBindings).length;
+  deviceBindings = {};
+
+  // Also clear from Google Sheet
+  if (settingsStore.isConfigured()) {
+    try {
+      await settingsStore.clearAllDeviceBindings();
+    } catch (err) {
+      console.warn("[device-reset-all] Sheet cleanup failed:", (err as Error).message);
+    }
+  }
+
+  const adminEmail = String(req.headers["x-user-email"] || "").trim();
+  console.log(`[device-reset-all] Admin=${adminEmail} cleared all ${count} bindings`);
+  logActivity(adminEmail, "device_reset_all", `Cleared all ${count} device bindings`);
+
+  res.json({ success: true, removed: count, message: `All ${count} device bindings cleared.` });
 });
 
 // API: Get student records payload
