@@ -918,7 +918,7 @@ async function loadSpreadsheetData() {
         }),
     };
 
-    lastLoaded = new Date().toISOString();
+    lastLoaded = fmtIST();
     console.log(`Spreadsheet successfully parsed. Sheets: ${memorySheets.length}. Batches: ${dropdowns.batches.length}. Names: ${dropdowns.names.length}.`);
   } catch (err: any) {
     console.error("Error loading spreadsheet: ", err);
@@ -1040,10 +1040,25 @@ function genId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
+/** Format a Date or timestamp as readable IST: "16 Jun 2026, 03:48 PM" */
+function fmtIST(d?: Date | number | string): string {
+  const date = d ? new Date(d) : new Date();
+  return date.toLocaleString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  });
+}
+
 function logActivity(email: string, action: string, detail?: string) {
   const entry: ActivityEntry = {
     id: genId(),
-    ts: new Date().toISOString(),
+    ts: fmtIST(),
     email: email || "unknown",
     action,
     detail,
@@ -1061,7 +1076,7 @@ function logActivity(email: string, action: string, detail?: string) {
 function pushNotification(type: AppNotification["type"], title: string, message: string) {
   appState.notifications.unshift({
     id: genId(),
-    ts: new Date().toISOString(),
+    ts: fmtIST(),
     type,
     title,
     message,
@@ -1114,7 +1129,7 @@ function ensureUser(email: string, name?: string): AppUser {
       name: name || "",
       role,
       center: "",
-      addedAt: new Date().toISOString(),
+      addedAt: fmtIST(),
       addedBy: isFirstEver ? "system (first login)" : "self-signup",
     };
     appState.users[e] = user;
@@ -1153,7 +1168,7 @@ function requireAdmin(req: express.Request, res: express.Response): AppUser | nu
     res.status(403).json({ error: "Access denied. Admin privileges required." });
     return null;
   }
-  return appState.users[email] || { email, role: "admin", addedAt: new Date().toISOString() };
+  return appState.users[email] || { email, role: "admin", addedAt: fmtIST() };
 }
 
 /* ---- Google Sheets settings store integration (separate from student data) ---- */
@@ -1211,7 +1226,7 @@ function syncStaffAccessToRoster(staffAccess: Record<string, string[]>, addedBy:
           email,
           role: "staff",
           center: centerLabel,
-          addedAt: new Date().toISOString(),
+          addedAt: fmtIST(),
           addedBy,
         };
         changed = true;
@@ -2226,10 +2241,12 @@ app.post("/api/student-public", express.json(), (req, res) => {
       maxAge: DEVICE_COOLDOWN_MS,
     });
 
-    // Queue for Google Sheet persistence
+    // Queue for Google Sheet persistence — use readable IST for sheet display
+    const lockedAtReadable = fmtIST(now);
+    const expiresAtReadable = fmtIST(now + DEVICE_COOLDOWN_MS);
     pendingDeviceBindingRows.push(
-      { regNo: foundReg, deviceIdShort: deviceId, ip: clientIP, bindingType: "device", lockedAt: lockedAtISO, expiresAt, status: "active" },
-      { regNo: foundReg, deviceIdShort: deviceId, ip: clientIP, bindingType: "ip", lockedAt: lockedAtISO, expiresAt, status: "active" }
+      { regNo: foundReg, deviceIdShort: deviceId, ip: clientIP, bindingType: "device", lockedAt: lockedAtReadable, expiresAt: expiresAtReadable, status: "active" },
+      { regNo: foundReg, deviceIdShort: deviceId, ip: clientIP, bindingType: "ip", lockedAt: lockedAtReadable, expiresAt: expiresAtReadable, status: "active" }
     );
     flushDeviceBindingsToSheet();
 
@@ -2729,7 +2746,7 @@ app.post("/api/auth/session", verifyRequest, (req, res) => {
     return res.status(400).json({ error: "Email is required." });
   }
   const user = ensureUser(email, name);
-  user.lastLogin = new Date().toISOString();
+  user.lastLogin = fmtIST();
   saveAppState();
   logActivity(email, event === "resume" ? "session_resume" : "login", name ? `as ${name}` : undefined);
   res.json({ email: user.email, name: user.name, role: user.role, center: user.center || "", isSuperAdmin: isSuperAdmin(user.email) });
@@ -2792,7 +2809,7 @@ app.post("/api/admin/users/role", (req, res) => {
       email,
       role,
       center: center || "",
-      addedAt: new Date().toISOString(),
+      addedAt: fmtIST(),
       addedBy: admin.email,
     };
   }
@@ -2842,7 +2859,7 @@ app.post("/api/admin/users/bulk", (req, res) => {
         email,
         role,
         center,
-        addedAt: new Date().toISOString(),
+        addedAt: fmtIST(),
         addedBy: admin.email,
       };
       added.push(email);
@@ -3373,7 +3390,7 @@ async function loadTimetableData() {
 
     timetableData = allLectures;
     timetableSheetUrl = url;
-    timetableLastLoaded = new Date().toISOString();
+    timetableLastLoaded = fmtIST();
     console.log(
       `Timetable loaded: ${timetableData.length} lectures from sheet "${sheetsToProcess.join(", ")}", ` +
       `${new Set(timetableData.map(l => l.teacherCode)).size} teachers`
