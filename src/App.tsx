@@ -1781,8 +1781,8 @@ export default function App() {
               </button>
               )}
 
-              {/* Auto Timetable Generator Tab — super-admin only */}
-              {isSuperAdmin && (
+              {/* Auto Timetable Generator Tab — admin only */}
+              {isAdmin && (
               <button
                 onClick={() => { setActiveView("timetableGen"); setErrorMessage(null); }}
                 className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all cursor-pointer ${
@@ -4055,7 +4055,7 @@ export default function App() {
             </motion.div>
           )}
 
-          {activeView === "timetableGen" && isSuperAdmin && (
+          {activeView === "timetableGen" && isAdmin && (
             <motion.div
               key="timetableGen"
               initial={{ opacity: 0, y: 15 }}
