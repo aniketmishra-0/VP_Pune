@@ -812,7 +812,9 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
               initial={{ scale: 0.95, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.95, opacity: 0, y: 20 }}
-              className="relative w-full max-w-6xl h-[85vh] bg-white dark:bg-[#111827] rounded-3xl shadow-2xl flex flex-col overflow-hidden border border-slate-200/50 dark:border-gray-800/40 z-10"
+              className={`relative w-full bg-white dark:bg-[#111827] rounded-3xl shadow-2xl flex flex-col overflow-hidden border border-slate-200/50 dark:border-gray-800/40 z-10 transition-all duration-300 ${
+                isFolderUrl(previewDoc.url) ? "max-w-md h-auto mx-4 my-auto" : "max-w-6xl h-[85vh]"
+              }`}
             >
               {/* Modal Header */}
               <div className="flex items-center justify-between p-4 border-b border-slate-100 dark:border-gray-800/50 bg-slate-50/50 dark:bg-gray-900/20">
@@ -829,34 +831,38 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => handleCopyLink(previewDoc.url)}
-                    className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-gray-800 rounded-xl transition-all cursor-pointer flex items-center gap-1 text-[10px] font-bold"
-                    title="Copy direct Google Drive URL"
-                  >
-                    {copied ? (
-                      <>
-                        <Check className="w-4 h-4 text-emerald-500" />
-                        Copied!
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-4 h-4" />
-                        Copy Link
-                      </>
-                    )}
-                  </button>
+                  {!isFolderUrl(previewDoc.url) && (
+                    <>
+                      <button
+                        onClick={() => handleCopyLink(previewDoc.url)}
+                        className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-gray-800 rounded-xl transition-all cursor-pointer flex items-center gap-1 text-[10px] font-bold"
+                        title="Copy direct Google Drive URL"
+                      >
+                        {copied ? (
+                          <>
+                            <Check className="w-4 h-4 text-emerald-500" />
+                            Copied!
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-4 h-4" />
+                            Copy Link
+                          </>
+                        )}
+                      </button>
 
-                  <a
-                    href={previewDoc.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="p-2 text-[#5277f7] hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 hover:bg-slate-100 dark:hover:bg-gray-800 rounded-xl transition-all cursor-pointer flex items-center gap-1 text-[10px] font-bold"
-                    title="Open full document in a new tab"
-                  >
-                    <ExternalLink className="w-4 h-4" />
-                    Open Tab
-                  </a>
+                      <a
+                        href={previewDoc.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-2 text-[#5277f7] hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 hover:bg-slate-100 dark:hover:bg-gray-800 rounded-xl transition-all cursor-pointer flex items-center gap-1 text-[10px] font-bold"
+                        title="Open full document in a new tab"
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                        Open Tab
+                      </a>
+                    </>
+                  )}
 
                   <button
                     onClick={() => setPreviewDoc(null)}
@@ -869,55 +875,53 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
               </div>
 
               {/* Modal Body (IFrame Preview or Folder View) */}
-              <div className="flex-1 bg-slate-50 dark:bg-gray-950 p-4 relative">
+              <div className={`flex-1 bg-slate-50 dark:bg-gray-950 p-4 relative ${isFolderUrl(previewDoc.url) ? "flex items-center justify-center min-h-[300px]" : ""}`}>
                 {isFolderUrl(previewDoc.url) ? (
-                  <div className="w-full h-full flex items-center justify-center overflow-y-auto">
-                    <div className="w-full max-w-md bg-white dark:bg-[#111827] rounded-3xl shadow-xl border border-slate-200/50 dark:border-gray-800/40 p-8 flex flex-col items-center text-center">
-                      <div className="relative mb-6">
-                        {/* Decorative glowing background */}
-                        <div className="absolute inset-0 bg-[#5277f7]/10 dark:bg-blue-500/10 rounded-full blur-2xl w-24 h-24 -translate-x-2 -translate-y-2" />
-                        
-                        <div className="relative w-20 h-20 bg-blue-50 dark:bg-blue-950/40 rounded-2xl flex items-center justify-center border border-blue-100 dark:border-blue-900/30">
-                          <FolderOpen className="w-10 h-10 text-[#5277f7] dark:text-blue-400 animate-pulse" />
-                        </div>
-                      </div>
-
-                      <h3 className="text-base font-bold text-slate-800 dark:text-white mb-2">
-                        Google Drive Folder
-                      </h3>
+                  <div className="w-full flex flex-col items-center text-center p-4">
+                    <div className="relative mb-5">
+                      {/* Decorative glowing background */}
+                      <div className="absolute inset-0 bg-[#5277f7]/10 dark:bg-blue-500/10 rounded-full blur-2xl w-20 h-20 -translate-x-2 -translate-y-2" />
                       
-                      <p className="text-xs text-slate-500 dark:text-gray-400 max-w-sm mb-6 leading-relaxed">
-                        This link contains a folder with multiple papers or files. Due to security restrictions, folders cannot be previewed directly inside the application.
-                      </p>
-
-                      <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
-                        <a
-                          href={previewDoc.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 bg-[#5277f7] hover:bg-blue-600 text-white rounded-xl text-xs font-bold transition-all shadow-md hover:shadow-lg shadow-blue-500/10 hover:shadow-blue-500/20 active:scale-95 cursor-pointer"
-                        >
-                          <ExternalLink className="w-4 h-4" />
-                          Open Folder
-                        </a>
-                        
-                        <button
-                          onClick={() => handleCopyLink(previewDoc.url)}
-                          className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-2.5 bg-slate-50 hover:bg-slate-100 dark:bg-gray-800 dark:hover:bg-gray-700 text-slate-700 dark:text-gray-250 rounded-xl text-xs font-bold border border-slate-200/50 dark:border-gray-700 transition-all cursor-pointer active:scale-95"
-                        >
-                          {copied ? (
-                            <>
-                              <Check className="w-4 h-4 text-emerald-500" />
-                              Copied!
-                            </>
-                          ) : (
-                            <>
-                              <Copy className="w-4 h-4 text-slate-400" />
-                              Copy Link
-                            </>
-                          )}
-                        </button>
+                      <div className="relative w-16 h-16 bg-blue-50 dark:bg-blue-950/40 rounded-2xl flex items-center justify-center border border-blue-100 dark:border-blue-900/30">
+                        <FolderOpen className="w-8 h-8 text-[#5277f7] dark:text-blue-400" />
                       </div>
+                    </div>
+
+                    <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-2">
+                      Google Drive Folder
+                    </h3>
+                    
+                    <p className="text-xs text-slate-500 dark:text-gray-400 max-w-sm mb-6 leading-relaxed">
+                      This link contains a folder with multiple papers or files. Due to security restrictions, folders cannot be previewed directly inside the application.
+                    </p>
+
+                    <div className="flex flex-col sm:flex-row items-center gap-3 w-full justify-center">
+                      <a
+                        href={previewDoc.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2 bg-[#5277f7] hover:bg-blue-600 text-white rounded-xl text-xs font-bold transition-all shadow-md active:scale-95 cursor-pointer"
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                        Open Folder
+                      </a>
+                      
+                      <button
+                        onClick={() => handleCopyLink(previewDoc.url)}
+                        className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2 bg-white hover:bg-slate-100 dark:bg-gray-800 dark:hover:bg-gray-700 text-slate-700 dark:text-gray-250 rounded-xl text-xs font-bold border border-slate-200/50 dark:border-gray-700 transition-all cursor-pointer active:scale-95"
+                      >
+                        {copied ? (
+                          <>
+                            <Check className="w-4 h-4 text-emerald-500" />
+                            Copied!
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-4 h-4" />
+                            Copy Link
+                          </>
+                        )}
+                      </button>
                     </div>
                   </div>
                 ) : (
