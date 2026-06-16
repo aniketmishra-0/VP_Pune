@@ -9,6 +9,7 @@
 const fs = require("fs");
 const path = require("path");
 const { PNG } = require("pngjs");
+const sharp = require("sharp");
 
 const OUT_DIR = path.join(__dirname, "..", "public", "icons");
 fs.mkdirSync(OUT_DIR, { recursive: true });
@@ -186,7 +187,15 @@ function write(filename, png) {
   // Maskable: brand gradient bg + larger safe area (OS will crop a circle/squircle)
   await write("icon-maskable.png", buildIcon(logo, 512, { bg: "gradient", rounded: false, safeArea: 0.22, maxLogoFraction: 0.5 }));
 
-  console.log("✓ generated PWA icons in", OUT_DIR);
+  console.log("✓ generated PWA PNG icons in", OUT_DIR);
+
+  // Convert PNGs to WebP format for high compatibility and speed
+  console.log("Converting generated PNGs to WebP format...");
+  await sharp(path.join(OUT_DIR, "icon-192.png")).webp({ lossless: true }).toFile(path.join(OUT_DIR, "icon-192.webp"));
+  await sharp(path.join(OUT_DIR, "icon-512.png")).webp({ lossless: true }).toFile(path.join(OUT_DIR, "icon-512.webp"));
+  await sharp(path.join(OUT_DIR, "icon-maskable.png")).webp({ lossless: true }).toFile(path.join(OUT_DIR, "icon-maskable.webp"));
+
+  console.log("✓ generated and saved PWA WebP icons in", OUT_DIR);
 })().catch((e) => {
   console.error(e);
   process.exit(1);
