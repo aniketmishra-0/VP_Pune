@@ -369,7 +369,7 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
       return FOUNDATION_PREFIXES.includes(prefix);
     };
     for (const f of activeFaculty) {
-      for (const b of f.batches) {
+      for (const b of (f.batches || [])) {
         const code = b.trim();
         if (!code || batchSet.has(code) || isFoundation(code)) continue;
         batchSet.set(code, {
@@ -1202,14 +1202,14 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
                                   <td className="py-2 px-2 text-slate-500 dark:text-slate-400">{f.subject}</td>
                                   <td className="py-2 px-2">
                                     <div className="flex flex-wrap gap-1">
-                                      {f.batches.filter(Boolean).slice(0, 3).map((b, i) => (
+                                      {(f.batches || []).filter(Boolean).slice(0, 3).map((b, i) => (
                                         <span key={i} className="text-[9px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-gray-800/50 text-slate-500 dark:text-slate-400 font-mono truncate max-w-[70px]">
                                           {b.length > 10 ? b.slice(0, 10) + "…" : b}
                                         </span>
                                       ))}
-                                      {f.batches.filter(Boolean).length > 3 && (
+                                      {(f.batches || []).filter(Boolean).length > 3 && (
                                         <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#5277f7]/10 text-[#5277f7] font-bold">
-                                          +{f.batches.filter(Boolean).length - 3}
+                                          +{(f.batches || []).filter(Boolean).length - 3}
                                         </span>
                                       )}
                                     </div>
