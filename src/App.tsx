@@ -215,15 +215,6 @@ function formatFullTestName(name: string): string {
 }
 
 export default function App() {
-  // Early exit: if the URL path is /result, render the standalone public student result portal
-  const isPublicResultPage = React.useMemo(() => {
-    return window.location.pathname.toLowerCase().startsWith("/result");
-  }, []);
-
-  if (isPublicResultPage) {
-    return <PublicResult />;
-  }
-
   const getFullNameFromEmail = (email: string) => {
     if (!email) return "Physics Wallah Staff";
     const prefix = email.split("@")[0];

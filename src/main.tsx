@@ -1,11 +1,15 @@
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
+import PublicResult from './components/PublicResult.tsx';
 import './index.css';
+
+// Route /result to standalone PublicResult page (no App, no login, no hooks conflict)
+const isResultPage = window.location.pathname.toLowerCase().startsWith('/result');
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    {isResultPage ? <PublicResult /> : <App />}
   </StrictMode>,
 );
 
