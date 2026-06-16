@@ -1811,6 +1811,24 @@ app.get("/api/features", verifyRequest, (req, res) => {
   res.json({ ...DEFAULT_FEATURES, ...(config.FEATURE_FLAGS || {}) });
 });
 
+// API: Update feature flags (Super Admin Only)
+app.post("/api/features", verifyRequest, superAdminOnly, (req, res) => {
+  try {
+    const { timetableGenerator, sheetEditor } = req.body;
+    const currentConfig = getAppConfig();
+    
+    currentConfig.FEATURE_FLAGS = {
+      timetableGenerator: !!timetableGenerator,
+      sheetEditor: !!sheetEditor
+    };
+    
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(currentConfig, null, 2), "utf-8");
+    res.json({ success: true, featureFlags: currentConfig.FEATURE_FLAGS });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to update feature flags: " + err.toString() });
+  }
+});
+
 // API: Get parsed dropdown listings
 app.get("/api/dropdowns", verifyRequest, async (req, res) => {
   if (loadError && memorySheets.length === 0) {
