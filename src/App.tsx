@@ -3790,64 +3790,7 @@ export default function App() {
                               </div>
                             )}
 
-                            {/* ── Feature Flags (Super Admin Only) ── */}
-                            {isSuperAdmin && (
-                              <div className="border border-amber-200/50 dark:border-amber-900/30 bg-amber-50/50 dark:bg-amber-950/10 rounded-2xl p-4 space-y-3">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <Zap className="w-4 h-4 text-amber-500" />
-                                  <h3 className="text-sm font-bold tracking-wider uppercase text-amber-600 dark:text-amber-400 font-mono">Feature Flags</h3>
-                                </div>
-                                <p className="text-[10px] text-slate-400">Enable or disable heavy modules. Disabled features won't load in the app, reducing startup time.</p>
 
-                                {/* Timetable Generator Toggle */}
-                                <div className="flex items-center justify-between py-2 px-3 bg-white/60 dark:bg-gray-900/30 rounded-xl">
-                                  <div className="flex items-center gap-2.5">
-                                    <Zap className="w-4 h-4 text-slate-400" />
-                                    <div>
-                                      <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">Auto Timetable Generator</span>
-                                      <p className="text-[10px] text-slate-400">AI-powered timetable generation engine (~77KB chunk)</p>
-                                    </div>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => setFeatureFlags(f => ({ ...f, timetableGenerator: !f.timetableGenerator }))}
-                                    className={`relative w-10 h-5 rounded-full transition-colors duration-200 cursor-pointer shrink-0 ${
-                                      featureFlags.timetableGenerator
-                                        ? "bg-emerald-500"
-                                        : "bg-slate-300 dark:bg-gray-700"
-                                    }`}
-                                  >
-                                    <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform duration-200 ${
-                                      featureFlags.timetableGenerator ? "translate-x-5" : ""
-                                    }`} />
-                                  </button>
-                                </div>
-
-                                {/* Sheet Editor Toggle */}
-                                <div className="flex items-center justify-between py-2 px-3 bg-white/60 dark:bg-gray-900/30 rounded-xl">
-                                  <div className="flex items-center gap-2.5">
-                                    <FileSpreadsheet className="w-4 h-4 text-slate-400" />
-                                    <div>
-                                      <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">Sheet Editor</span>
-                                      <p className="text-[10px] text-slate-400">Quick-edit timetable sheets in-app (~33KB chunk)</p>
-                                    </div>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => setFeatureFlags(f => ({ ...f, sheetEditor: !f.sheetEditor }))}
-                                    className={`relative w-10 h-5 rounded-full transition-colors duration-200 cursor-pointer shrink-0 ${
-                                      featureFlags.sheetEditor
-                                        ? "bg-emerald-500"
-                                        : "bg-slate-300 dark:bg-gray-700"
-                                    }`}
-                                  >
-                                    <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform duration-200 ${
-                                      featureFlags.sheetEditor ? "translate-x-5" : ""
-                                    }`} />
-                                  </button>
-                                </div>
-                              </div>
-                            )}
 
                             <button
                               type="button"
@@ -4347,6 +4290,8 @@ export default function App() {
               isSuperAdmin={isSuperAdmin}
               onClose={() => setShowAdminPanel(false)}
               onUnreadChange={(n) => setNotifUnread(n)}
+              featureFlags={featureFlags}
+              onFeatureFlagsChange={setFeatureFlags}
             />
           </div>
         </div>

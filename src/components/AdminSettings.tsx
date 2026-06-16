@@ -30,6 +30,8 @@ import {
   ToggleLeft,
   ToggleRight,
   Power,
+  Zap,
+  FileSpreadsheet,
 } from "lucide-react";
 import QRCode from "qrcode";
 
@@ -70,7 +72,7 @@ interface SheetSync {
   lastSync: string;
 }
 
-type Tab = "users" | "activity" | "notifications" | "sync" | "export" | "import" | "portal";
+type Tab = "users" | "activity" | "notifications" | "sync" | "export" | "import" | "portal" | "system";
 
 const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "users", label: "User Roles", icon: Users },
@@ -121,6 +123,8 @@ interface AdminSettingsProps {
   isSuperAdmin?: boolean;
   onClose: () => void;
   onUnreadChange?: (n: number) => void;
+  featureFlags?: { timetableGenerator: boolean; sheetEditor: boolean };
+  onFeatureFlagsChange?: (flags: { timetableGenerator: boolean; sheetEditor: boolean }) => void;
 }
 
 const AdminSettings: React.FC<AdminSettingsProps> = ({
@@ -128,8 +132,13 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({
   isSuperAdmin = false,
   onClose,
   onUnreadChange,
+  featureFlags = { timetableGenerator: false, sheetEditor: false },
+  onFeatureFlagsChange,
 }) => {
   const [tab, setTab] = useState<Tab>("users");
+  const tabsList = isSuperAdmin
+    ? [...TABS, { id: "system" as Tab, label: "Feature Flags", icon: Zap }]
+    : TABS;
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -205,6 +214,35 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({
     } catch { setError("Failed to update portal settings."); }
     setPortalSettingsLoading(false);
   }, [authHeaders]);
+
+  const [isUpdatingFeatures, setIsUpdatingFeatures] = useState(false);
+  const toggleFeatureFlag = useCallback(async (key: "timetableGenerator" | "sheetEditor", value: boolean) => {
+    setIsUpdatingFeatures(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const newFlags = { ...featureFlags, [key]: value };
+      const res = await fetch("/api/features", {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify(newFlags),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && onFeatureFlagsChange) {
+          onFeatureFlagsChange(data.featureFlags);
+          setNotice(`${key === "timetableGenerator" ? "Auto Timetable Generator" : "Sheet Editor"} ${value ? "enabled" : "disabled"} successfully.`);
+        }
+      } else {
+        const data = await res.json();
+        setError(data.error || "Failed to update feature flags.");
+      }
+    } catch (err: any) {
+      setError(err.message || String(err));
+    } finally {
+      setIsUpdatingFeatures(false);
+    }
+  }, [authHeaders, featureFlags, onFeatureFlagsChange]);
 
   const flash = (msg: string) => {
     setNotice(msg);
@@ -491,7 +529,7 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({
 
         {/* Tabs — wrap on mobile so all are visible (no hidden horizontal scroll) */}
         <div className="flex flex-wrap gap-1.5 py-3">
-          {TABS.map((t) => {
+          {tabsList.map((t) => {
             const Icon = t.icon;
             const active = tab === t.id;
             return (
@@ -1215,6 +1253,63 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({
                 )}
               </div>
             )}
+          </div>
+        )}
+
+        {/* ---- SYSTEM / FEATURE FLAGS ---- */}
+        {tab === "system" && isSuperAdmin && (
+          <div className="mt-1 space-y-5">
+            <div className="bg-white dark:bg-[#111827] border border-slate-200/60 dark:border-gray-800/80 rounded-2xl p-5 space-y-4">
+              <div className="flex items-center gap-2 mb-1">
+                <Zap className="w-4 h-4 text-amber-500 animate-pulse" />
+                <span className="text-xs font-extrabold text-slate-800 dark:text-white uppercase tracking-wider">Feature Flags</span>
+              </div>
+              <p className="text-[10px] text-slate-400">Enable or disable heavy application modules. Disabled features won't load, optimizing startup performance.</p>
+
+              {/* Timetable Generator Toggle */}
+              <div className="flex items-center justify-between bg-slate-50 dark:bg-gray-800/60 border border-slate-200/50 dark:border-gray-700/50 rounded-xl px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <Zap className="w-5 h-5 text-slate-400 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-slate-800 dark:text-white">Auto Timetable Generator</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">AI-powered timetable generation engine (~77KB chunk)</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => toggleFeatureFlag("timetableGenerator", !featureFlags.timetableGenerator)}
+                  disabled={isUpdatingFeatures}
+                  className="cursor-pointer disabled:opacity-50 transition-all shrink-0"
+                >
+                  {featureFlags.timetableGenerator ? (
+                    <ToggleRight className="w-10 h-10 text-emerald-500 drop-shadow-sm" />
+                  ) : (
+                    <ToggleLeft className="w-10 h-10 text-slate-400" />
+                  )}
+                </button>
+              </div>
+
+              {/* Sheet Editor Toggle */}
+              <div className="flex items-center justify-between bg-slate-50 dark:bg-gray-800/60 border border-slate-200/50 dark:border-gray-700/50 rounded-xl px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <FileSpreadsheet className="w-5 h-5 text-slate-400 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-slate-800 dark:text-white">Sheet Editor</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Quick-edit timetable sheets in-app (~33KB chunk)</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => toggleFeatureFlag("sheetEditor", !featureFlags.sheetEditor)}
+                  disabled={isUpdatingFeatures}
+                  className="cursor-pointer disabled:opacity-50 transition-all shrink-0"
+                >
+                  {featureFlags.sheetEditor ? (
+                    <ToggleRight className="w-10 h-10 text-emerald-500 drop-shadow-sm" />
+                  ) : (
+                    <ToggleLeft className="w-10 h-10 text-slate-400" />
+                  )}
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
