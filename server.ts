@@ -3407,6 +3407,74 @@ app.post("/api/timetable/write-sheet", verifyRequest, superAdminOnly, async (req
 
 
 /**
+ * POST /api/timetable/update-tab
+ * Overwrite values in an EXISTING tab (in-place save, no new sheet created).
+ *
+ * Body: {
+ *   tabName: string,       // existing tab name to overwrite
+ *   values: string[][],    // 2D array of cell values
+ * }
+ */
+app.post("/api/timetable/update-tab", verifyRequest, superAdminOnly, async (req, res) => {
+  try {
+    const { tabName, values } = req.body;
+
+    if (!tabName || typeof tabName !== "string") {
+      return res.status(400).json({ error: "'tabName' string is required." });
+    }
+    if (!values || !Array.isArray(values) || values.length === 0) {
+      return res.status(400).json({ error: "'values' 2D array is required." });
+    }
+
+    const spreadsheetId = settingsStore.TIMETABLE_SPREADSHEET_ID;
+
+    // Verify the tab exists
+    const metaRes = await settingsStore.timetableApiFetch(spreadsheetId, "?fields=sheets.properties");
+    const existingSheets: { properties: { sheetId: number; title: string } }[] = metaRes.sheets || [];
+    const targetSheet = existingSheets.find((s: any) => s.properties.title === tabName.trim());
+
+    if (!targetSheet) {
+      return res.status(404).json({ error: `Tab "${tabName}" not found in spreadsheet.` });
+    }
+
+    // Clear existing values first, then write new values
+    // This handles cases where new data has fewer rows/cols than existing
+    const maxCols = Math.max(...values.map((r: string[]) => r?.length || 0), 1);
+    const clearRange = `${encodeURIComponent(tabName.trim())}!A1:${String.fromCharCode(64 + Math.min(maxCols, 26))}${values.length + 10}`;
+
+    try {
+      await settingsStore.timetableApiFetch(
+        spreadsheetId,
+        `/values/${clearRange}:clear`,
+        { method: "POST", body: JSON.stringify({}) },
+      );
+    } catch {
+      // Clear might fail if range is out of bounds, that's okay
+    }
+
+    // Write new values
+    await settingsStore.timetableApiFetch(
+      spreadsheetId,
+      `/values/${encodeURIComponent(tabName.trim())}!A1?valueInputOption=RAW`,
+      { method: "PUT", body: JSON.stringify({ values }) },
+    );
+
+    const admin = String(req.headers["x-user-email"] || "").trim().toLowerCase();
+    if (admin) logActivity(admin, "timetable_update_tab", `Updated tab "${tabName}" in-place (${values.length} rows)`);
+
+    console.log(`[update-tab] Overwritten "${tabName}" with ${values.length} rows`);
+
+    res.json({
+      success: true,
+      message: `Tab "${tabName}" updated successfully ✓`,
+    });
+  } catch (err: any) {
+    console.error("[/api/timetable/update-tab] Error:", err.message);
+    res.status(500).json({ error: "Failed to update tab: " + err.message });
+  }
+});
+
+/**
  * POST /api/timetable/write-raw
  * Write raw 2D string values to a new tab in the timetable spreadsheet
  * WITH exact colour formatting copied from the source sheet.

@@ -504,7 +504,8 @@ export default function SheetEditorPage({ adminHeaders }: SheetEditorPageProps) 
       });
       const d = await r.json();
       if (!r.ok || !d.success) throw new Error(d.error || "Failed to save");
-      setSheetSaveResult({ success: true, message: `Saved as "${sheetCopyName.trim()}" with exact formatting ✓` });
+      setSheetSaveResult({ success: true, message: `Saved as "${sheetCopyName.trim()}" ✓ (new tab created)` });
+      setSheetSourceTab(sheetCopyName.trim());
       // Refresh tabs list
       try {
         const tr = await fetch("/api/timetable/tabs", { headers: adminHeaders() });
@@ -518,7 +519,32 @@ export default function SheetEditorPage({ adminHeaders }: SheetEditorPageProps) 
     } finally {
       setSheetSaving(false);
     }
-  }, [sheetData, sheetFormats, sheetCopyName, adminHeaders]);
+  }, [sheetData, sheetCopyName, sheetSourceTab, adminHeaders]);
+
+  // ── Save in-place (overwrite same tab) ──
+  const [savingInPlace, setSavingInPlace] = useState(false);
+  const handleSaveInPlace = useCallback(async () => {
+    if (!sheetData || !sheetSourceTab) return;
+    setSavingInPlace(true);
+    setSheetSaveResult(null);
+    try {
+      const r = await fetch("/api/timetable/update-tab", {
+        method: "POST",
+        headers: { ...adminHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tabName: sheetSourceTab,
+          values: sheetData,
+        }),
+      });
+      const d = await r.json();
+      if (!r.ok || !d.success) throw new Error(d.error || "Failed to save");
+      setSheetSaveResult({ success: true, message: `"${sheetSourceTab}" updated ✓` });
+    } catch (err: any) {
+      setSheetSaveResult({ success: false, message: err.message || "Save failed" });
+    } finally {
+      setSavingInPlace(false);
+    }
+  }, [sheetData, sheetSourceTab, adminHeaders]);
 
   // ── NEW: Quick Generate (1-click) ──
   const handleQuickGenerate = useCallback(async () => {
@@ -1218,33 +1244,59 @@ export default function SheetEditorPage({ adminHeaders }: SheetEditorPageProps) 
               </div>
             </div>
 
-            {/* Save as Copy */}
+            {/* Save Options */}
             <div className="bg-white dark:bg-[#111827] rounded-2xl border border-slate-200/50 dark:border-gray-800/40 shadow-sm overflow-hidden">
               <div className="flex items-center gap-2 px-4 py-3 md:px-5 border-b border-slate-100 dark:border-gray-800/40">
                 <div className="w-7 h-7 rounded-lg bg-emerald-500/10 flex items-center justify-center">
                   <Save className="w-3.5 h-3.5 text-emerald-500" />
                 </div>
-                <h3 className="text-xs font-bold tracking-wider uppercase text-slate-400 font-mono">Save as Copy</h3>
+                <h3 className="text-xs font-bold tracking-wider uppercase text-slate-400 font-mono">Save</h3>
               </div>
               <div className="px-4 py-3 md:px-5 space-y-3">
-                <input
-                  type="text"
-                  value={sheetCopyName}
-                  onChange={(e) => setSheetCopyName(e.target.value)}
-                  placeholder="e.g. 22nd-27th June 2026"
-                  className="w-full bg-slate-50 dark:bg-gray-900/40 rounded-xl border border-slate-200 dark:border-gray-800 px-4 py-2.5 text-xs text-slate-700 dark:text-slate-200 outline-none focus:border-emerald-500 transition-colors font-mono"
-                />
+                {/* Primary: Save in-place */}
                 <button
-                  onClick={handleSaveAsCopy}
-                  disabled={sheetSaving || !sheetCopyName.trim()}
-                  className="w-full bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-bold text-xs px-6 py-2.5 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 cursor-pointer shadow-lg shadow-emerald-500/20 hover:shadow-xl active:scale-[0.98]"
+                  onClick={handleSaveInPlace}
+                  disabled={savingInPlace || !sheetSourceTab}
+                  className="w-full bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-bold text-xs px-6 py-3 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-emerald-500/20 hover:shadow-xl active:scale-[0.98]"
                 >
-                  {sheetSaving ? (
+                  {savingInPlace ? (
                     <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving...</>
                   ) : (
-                    <><Save className="w-3.5 h-3.5" /> Save to Google Sheets</>
+                    <><Save className="w-3.5 h-3.5" /> 💾 Save — Overwrite "{sheetSourceTab}"</>
                   )}
                 </button>
+                <p className="text-[9px] text-slate-400 text-center">Changes directly update the current tab in Google Sheets</p>
+
+                {/* Divider */}
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-px bg-slate-200 dark:bg-gray-800/40" />
+                  <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">or</span>
+                  <div className="flex-1 h-px bg-slate-200 dark:bg-gray-800/40" />
+                </div>
+
+                {/* Secondary: Save as new tab */}
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={sheetCopyName}
+                    onChange={(e) => setSheetCopyName(e.target.value)}
+                    placeholder="New tab name (e.g. 22nd-27th June 2026)"
+                    className="flex-1 bg-slate-50 dark:bg-gray-900/40 rounded-xl border border-slate-200 dark:border-gray-800 px-3 py-2.5 text-xs text-slate-700 dark:text-slate-200 outline-none focus:border-emerald-500 transition-colors font-mono"
+                  />
+                  <button
+                    onClick={handleSaveAsCopy}
+                    disabled={sheetSaving || !sheetCopyName.trim()}
+                    className="bg-slate-100 dark:bg-gray-800/50 text-slate-600 dark:text-slate-300 font-bold text-[10px] px-4 py-2.5 rounded-xl transition-all disabled:opacity-30 flex items-center gap-1.5 cursor-pointer hover:bg-emerald-500/10 hover:text-emerald-600 border border-slate-200/50 dark:border-gray-800/40 shrink-0"
+                  >
+                    {sheetSaving ? (
+                      <><Loader2 className="w-3 h-3 animate-spin" /> ...</>
+                    ) : (
+                      <><CopyPlus className="w-3 h-3" /> Save as New Tab</>
+                    )}
+                  </button>
+                </div>
+
+                {/* Result */}
                 {sheetSaveResult && (
                   <div className={`flex items-center gap-2 rounded-xl px-3 py-2 ${
                     sheetSaveResult.success ? "bg-emerald-500/10 border border-emerald-500/20" : "bg-red-500/10 border border-red-500/20"
