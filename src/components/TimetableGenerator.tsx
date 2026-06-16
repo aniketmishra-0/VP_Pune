@@ -6,6 +6,7 @@ import {
   AlertTriangle, CheckCircle2, Loader2, Sun, CloudOff, Hash,
   Sliders, Trash2, Plus, Download, Sparkles, X, Save,
   Undo2, Search, Replace, CalendarDays, Eraser, Umbrella,
+  ArrowLeftRight, CopyPlus,
 } from "lucide-react";
 
 // ─── Types ──────────────────────────────────────────────────────────────
@@ -957,6 +958,100 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
     return conflicts;
   }, [sheetData]);
 
+  // ─── Sheet Editor: Copy to Next Week ───────────────────────────────
+  const handleCopyToNextWeek = useCallback(() => {
+    if (!sheetData) return;
+    sheetPushUndo();
+
+    // Parse the current week's Monday from the sheet data
+    const dayNames = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const monthsFull = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+    // Find the MONDAY date row in the sheet
+    let mondayDate: Date | null = null;
+    for (let r = 2; r < sheetData.length; r++) {
+      const col0 = (sheetData[r][0] || "").trim().toUpperCase();
+      if (col0 === "MONDAY" && sheetData[r][1]) {
+        // Try parsing the date from column 1 (e.g., "15th-Jun-2026" or "15-Jun-2026")
+        const dateStr = sheetData[r][1].replace(/(\d+)(st|nd|rd|th)/i, "$1");
+        const parsed = new Date(dateStr);
+        if (!isNaN(parsed.getTime())) {
+          mondayDate = parsed;
+        }
+        break;
+      }
+    }
+
+    // Calculate next Monday
+    const nextMonday = mondayDate ? new Date(mondayDate.getTime() + 7 * 24 * 60 * 60 * 1000) : new Date();
+    if (!mondayDate) {
+      // If we couldn't parse, just use next Monday from today
+      const today = new Date();
+      const dayOfWeek = today.getDay();
+      const daysUntilMonday = dayOfWeek === 0 ? 1 : dayOfWeek === 1 ? 7 : 8 - dayOfWeek;
+      nextMonday.setTime(today.getTime() + daysUntilMonday * 24 * 60 * 60 * 1000);
+    }
+
+    // Auto-update all dates in the sheet
+    setSheetData(prev => {
+      if (!prev) return prev;
+      const copy = prev.map(r => [...r]);
+      let dayOffset = 0;
+
+      for (let r = 2; r < copy.length; r++) {
+        const cellDay = (copy[r][0] || "").trim().toUpperCase();
+        if (dayNames.includes(cellDay)) {
+          const dateObj = new Date(nextMonday);
+          dateObj.setDate(dateObj.getDate() + dayOffset);
+          const dayNum = dateObj.getDate();
+          const suffix = dayNum === 1 || dayNum === 21 || dayNum === 31 ? "st" :
+                         dayNum === 2 || dayNum === 22 ? "nd" :
+                         dayNum === 3 || dayNum === 23 ? "rd" : "th";
+          copy[r][1] = `${dayNum}${suffix}-${months[dateObj.getMonth()]}-${dateObj.getFullYear()}`;
+          dayOffset++;
+        }
+      }
+      return copy;
+    });
+
+    // Generate tab name like "22nd -26th June 2026"
+    const endDate = new Date(nextMonday);
+    endDate.setDate(endDate.getDate() + 5); // Saturday
+    const startDay = nextMonday.getDate();
+    const endDay = endDate.getDate();
+    const sfx = (d: number) => d === 1 || d === 21 || d === 31 ? "st" : d === 2 || d === 22 ? "nd" : d === 3 || d === 23 ? "rd" : "th";
+    const tabName = nextMonday.getMonth() === endDate.getMonth()
+      ? `${startDay}${sfx(startDay)} -${endDay}${sfx(endDay)} ${monthsFull[nextMonday.getMonth()]} ${nextMonday.getFullYear()}`
+      : `${startDay}${sfx(startDay)} ${monthsFull[nextMonday.getMonth()]} -${endDay}${sfx(endDay)} ${monthsFull[endDate.getMonth()]} ${nextMonday.getFullYear()}`;
+
+    setSheetCopyName(tabName);
+  }, [sheetData, sheetPushUndo]);
+
+  // ─── Sheet Editor: Swap Mode ───────────────────────────────────────
+  const [sheetSwapMode, setSheetSwapMode] = useState(false);
+  const [sheetSwapFirst, setSheetSwapFirst] = useState<{ r: number; c: number } | null>(null);
+
+  const handleSheetSwapClick = useCallback((r: number, c: number) => {
+    if (!sheetData || r < 2 || c < 2) return; // Only swap data cells
+
+    if (!sheetSwapFirst) {
+      setSheetSwapFirst({ r, c });
+    } else {
+      // Swap the two cells
+      sheetPushUndo();
+      setSheetData(prev => {
+        if (!prev) return prev;
+        const copy = prev.map(row => [...row]);
+        const temp = copy[sheetSwapFirst.r][sheetSwapFirst.c];
+        copy[sheetSwapFirst.r][sheetSwapFirst.c] = copy[r][c];
+        copy[r][c] = temp;
+        return copy;
+      });
+      setSheetSwapFirst(null);
+    }
+  }, [sheetData, sheetSwapFirst, sheetPushUndo]);
+
   // ─── Fetch Faculty ────────────────────────────────────────────────
 
   const fetchFaculty = useCallback(async () => {
@@ -1506,6 +1601,30 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-[9px] font-bold tracking-widest uppercase text-slate-400 font-mono">Quick:</span>
                         
+                        {/* ★ Copy to Next Week — THE KILLER FEATURE */}
+                        <button
+                          onClick={handleCopyToNextWeek}
+                          className="flex items-center gap-1 text-[9px] font-bold px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-[#5277f7] to-[#7c3aed] text-white cursor-pointer shadow-md shadow-[#5277f7]/20 hover:shadow-lg active:scale-95 transition-all"
+                          title="1-click: copy all data → update dates to next week → set tab name"
+                        >
+                          <CopyPlus className="w-3 h-3" />
+                          Next Week
+                        </button>
+
+                        {/* Swap Mode Toggle */}
+                        <button
+                          onClick={() => { setSheetSwapMode(prev => !prev); setSheetSwapFirst(null); }}
+                          className={`flex items-center gap-1 text-[9px] font-bold px-2.5 py-1.5 rounded-lg cursor-pointer transition-all ${
+                            sheetSwapMode
+                              ? "bg-amber-500 text-white shadow-md shadow-amber-500/20"
+                              : "bg-slate-100 dark:bg-gray-800/50 text-slate-500 hover:bg-amber-500/10 hover:text-amber-500 border border-slate-200/50 dark:border-gray-800/40"
+                          }`}
+                          title="Click two cells to swap their values"
+                        >
+                          <ArrowLeftRight className="w-3 h-3" />
+                          {sheetSwapMode ? (sheetSwapFirst ? "Click 2nd cell..." : "Click 1st cell...") : "Swap"}
+                        </button>
+
                         {/* Auto-date */}
                         <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-gray-900/30 rounded-lg px-2 py-1.5 border border-slate-200/50 dark:border-gray-800/40">
                           <CalendarDays className="w-3 h-3 text-[#5277f7]" />
@@ -1515,10 +1634,10 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
                             className="bg-transparent text-[10px] text-slate-600 dark:text-slate-300 outline-none font-mono cursor-pointer w-24"
                             title="Set new week start → auto-update all dates"
                           />
-                          <span className="text-[9px] text-slate-400">Auto Dates</span>
+                          <span className="text-[9px] text-slate-400">Dates</span>
                         </div>
 
-                        {/* Day actions dropdown */}
+                        {/* Day actions */}
                         {["MON", "TUE", "WED", "THU", "FRI"].map(d => {
                           const full = d === "MON" ? "MONDAY" : d === "TUE" ? "TUESDAY" : d === "WED" ? "WEDNESDAY" : d === "THU" ? "THURSDAY" : "FRIDAY";
                           return (
@@ -1542,6 +1661,17 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
                           );
                         })}
                       </div>
+
+                      {/* Swap mode indicator */}
+                      {sheetSwapMode && (
+                        <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+                          <ArrowLeftRight className="w-3.5 h-3.5 text-amber-500 shrink-0 animate-pulse" />
+                          <p className="text-[10px] text-amber-600 dark:text-amber-400 font-bold">
+                            SWAP MODE: {sheetSwapFirst ? `Selected "${sheetData?.[sheetSwapFirst.r]?.[sheetSwapFirst.c]}" — now click the cell to swap with` : "Click the first cell to swap"}
+                          </p>
+                          <button onClick={() => { setSheetSwapMode(false); setSheetSwapFirst(null); }} className="text-[9px] text-amber-500 underline cursor-pointer ml-auto">Cancel</button>
+                        </div>
+                      )}
 
                       {/* Conflict badge */}
                       {sheetConflicts.size > 0 && (
@@ -1614,9 +1744,12 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
                                         !cellFmt ? "text-slate-700 dark:text-slate-200" : ""
                                       } ${isConflict ? "!bg-red-500/15 !text-red-600 dark:!text-red-400 ring-1 ring-red-500/30 ring-inset" : ""}
                                       ${isHighlighted ? "!bg-amber-400/20 !text-amber-700 dark:!text-amber-300 ring-1 ring-amber-400/40 ring-inset" : ""}
+                                      ${sheetSwapFirst?.r === rIdx && sheetSwapFirst?.c === cIdx ? "ring-2 ring-amber-500 ring-inset !bg-amber-500/20" : ""}
                                       ${!isEditing && !isHeaderRow ? "cursor-pointer hover:bg-[#5277f7]/5" : ""}`}
                                       onClick={() => {
-                                        if (!isEditing) {
+                                        if (sheetSwapMode) {
+                                          handleSheetSwapClick(rIdx, cIdx);
+                                        } else if (!isEditing) {
                                           sheetPushUndo();
                                           setSheetEditingCell({ r: rIdx, c: cIdx });
                                         }
@@ -1638,10 +1771,27 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
                                             } else if (e.key === "Tab") {
                                               e.preventDefault();
                                               handleSheetCellChange(rIdx, cIdx, (e.target as HTMLInputElement).value);
-                                              if (cIdx + 1 < row.length) setSheetEditingCell({ r: rIdx, c: cIdx + 1 });
-                                              else if (rIdx + 1 < sheetData.length) setSheetEditingCell({ r: rIdx + 1, c: 0 });
+                                              if (e.shiftKey) {
+                                                // Shift+Tab → move left
+                                                if (cIdx > 0) setSheetEditingCell({ r: rIdx, c: cIdx - 1 });
+                                                else if (rIdx > 0) setSheetEditingCell({ r: rIdx - 1, c: row.length - 1 });
+                                              } else {
+                                                if (cIdx + 1 < row.length) setSheetEditingCell({ r: rIdx, c: cIdx + 1 });
+                                                else if (rIdx + 1 < sheetData.length) setSheetEditingCell({ r: rIdx + 1, c: 0 });
+                                              }
                                             } else if (e.key === "Escape") {
                                               setSheetEditingCell(null);
+                                            } else if (e.key === "Delete" || (e.key === "Backspace" && (e.target as HTMLInputElement).value === "")) {
+                                              handleSheetCellChange(rIdx, cIdx, "");
+                                              setSheetEditingCell(null);
+                                            } else if (e.key === "ArrowUp" && rIdx > 0) {
+                                              e.preventDefault();
+                                              handleSheetCellChange(rIdx, cIdx, (e.target as HTMLInputElement).value);
+                                              setSheetEditingCell({ r: rIdx - 1, c: cIdx });
+                                            } else if (e.key === "ArrowDown" && rIdx + 1 < sheetData.length) {
+                                              e.preventDefault();
+                                              handleSheetCellChange(rIdx, cIdx, (e.target as HTMLInputElement).value);
+                                              setSheetEditingCell({ r: rIdx + 1, c: cIdx });
                                             }
                                           }}
                                           className="w-full bg-white dark:bg-gray-900 border border-[#5277f7] rounded px-1 py-0.5 text-[10px] outline-none text-slate-800 dark:text-white"

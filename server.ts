@@ -1342,7 +1342,7 @@ function countSheetRows(sheet: MemorySheet): number {
 
 
 
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
 
 // Google OAuth authentication endpoints
 app.get("/api/auth/google/url", (req, res) => {
