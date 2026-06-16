@@ -11,3 +11,4 @@ coverage/
 
 # Local runtime cache of roles/audit/notifications (sheet is source of truth)
 data/
+public/splash/
