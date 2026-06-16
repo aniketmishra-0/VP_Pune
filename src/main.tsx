@@ -20,9 +20,8 @@ createRoot(document.getElementById('root')!).render(
   </StrictMode>,
 );
 
-// Fade out the static splash screen once React has mounted.
-// Uses a tiny delay so the first paint of the app is ready underneath.
-const hideSplash = () => {
+// Expose the dismiss function globally so React can hide the splash screen when it's fully ready.
+(window as any).hideAppSplash = () => {
   const splash = document.getElementById('app-splash');
   if (!splash) return;
   splash.classList.add('splash-hide');
@@ -30,8 +29,11 @@ const hideSplash = () => {
   window.setTimeout(() => splash.remove(), 500);
 };
 
-if (typeof requestAnimationFrame !== 'undefined') {
-  requestAnimationFrame(() => requestAnimationFrame(() => window.setTimeout(hideSplash, 80)));
-} else {
-  window.setTimeout(hideSplash, 120);
-}
+// Safety fallback: if React fails to mount or hide the splash screen, dismiss it after 6 seconds anyway
+window.setTimeout(() => {
+  const splash = document.getElementById('app-splash');
+  if (splash) {
+    splash.classList.add('splash-hide');
+    window.setTimeout(() => splash.remove(), 500);
+  }
+}, 6000);

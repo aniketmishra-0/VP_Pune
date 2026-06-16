@@ -288,6 +288,13 @@ export default function App() {
   const [showAdminPanel, setShowAdminPanel] = useState<boolean>(false);
   const isAdmin = userRole === "admin";
 
+  // ---- Feature flags (server-controlled, super admin toggleable) ----
+  const [featureFlags, setFeatureFlags] = useState<{ timetableGenerator: boolean; sheetEditor: boolean }>({
+    timetableGenerator: false,
+    sheetEditor: false,
+  });
+
+
   const adminHeaders = (): Record<string, string> => {
     const h: Record<string, string> = {};
     const email = localStorage.getItem("pwUserEmail");
@@ -339,6 +346,10 @@ export default function App() {
     const name = localStorage.getItem("pwUserName") || undefined;
     if (email && localStorage.getItem("pwStaffToken")) {
       establishSession(email, name, "resume");
+      // Fetch feature flags in parallel
+      securedFetch("/api/features").then(r => r.ok ? r.json() : null).then(flags => {
+        if (flags) setFeatureFlags(flags);
+      }).catch(() => {});
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -442,6 +453,11 @@ export default function App() {
 
       // Set Active Sheets
       setActiveSheets(data.activeSheets || []);
+
+      // Sync feature flags
+      if (data.featureFlags) {
+        setFeatureFlags(data.featureFlags);
+      }
     } catch (err: any) {
       setConfigSaveError("Failed to fetch system configurations: " + err.message);
     }
@@ -851,6 +867,27 @@ export default function App() {
     }
   }, []);
 
+  useEffect(() => {
+    // Hide the static HTML splash screen only when the app is fully ready
+    const isLoginReady = !loggedInUser && !isPublicReport;
+    const isDashboardReady = !!loggedInUser && !dropdowns.isLoading;
+    const isPublicReportReady = isPublicReport && !isSearching && (!!studentsPayload || !!errorMessage);
+
+    if (isLoginReady || isDashboardReady || isPublicReportReady) {
+      const hideSplash = (window as any).hideAppSplash;
+      if (typeof hideSplash === "function") {
+        hideSplash();
+      } else {
+        // Fallback if hideAppSplash isn't exposed yet
+        const splash = document.getElementById("app-splash");
+        if (splash) {
+          splash.classList.add("splash-hide");
+          window.setTimeout(() => splash.remove(), 500);
+        }
+      }
+    }
+  }, [loggedInUser, isPublicReport, dropdowns.isLoading, isSearching, studentsPayload, errorMessage]);
+
   const handleGoogleLogin = async () => {
     setLoginError(null);
     setIsLoggingIn(true);
@@ -1044,6 +1081,7 @@ export default function App() {
           SPREADSHEET_CENTERS: sCentersObj,
           SUBSHEET_CENTERS: subCentersObj,
           STAFF_ACCESS: staffAccessObj,
+          FEATURE_FLAGS: featureFlags,
         }),
       });
 
@@ -1549,17 +1587,6 @@ export default function App() {
         ? "export-mode bg-white p-0 text-black min-h-screen h-auto overflow-visible" 
         : "h-[100dvh] overflow-hidden md:justify-center md:items-center bg-[#4e74e6] dark:bg-[#0c0e17] p-0 sm:p-4 md:p-6"
     } ${theme === "dark" && !exportMode ? "dark" : ""}`}>
-      
-      {/* INITIAL BLUR SPINNER IF SYSTEM DROP DOWNS PRE-LOAD */}
-      {dropdowns.isLoading && activeView === "home" && (
-        <div id="initialSplash" className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white dark:bg-[#0b0f19]">
-          <div className="animate-spin h-10 w-10 border-2 border-slate-250 dark:border-gray-800 border-t-blue-600 dark:border-t-blue-500 rounded-full mb-6"></div>
-          <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white font-display uppercase tracking-widest">
-            Pune Vidyapeeth
-          </h1>
-          <p className="text-xs text-slate-400 mt-1 dark:text-slate-500 font-mono">Caching administrative indices...</p>
-        </div>
-      )}
 
       {/* FLOATING ACTION OVERLAY IF DB IS PROCESSING CLIENT LOAD */}
       {isSearching && (
@@ -1797,8 +1824,8 @@ export default function App() {
               </button>
               )}
 
-              {/* Auto Timetable Generator Tab — super admin only */}
-              {isSuperAdmin && (
+              {/* Auto Timetable Generator Tab — super admin only + feature flag */}
+              {isSuperAdmin && featureFlags.timetableGenerator && (
               <button
                 onClick={() => { setActiveView("timetableGen"); setErrorMessage(null); }}
                 className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all cursor-pointer ${
@@ -1812,8 +1839,8 @@ export default function App() {
               </button>
               )}
 
-              {/* Sheet Editor Tab — super admin only */}
-              {isSuperAdmin && (
+              {/* Sheet Editor Tab — super admin only + feature flag */}
+              {isSuperAdmin && featureFlags.sheetEditor && (
               <button
                 onClick={() => { setActiveView("sheetEditor"); setErrorMessage(null); }}
                 className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all cursor-pointer ${
@@ -3763,6 +3790,65 @@ export default function App() {
                               </div>
                             )}
 
+                            {/* ── Feature Flags (Super Admin Only) ── */}
+                            {isSuperAdmin && (
+                              <div className="border border-amber-200/50 dark:border-amber-900/30 bg-amber-50/50 dark:bg-amber-950/10 rounded-2xl p-4 space-y-3">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <Zap className="w-4 h-4 text-amber-500" />
+                                  <h3 className="text-sm font-bold tracking-wider uppercase text-amber-600 dark:text-amber-400 font-mono">Feature Flags</h3>
+                                </div>
+                                <p className="text-[10px] text-slate-400">Enable or disable heavy modules. Disabled features won't load in the app, reducing startup time.</p>
+
+                                {/* Timetable Generator Toggle */}
+                                <div className="flex items-center justify-between py-2 px-3 bg-white/60 dark:bg-gray-900/30 rounded-xl">
+                                  <div className="flex items-center gap-2.5">
+                                    <Zap className="w-4 h-4 text-slate-400" />
+                                    <div>
+                                      <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">Auto Timetable Generator</span>
+                                      <p className="text-[10px] text-slate-400">AI-powered timetable generation engine (~77KB chunk)</p>
+                                    </div>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => setFeatureFlags(f => ({ ...f, timetableGenerator: !f.timetableGenerator }))}
+                                    className={`relative w-10 h-5 rounded-full transition-colors duration-200 cursor-pointer shrink-0 ${
+                                      featureFlags.timetableGenerator
+                                        ? "bg-emerald-500"
+                                        : "bg-slate-300 dark:bg-gray-700"
+                                    }`}
+                                  >
+                                    <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform duration-200 ${
+                                      featureFlags.timetableGenerator ? "translate-x-5" : ""
+                                    }`} />
+                                  </button>
+                                </div>
+
+                                {/* Sheet Editor Toggle */}
+                                <div className="flex items-center justify-between py-2 px-3 bg-white/60 dark:bg-gray-900/30 rounded-xl">
+                                  <div className="flex items-center gap-2.5">
+                                    <FileSpreadsheet className="w-4 h-4 text-slate-400" />
+                                    <div>
+                                      <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">Sheet Editor</span>
+                                      <p className="text-[10px] text-slate-400">Quick-edit timetable sheets in-app (~33KB chunk)</p>
+                                    </div>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => setFeatureFlags(f => ({ ...f, sheetEditor: !f.sheetEditor }))}
+                                    className={`relative w-10 h-5 rounded-full transition-colors duration-200 cursor-pointer shrink-0 ${
+                                      featureFlags.sheetEditor
+                                        ? "bg-emerald-500"
+                                        : "bg-slate-300 dark:bg-gray-700"
+                                    }`}
+                                  >
+                                    <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform duration-200 ${
+                                      featureFlags.sheetEditor ? "translate-x-5" : ""
+                                    }`} />
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+
                             <button
                               type="button"
                               onClick={() => handleSaveConfig()}
@@ -4101,7 +4187,7 @@ export default function App() {
             </motion.div>
           )}
 
-          {activeView === "timetableGen" && isSuperAdmin && (
+          {activeView === "timetableGen" && isSuperAdmin && featureFlags.timetableGenerator && (
             <motion.div
               key="timetableGen"
               initial={{ opacity: 0, y: 15 }}
@@ -4115,7 +4201,7 @@ export default function App() {
             </motion.div>
           )}
 
-          {activeView === "sheetEditor" && isSuperAdmin && (
+          {activeView === "sheetEditor" && isSuperAdmin && featureFlags.sheetEditor && (
             <motion.div
               key="sheetEditor"
               initial={{ opacity: 0, y: 15 }}
@@ -4206,8 +4292,8 @@ export default function App() {
           </button>
           )}
 
-          {/* Sheet Editor Tab — super admin only (mobile) */}
-          {isSuperAdmin && (
+          {/* Sheet Editor Tab — super admin only + feature flag (mobile) */}
+          {isSuperAdmin && featureFlags.sheetEditor && (
           <button
             onClick={() => { setActiveView("sheetEditor"); setErrorMessage(null); }}
             className={`flex flex-col items-center justify-center gap-1 w-14 py-1 rounded-xl transition-all cursor-pointer outline-none ${

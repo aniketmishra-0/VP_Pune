@@ -27,11 +27,19 @@ function generateStaffToken(email: string): string {
 
 const CONFIG_PATH = path.join(process.cwd(), "config.json");
 
+interface FeatureFlags {
+  timetableGenerator: boolean;
+  sheetEditor: boolean;
+}
+
+const DEFAULT_FEATURES: FeatureFlags = { timetableGenerator: false, sheetEditor: false };
+
 interface SavedConfig {
   SPREADSHEET_URL?: string;
   SPREADSHEET_CENTERS?: Record<string, string>;
   SUBSHEET_CENTERS?: Record<string, string[]>;
   STAFF_ACCESS?: Record<string, string[]>;
+  FEATURE_FLAGS?: Partial<FeatureFlags>;
 }
 
 function getAppConfig(): SavedConfig {
@@ -1732,6 +1740,7 @@ app.get("/api/config", verifyRequest, superAdminOnly, (req, res) => {
       SUBSHEET_CENTERS: getSubsheetCenters(),
       STAFF_ACCESS: getStaffAccess(),
     },
+    featureFlags: { ...DEFAULT_FEATURES, ...(config.FEATURE_FLAGS || {}) },
     activeSheets: userSheets.map(s => ({
       name: s.name,
       sourceUrl: s.sourceUrl,
@@ -1743,7 +1752,7 @@ app.get("/api/config", verifyRequest, superAdminOnly, (req, res) => {
 // API: Save custom configurations to local config file and trigger load
 app.post("/api/config", verifyRequest, superAdminOnly, async (req, res) => {
   try {
-    const { SPREADSHEET_URL, SPREADSHEET_CENTERS, SUBSHEET_CENTERS, STAFF_ACCESS } = req.body;
+    const { SPREADSHEET_URL, SPREADSHEET_CENTERS, SUBSHEET_CENTERS, STAFF_ACCESS, FEATURE_FLAGS } = req.body;
     const newConfig: SavedConfig = {};
 
     if (typeof SPREADSHEET_URL === "string") {
@@ -1760,6 +1769,9 @@ app.post("/api/config", verifyRequest, superAdminOnly, async (req, res) => {
     }
     if (STAFF_ACCESS && typeof STAFF_ACCESS === "object") {
       newConfig.STAFF_ACCESS = STAFF_ACCESS;
+    }
+    if (FEATURE_FLAGS && typeof FEATURE_FLAGS === "object") {
+      newConfig.FEATURE_FLAGS = FEATURE_FLAGS;
     }
 
     fs.writeFileSync(CONFIG_PATH, JSON.stringify(newConfig, null, 2), "utf-8");
@@ -1791,6 +1803,12 @@ app.get("/api/health", verifyRequest, (req, res) => {
     loadError,
     sheetCount: memorySheets.length,
   });
+});
+
+// API: Feature flags — lightweight, available to all authenticated users
+app.get("/api/features", verifyRequest, (req, res) => {
+  const config = getAppConfig();
+  res.json({ ...DEFAULT_FEATURES, ...(config.FEATURE_FLAGS || {}) });
 });
 
 // API: Get parsed dropdown listings
