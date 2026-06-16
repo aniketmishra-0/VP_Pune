@@ -2930,7 +2930,7 @@ async function loadTimetableData() {
  * GET /api/timetable?code=CSI
  * Return filtered lectures for a teacher code, or all if no code given.
  */
-app.get("/api/timetable", verifyRequest, superAdminOnly, (req, res) => {
+app.get("/api/timetable", verifyRequest, (req, res) => {
   const code = String(req.query.code ?? "").trim().toUpperCase();
   const filtered = code
     ? timetableData.filter(l => l.teacherCode.toUpperCase() === code)
@@ -2946,7 +2946,7 @@ app.get("/api/timetable", verifyRequest, superAdminOnly, (req, res) => {
  * GET /api/timetable/codes
  * Return all unique teacher codes with lecture counts.
  */
-app.get("/api/timetable/codes", verifyRequest, superAdminOnly, (_req, res) => {
+app.get("/api/timetable/codes", verifyRequest, (_req, res) => {
   const counts = new Map<string, number>();
   for (const l of timetableData) {
     counts.set(l.teacherCode, (counts.get(l.teacherCode) || 0) + 1);
@@ -2978,7 +2978,7 @@ app.get("/api/timetable/stats", verifyRequest, superAdminOnly, (_req, res) => {
  * GET /api/timetable/config
  * Return the current timetable configuration & status.
  */
-app.get("/api/timetable/config", verifyRequest, superAdminOnly, (_req, res) => {
+app.get("/api/timetable/config", verifyRequest, (_req, res) => {
   res.json({
     url: getTimetableUrl(),
     lastLoaded: timetableLastLoaded,
@@ -3035,7 +3035,7 @@ app.post("/api/timetable/config", verifyRequest, superAdminOnly, async (req, res
  * POST /api/timetable/refresh
  * Re-download and parse the timetable from the configured URL.
  */
-app.post("/api/timetable/refresh", verifyRequest, superAdminOnly, async (req, res) => {
+app.post("/api/timetable/refresh", verifyRequest, async (req, res) => {
   const admin = String(req.headers["x-user-email"] || "").trim().toLowerCase();
   if (admin) logActivity(admin, "timetable_refresh", "Manual refresh triggered");
 
@@ -3051,7 +3051,7 @@ app.post("/api/timetable/refresh", verifyRequest, superAdminOnly, async (req, re
  * GET /api/timetable/teachers
  * Return teacher code → name mapping from config.
  */
-app.get("/api/timetable/teachers", verifyRequest, superAdminOnly, (_req, res) => {
+app.get("/api/timetable/teachers", verifyRequest, (_req, res) => {
   const config = getAppConfig() as any;
   const names: Record<string, string> = config.TEACHER_NAMES || {};
   res.json({ teachers: names });
