@@ -3448,8 +3448,12 @@ app.post("/api/timetable/write-raw", verifyRequest, superAdminOnly, async (req, 
     }
 
     // 1. Create the new tab
-    const rowCount = Math.max(values.length, 1);
-    const colCount = Math.max(...values.map((r: string[]) => r?.length || 0), 1);
+    const rowCount = Math.max(values.length, formats?.length || 0, 1);
+    const colCount = Math.max(
+      ...values.map((r: string[]) => r?.length || 0),
+      ...(formats || []).map((r: any[]) => r?.length || 0),
+      1
+    );
 
     const createRes = await settingsStore.timetableApiFetch(spreadsheetId, ":batchUpdate", {
       method: "POST",

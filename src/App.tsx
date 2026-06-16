@@ -51,6 +51,7 @@ import TimetableViewer from "./components/TimetableViewer";
 import TimetableGenerator from "./components/TimetableGenerator";
 import ErrorBoundary from "./components/ErrorBoundary";
 import TimetableConfig from "./components/TimetableConfig";
+import SheetEditorPage from "./components/SheetEditorPage";
 
 function PWLogo({ size = "h-10 w-10", textSize = "text-sm", className = "" }: { size?: string, textSize?: string, className?: string }) {
   const [hasError, setHasError] = React.useState(false);
@@ -234,7 +235,7 @@ export default function App() {
   const [theme, setTheme] = useState<"light" | "dark">(
     () => (localStorage.getItem("theme") as "light" | "dark") || "light"
   );
-  const [activeView, setActiveView] = useState<"home" | "input" | "batchList" | "dashboard" | "sheetsList" | "admin" | "timetable">("home");
+  const [activeView, setActiveView] = useState<"home" | "input" | "batchList" | "dashboard" | "sheetsList" | "admin" | "timetable" | "timetableGen" | "sheetEditor">("home");
   const [searchType, setSearchType] = useState<"batch" | "name" | "reg" | null>(null);
   const [sheetFilterQuery, setSheetFilterQuery] = useState<string>("");
   
@@ -1793,6 +1794,21 @@ export default function App() {
                 title="Auto Generate Timetable"
               >
                 <Zap className="w-5 h-5" />
+              </button>
+              )}
+
+              {/* Sheet Editor Tab — admin only */}
+              {isAdmin && (
+              <button
+                onClick={() => { setActiveView("sheetEditor"); setErrorMessage(null); }}
+                className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all cursor-pointer ${
+                  activeView === "sheetEditor"
+                    ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/20"
+                    : "text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-gray-800/60"
+                }`}
+                title="Sheet Editor — Quick Edit Timetable"
+              >
+                <FileSpreadsheet className="w-5 h-5" />
               </button>
               )}
 
@@ -4069,6 +4085,20 @@ export default function App() {
             </motion.div>
           )}
 
+          {activeView === "sheetEditor" && isAdmin && (
+            <motion.div
+              key="sheetEditor"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              className="space-y-6 max-w-7xl mx-auto py-2 w-full text-slate-800 dark:text-slate-100"
+            >
+              <ErrorBoundary fallbackTitle="Sheet Editor crashed">
+                <SheetEditorPage adminHeaders={adminHeaders} />
+              </ErrorBoundary>
+            </motion.div>
+          )}
+
         </AnimatePresence>
 
 
@@ -4143,6 +4173,21 @@ export default function App() {
           >
             <Settings className="w-5 h-5 shrink-0" />
             <span className="text-[10px] font-semibold tracking-tight font-sans leading-tight">Settings</span>
+          </button>
+          )}
+
+          {/* Sheet Editor Tab — admin only (mobile) */}
+          {isAdmin && (
+          <button
+            onClick={() => { setActiveView("sheetEditor"); setErrorMessage(null); }}
+            className={`flex flex-col items-center justify-center gap-1 w-14 py-1 rounded-xl transition-all cursor-pointer outline-none ${
+              activeView === "sheetEditor"
+                ? "text-emerald-500 dark:text-emerald-400"
+                : "text-slate-400 hover:text-slate-800 dark:hover:text-white"
+            }`}
+          >
+            <FileSpreadsheet className="w-5 h-5 shrink-0" />
+            <span className="text-[10px] font-semibold tracking-tight font-sans leading-tight">Editor</span>
           </button>
           )}
 
