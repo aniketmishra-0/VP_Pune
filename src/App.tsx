@@ -1782,8 +1782,8 @@ export default function App() {
               </button>
               )}
 
-              {/* Auto Timetable Generator Tab — admin only */}
-              {isAdmin && (
+              {/* Auto Timetable Generator Tab — super admin only */}
+              {isSuperAdmin && (
               <button
                 onClick={() => { setActiveView("timetableGen"); setErrorMessage(null); }}
                 className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all cursor-pointer ${
@@ -1797,8 +1797,8 @@ export default function App() {
               </button>
               )}
 
-              {/* Sheet Editor Tab — admin only */}
-              {isAdmin && (
+              {/* Sheet Editor Tab — super admin only */}
+              {isSuperAdmin && (
               <button
                 onClick={() => { setActiveView("sheetEditor"); setErrorMessage(null); }}
                 className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all cursor-pointer ${
@@ -4071,7 +4071,7 @@ export default function App() {
             </motion.div>
           )}
 
-          {activeView === "timetableGen" && isAdmin && (
+          {activeView === "timetableGen" && isSuperAdmin && (
             <motion.div
               key="timetableGen"
               initial={{ opacity: 0, y: 15 }}
@@ -4085,7 +4085,7 @@ export default function App() {
             </motion.div>
           )}
 
-          {activeView === "sheetEditor" && isAdmin && (
+          {activeView === "sheetEditor" && isSuperAdmin && (
             <motion.div
               key="sheetEditor"
               initial={{ opacity: 0, y: 15 }}
@@ -4176,8 +4176,8 @@ export default function App() {
           </button>
           )}
 
-          {/* Sheet Editor Tab — admin only (mobile) */}
-          {isAdmin && (
+          {/* Sheet Editor Tab — super admin only (mobile) */}
+          {isSuperAdmin && (
           <button
             onClick={() => { setActiveView("sheetEditor"); setErrorMessage(null); }}
             className={`flex flex-col items-center justify-center gap-1 w-14 py-1 rounded-xl transition-all cursor-pointer outline-none ${
