@@ -942,16 +942,19 @@ loadSpreadsheetData();
 
 /* ===== PAPERS DATA STORAGE & PARSER (added) ===== */
 
+interface PaperLink {
+  name: string;
+  url: string;
+}
+
 interface PaperRow {
   date: string;
   class: string;
   phase: string;
   stream: string;
   testName: string;
-  questionPaperName: string;
-  questionPaperUrl: string;
-  answerKeyName: string;
-  answerKeyUrl: string;
+  questionPapers: PaperLink[];
+  answerKeys: PaperLink[];
 }
 
 interface PaperTab {
@@ -973,6 +976,62 @@ function getPapersSpreadsheetUrl(): string {
   const defaultUrl = "https://docs.google.com/spreadsheets/d/1R1jK_tiisgx1xVbZAvjxBJ1IdulX6bJZFP4udsQ9PD0/edit";
   
   return normalizeSpreadsheetUrl(envUrl || configUrl || defaultUrl);
+}
+
+function extractLinksFromCell(cell: any): PaperLink[] {
+  if (!cell) return [];
+  const links: PaperLink[] = [];
+
+  // 1. If there's a formula, search for HYPERLINK formulas
+  if (cell.f) {
+    // Match HYPERLINK("url", "label") or HYPERLINK("url"; "label")
+    const hyperlinkRegex = /HYPERLINK\(\s*["']([^"']+)["']\s*(?:,|\s*;)\s*["']([^"']+)["']\)/gi;
+    let match;
+    while ((match = hyperlinkRegex.exec(cell.f)) !== null) {
+      links.push({
+        url: match[1].trim(),
+        name: match[2].trim(),
+      });
+    }
+
+    // Fallback: if we didn't find any match with the full regex but there are URLs in the formula
+    if (links.length === 0) {
+      const urlRegex = /"(https?:\/\/[^"]+)"/g;
+      let urlMatch;
+      let idx = 1;
+      while ((urlMatch = urlRegex.exec(cell.f)) !== null) {
+        links.push({
+          url: urlMatch[1].trim(),
+          name: `Link ${idx++}`,
+        });
+      }
+    }
+  }
+
+  // 2. If no links found via formula, check the standard SheetJS single link property
+  if (links.length === 0 && cell.l && cell.l.Target) {
+    links.push({
+      url: cell.l.Target.trim(),
+      name: cell.w ? cell.w.trim() : "Link",
+    });
+  }
+
+  // 3. Check if the cell value contains plain text URLs (e.g. separated by spaces/newlines)
+  if (links.length === 0 && cell.v) {
+    const text = String(cell.v);
+    const urlRegex = /(https?:\/\/[^\s,;]+)/g;
+    const urls = text.match(urlRegex);
+    if (urls && urls.length > 0) {
+      urls.forEach((url, idx) => {
+        links.push({
+          url: url.trim(),
+          name: urls.length === 1 ? (cell.w ? cell.w.trim() : "Link") : `Link ${idx + 1}`,
+        });
+      });
+    }
+  }
+
+  return links.filter(l => l.url.startsWith("http"));
 }
 
 function parsePapersSheet(worksheet: XLSX.WorkSheet): PaperRow[] {
@@ -1047,29 +1106,15 @@ function parsePapersSheet(worksheet: XLSX.WorkSheet): PaperRow[] {
 
     if (!dateVal && !testVal) continue;
 
-    const getCellLink = (colIdx: number) => {
-      if (colIdx < 0) return { name: "", url: "" };
+    const getCellLinks = (colIdx: number) => {
+      if (colIdx < 0) return [];
       const cellRef = XLSX.utils.encode_cell({ r, c: colIdx });
       const cell = worksheet[cellRef];
-      if (!cell) return { name: "", url: "" };
-
-      const name = cell.w || (cell.v !== undefined ? String(cell.v) : "");
-      let url = "";
-
-      if (cell.l && cell.l.Target) {
-        url = cell.l.Target;
-      } else if (cell.f && cell.f.includes("HYPERLINK")) {
-        const match = cell.f.match(/HYPERLINK\(\s*["']([^"']+)["']/i);
-        if (match) {
-          url = match[1];
-        }
-      }
-
-      return { name: name.trim(), url: url.trim() };
+      return extractLinksFromCell(cell);
     };
 
-    const qp = getCellLink(colIndices.questionPaper);
-    const ak = getCellLink(colIndices.answerKey);
+    const qpLinks = getCellLinks(colIndices.questionPaper);
+    const akLinks = getCellLinks(colIndices.answerKey);
 
     rows.push({
       date: dateVal,
@@ -1083,10 +1128,8 @@ function parsePapersSheet(worksheet: XLSX.WorkSheet): PaperRow[] {
         ? String(worksheet[XLSX.utils.encode_cell({ r, c: colIndices.stream })].v).trim()
         : "",
       testName: testVal,
-      questionPaperName: qp.name,
-      questionPaperUrl: qp.url,
-      answerKeyName: ak.name,
-      answerKeyUrl: ak.url,
+      questionPapers: qpLinks,
+      answerKeys: akLinks,
     });
   }
 

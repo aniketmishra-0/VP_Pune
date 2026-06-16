@@ -16,16 +16,19 @@ import {
   Check,
 } from "lucide-react";
 
+interface PaperLink {
+  name: string;
+  url: string;
+}
+
 interface PaperRow {
   date: string;
   class: string;
   phase: string;
   stream: string;
   testName: string;
-  questionPaperName: string;
-  questionPaperUrl: string;
-  answerKeyName: string;
-  answerKeyUrl: string;
+  questionPapers: PaperLink[];
+  answerKeys: PaperLink[];
 }
 
 interface PaperTab {
@@ -57,6 +60,7 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
   // Preview and copy states
   const [previewDoc, setPreviewDoc] = useState<{ title: string; url: string; type: "QP" | "AK" } | null>(null);
   const [copied, setCopied] = useState<boolean>(false);
+  const [activeDropdown, setActiveDropdown] = useState<{ idx: number; type: "QP" | "AK" } | null>(null);
 
   // Fetch Papers
   const getEmbedUrl = useCallback((url: string): string => {
@@ -476,17 +480,47 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
                       </td>
 
                       {/* Question Paper Action */}
-                      <td className="p-4 text-center">
-                        {paper.questionPaperUrl ? (
-                          <button
-                            onClick={() => setPreviewDoc({ title: `${paper.testName} - Question Paper`, url: paper.questionPaperUrl, type: "QP" })}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-[#5277f7] text-blue-600 hover:text-white dark:bg-blue-950/30 dark:text-blue-300 dark:hover:bg-blue-600 dark:hover:text-white rounded-lg font-bold transition-all cursor-pointer shadow-sm border border-blue-100/20"
-                            title={paper.questionPaperName || "Open Question Paper"}
-                          >
-                            <Download className="w-3.5 h-3.5" />
-                            Open
-                            <ExternalLink className="w-2.5 h-2.5 opacity-60" />
-                          </button>
+                      <td className="p-4 text-center relative">
+                        {paper.questionPapers && paper.questionPapers.length > 0 ? (
+                          paper.questionPapers.length === 1 ? (
+                            <button
+                              onClick={() => setPreviewDoc({ title: `${paper.testName} - Question Paper`, url: paper.questionPapers[0].url, type: "QP" })}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-[#5277f7] text-blue-600 hover:text-white dark:bg-blue-950/30 dark:text-blue-300 dark:hover:bg-blue-600 dark:hover:text-white rounded-lg font-bold transition-all cursor-pointer shadow-sm border border-blue-100/20"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                              Open
+                              <ExternalLink className="w-2.5 h-2.5 opacity-60" />
+                            </button>
+                          ) : (
+                            <div className="inline-block relative">
+                              <button
+                                onClick={() => setActiveDropdown(activeDropdown?.idx === idx && activeDropdown?.type === "QP" ? null : { idx, type: "QP" })}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-[#5277f7] text-blue-600 hover:text-white dark:bg-blue-950/30 dark:text-blue-300 dark:hover:bg-blue-600 dark:hover:text-white rounded-lg font-bold transition-all cursor-pointer shadow-sm border border-blue-100/20"
+                              >
+                                <Download className="w-3.5 h-3.5" />
+                                Open ({paper.questionPapers.length})
+                                <ChevronDown className="w-3 h-3 opacity-60" />
+                              </button>
+                              
+                              {activeDropdown?.idx === idx && activeDropdown?.type === "QP" && (
+                                <div className="absolute right-0 mt-1 w-48 bg-white dark:bg-[#1f2937] rounded-xl shadow-xl border border-slate-200/50 dark:border-gray-700 z-50 py-1 overflow-hidden">
+                                  {paper.questionPapers.map((link, lIdx) => (
+                                    <button
+                                      key={lIdx}
+                                      onClick={() => {
+                                        setPreviewDoc({ title: `${paper.testName} - ${link.name || `QP ${lIdx + 1}`}`, url: link.url, type: "QP" });
+                                        setActiveDropdown(null);
+                                      }}
+                                      className="w-full text-left px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-gray-800 text-slate-700 dark:text-slate-200 font-semibold transition-colors flex items-center gap-1.5"
+                                    >
+                                      <FileText className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                                      <span className="truncate">{link.name || `QP ${lIdx + 1}`}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )
                         ) : (
                           <span className="text-[10px] text-slate-350 font-bold bg-slate-50 dark:bg-gray-800/10 px-2 py-1 rounded border border-slate-100 dark:border-gray-800/20 select-none">
                             Unavailable
@@ -495,17 +529,47 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
                       </td>
 
                       {/* Answer Key Action */}
-                      <td className="p-4 text-center">
-                        {paper.answerKeyUrl ? (
-                          <button
-                            onClick={() => setPreviewDoc({ title: `${paper.testName} - Answer Key`, url: paper.answerKeyUrl, type: "AK" })}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-500 text-emerald-600 hover:text-white dark:bg-emerald-950/30 dark:text-emerald-300 dark:hover:bg-emerald-600 dark:hover:text-white rounded-lg font-bold transition-all cursor-pointer shadow-sm border border-emerald-100/20"
-                            title={paper.answerKeyName || "Open Answer Key"}
-                          >
-                            <Download className="w-3.5 h-3.5" />
-                            Open
-                            <ExternalLink className="w-2.5 h-2.5 opacity-60" />
-                          </button>
+                      <td className="p-4 text-center relative">
+                        {paper.answerKeys && paper.answerKeys.length > 0 ? (
+                          paper.answerKeys.length === 1 ? (
+                            <button
+                              onClick={() => setPreviewDoc({ title: `${paper.testName} - Answer Key`, url: paper.answerKeys[0].url, type: "AK" })}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-500 text-emerald-600 hover:text-white dark:bg-emerald-950/30 dark:text-emerald-300 dark:hover:bg-emerald-600 dark:hover:text-white rounded-lg font-bold transition-all cursor-pointer shadow-sm border border-emerald-100/20"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                              Open
+                              <ExternalLink className="w-2.5 h-2.5 opacity-60" />
+                            </button>
+                          ) : (
+                            <div className="inline-block relative">
+                              <button
+                                onClick={() => setActiveDropdown(activeDropdown?.idx === idx && activeDropdown?.type === "AK" ? null : { idx, type: "AK" })}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-500 text-emerald-600 hover:text-white dark:bg-emerald-950/30 dark:text-emerald-300 dark:hover:bg-emerald-600 dark:hover:text-white rounded-lg font-bold transition-all cursor-pointer shadow-sm border border-emerald-100/20"
+                              >
+                                <Download className="w-3.5 h-3.5" />
+                                Open ({paper.answerKeys.length})
+                                <ChevronDown className="w-3 h-3 opacity-60" />
+                              </button>
+                              
+                              {activeDropdown?.idx === idx && activeDropdown?.type === "AK" && (
+                                <div className="absolute right-0 mt-1 w-48 bg-white dark:bg-[#1f2937] rounded-xl shadow-xl border border-slate-200/50 dark:border-gray-700 z-50 py-1 overflow-hidden">
+                                  {paper.answerKeys.map((link, lIdx) => (
+                                    <button
+                                      key={lIdx}
+                                      onClick={() => {
+                                        setPreviewDoc({ title: `${paper.testName} - ${link.name || `AK ${lIdx + 1}`}`, url: link.url, type: "AK" });
+                                        setActiveDropdown(null);
+                                      }}
+                                      className="w-full text-left px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-gray-800 text-slate-700 dark:text-slate-200 font-semibold transition-colors flex items-center gap-1.5"
+                                    >
+                                      <FileText className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                      <span className="truncate">{link.name || `AK ${lIdx + 1}`}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )
                         ) : (
                           <span className="text-[10px] text-slate-350 font-bold bg-slate-50 dark:bg-gray-800/10 px-2 py-1 rounded border border-slate-100 dark:border-gray-800/20 select-none">
                             Unavailable
@@ -564,36 +628,48 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
 
                 <hr className="border-slate-100 dark:border-gray-800/30" />
 
-                <div className="grid grid-cols-2 gap-2 pt-0.5">
-                  {/* QP */}
-                  {paper.questionPaperUrl ? (
-                    <button
-                      onClick={() => setPreviewDoc({ title: `${paper.testName} - Question Paper`, url: paper.questionPaperUrl, type: "QP" })}
-                      className="flex items-center justify-center gap-1.5 py-2 bg-blue-50 text-blue-600 dark:bg-blue-950/20 dark:text-blue-300 rounded-xl font-bold text-xs border border-blue-100/10 cursor-pointer transition-colors"
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                      QP Link
-                    </button>
-                  ) : (
-                    <div className="flex items-center justify-center py-2 bg-slate-50 dark:bg-gray-800/10 text-slate-350 dark:text-slate-600 rounded-xl font-bold text-xs border border-slate-100 dark:border-gray-800/20 select-none">
-                      QP Unavailable
-                    </div>
-                  )}
+                <div className="grid grid-cols-2 gap-3 pt-0.5 items-start">
+                  {/* QP links container */}
+                  <div className="flex flex-col gap-1.5">
+                    <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">Question Papers</span>
+                    {paper.questionPapers && paper.questionPapers.length > 0 ? (
+                      paper.questionPapers.map((link, lIdx) => (
+                        <button
+                          key={lIdx}
+                          onClick={() => setPreviewDoc({ title: `${paper.testName} - ${link.name || `QP ${lIdx + 1}`}`, url: link.url, type: "QP" })}
+                          className="flex items-center justify-center gap-1 py-2 px-2 bg-blue-50 text-blue-600 dark:bg-blue-950/20 dark:text-blue-300 rounded-xl font-bold text-[10px] border border-blue-100/10 cursor-pointer transition-colors"
+                        >
+                          <Download className="w-3.5 h-3.5 shrink-0" />
+                          <span className="truncate">{link.name || `QP ${lIdx + 1}`}</span>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="flex items-center justify-center py-2 bg-slate-50 dark:bg-gray-800/10 text-slate-350 dark:text-slate-600 rounded-xl font-bold text-[10px] border border-slate-100 dark:border-gray-800/20 select-none">
+                        Unavailable
+                      </div>
+                    )}
+                  </div>
 
-                  {/* AK */}
-                  {paper.answerKeyUrl ? (
-                    <button
-                      onClick={() => setPreviewDoc({ title: `${paper.testName} - Answer Key`, url: paper.answerKeyUrl, type: "AK" })}
-                      className="flex items-center justify-center gap-1.5 py-2 bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-300 rounded-xl font-bold text-xs border border-emerald-100/10 cursor-pointer transition-colors"
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                      AK Link
-                    </button>
-                  ) : (
-                    <div className="flex items-center justify-center py-2 bg-slate-50 dark:bg-gray-800/10 text-slate-350 dark:text-slate-600 rounded-xl font-bold text-xs border border-slate-100 dark:border-gray-800/20 select-none">
-                      AK Unavailable
-                    </div>
-                  )}
+                  {/* AK links container */}
+                  <div className="flex flex-col gap-1.5">
+                    <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">Answer Keys</span>
+                    {paper.answerKeys && paper.answerKeys.length > 0 ? (
+                      paper.answerKeys.map((link, lIdx) => (
+                        <button
+                          key={lIdx}
+                          onClick={() => setPreviewDoc({ title: `${paper.testName} - ${link.name || `AK ${lIdx + 1}`}`, url: link.url, type: "AK" })}
+                          className="flex items-center justify-center gap-1 py-2 px-2 bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-300 rounded-xl font-bold text-[10px] border border-emerald-100/10 cursor-pointer transition-colors"
+                        >
+                          <Download className="w-3.5 h-3.5 shrink-0" />
+                          <span className="truncate">{link.name || `AK ${lIdx + 1}`}</span>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="flex items-center justify-center py-2 bg-slate-50 dark:bg-gray-800/10 text-slate-350 dark:text-slate-600 rounded-xl font-bold text-[10px] border border-slate-100 dark:border-gray-800/20 select-none">
+                        Unavailable
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}
