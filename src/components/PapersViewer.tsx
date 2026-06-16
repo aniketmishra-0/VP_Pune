@@ -42,6 +42,60 @@ interface PapersViewerProps {
   adminHeaders: () => Record<string, string>;
 }
 
+const normalizeClass = (rawClass: string): string => {
+  const text = (rawClass || "").trim().toLowerCase();
+  if (!text) return "";
+  
+  // Droppers / Repeaters
+  if (text.includes("dropper") || text.includes("prayas") || text.includes("yakeen") || text.includes("repeater")) {
+    return "Dropper";
+  }
+  
+  // 12th Class
+  if (text.includes("12") || text.includes("lakshya") || text.includes("second year")) {
+    return "12th";
+  }
+  
+  // 11th Class
+  if (text.includes("11") || text.includes("arjuna") || text.includes("first year")) {
+    return "11th";
+  }
+  
+  // 10th Class
+  if (text.includes("10") || text.includes("pegasus")) {
+    return "10th";
+  }
+  
+  // 9th Class
+  if (text.includes("9")) {
+    return "9th";
+  }
+  
+  // 8th Class
+  if (text.includes("8")) {
+    return "8th";
+  }
+
+  // Fallback: title-case the string nicely
+  return rawClass.trim().split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+};
+
+const normalizeStream = (rawStream: string, rawClass: string = ""): string => {
+  const s = (rawStream || "").toLowerCase();
+  const c = (rawClass || "").toLowerCase();
+  
+  if (s.includes("jee") || s.includes("iit") || c.includes("jee") || c.includes("prayas") || c.includes("arjuna j") || c.includes("lakshya j")) {
+    return "JEE";
+  }
+  if (s.includes("neet") || s.includes("yakeen") || c.includes("neet") || c.includes("yakeen") || c.includes("arjuna n") || c.includes("lakshya n")) {
+    return "NEET";
+  }
+  
+  const trimmed = rawStream.trim();
+  if (!trimmed) return "";
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
+};
+
 export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
   const [papersData, setPapersData] = useState<PaperTab[]>([]);
   const [lastLoaded, setLastLoaded] = useState<string | null>(null);
@@ -193,15 +247,41 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
 
     allPapers.forEach((p) => {
       if (p.tabName) tabs.add(p.tabName);
-      if (p.class) classes.add(p.class);
-      if (p.stream) streams.add(p.stream);
+      if (p.class) {
+        const normCls = normalizeClass(p.class);
+        if (normCls) classes.add(normCls);
+      }
+      if (p.stream) {
+        const normSt = normalizeStream(p.stream, p.class);
+        if (normSt) streams.add(normSt);
+      }
       if (p.phase) phases.add(p.phase);
+    });
+
+    const classOrder = ["8th", "9th", "10th", "11th", "12th", "Dropper"];
+    const sortedClasses = Array.from(classes).sort((a, b) => {
+      const idxA = classOrder.indexOf(a);
+      const idxB = classOrder.indexOf(b);
+      if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+      if (idxA !== -1) return -1;
+      if (idxB !== -1) return 1;
+      return a.localeCompare(b);
+    });
+
+    const streamOrder = ["JEE", "NEET"];
+    const sortedStreams = Array.from(streams).sort((a, b) => {
+      const idxA = streamOrder.indexOf(a);
+      const idxB = streamOrder.indexOf(b);
+      if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+      if (idxA !== -1) return -1;
+      if (idxB !== -1) return 1;
+      return a.localeCompare(b);
     });
 
     return {
       tabs: Array.from(tabs).sort(),
-      classes: Array.from(classes).sort(),
-      streams: Array.from(streams).sort(),
+      classes: sortedClasses,
+      streams: sortedStreams,
       phases: Array.from(phases).sort(),
     };
   }, [allPapers]);
@@ -217,8 +297,8 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
         paper.date.toLowerCase().includes(searchQuery.toLowerCase());
 
       const matchesTab = selectedTab === "all" || paper.tabName === selectedTab;
-      const matchesClass = selectedClass === "all" || paper.class === selectedClass;
-      const matchesStream = selectedStream === "all" || paper.stream === selectedStream;
+      const matchesClass = selectedClass === "all" || normalizeClass(paper.class) === selectedClass;
+      const matchesStream = selectedStream === "all" || normalizeStream(paper.stream, paper.class) === selectedStream;
       const matchesPhase = selectedPhase === "all" || paper.phase === selectedPhase;
 
       return matchesSearch && matchesTab && matchesClass && matchesStream && matchesPhase;
@@ -226,26 +306,26 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
   }, [allPapers, searchQuery, selectedTab, selectedClass, selectedStream, selectedPhase]);
 
   // Badge styles mapping
-  const getStreamBadgeStyle = (stream: string) => {
-    const s = stream.toLowerCase();
-    if (s.includes("jee")) {
+  const getStreamBadgeStyle = (stream: string, cls: string = "") => {
+    const norm = normalizeStream(stream, cls);
+    if (norm === "JEE") {
       return "bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-100 dark:border-blue-900/30";
     }
-    if (s.includes("neet")) {
+    if (norm === "NEET") {
       return "bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-300 border border-rose-100 dark:border-rose-900/30";
     }
     return "bg-slate-100 text-slate-600 dark:bg-slate-800/40 dark:text-slate-300 border border-slate-200/40 dark:border-slate-800/30";
   };
 
   const getClassBadgeStyle = (cls: string) => {
-    const c = cls.toLowerCase();
-    if (c.includes("12th")) {
+    const norm = normalizeClass(cls);
+    if (norm === "12th") {
       return "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-900/30";
     }
-    if (c.includes("11th")) {
+    if (norm === "11th") {
       return "bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-300 border border-purple-100 dark:border-purple-900/30";
     }
-    if (c.includes("dropper")) {
+    if (norm === "Dropper") {
       return "bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-100 dark:border-amber-900/30";
     }
     return "bg-slate-50 text-slate-600 dark:bg-gray-800 dark:text-gray-300";
@@ -490,7 +570,7 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
                           </span>
                           <div className="flex items-center gap-1.5 flex-wrap">
                             {paper.stream && (
-                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${getStreamBadgeStyle(paper.stream)}`}>
+                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${getStreamBadgeStyle(paper.stream, paper.class)}`}>
                                 {paper.stream}
                               </span>
                             )}
@@ -650,7 +730,7 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
 
                 <div className="flex flex-wrap items-center gap-1.5">
                   {paper.stream && (
-                    <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase ${getStreamBadgeStyle(paper.stream)}`}>
+                    <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase ${getStreamBadgeStyle(paper.stream, paper.class)}`}>
                       {paper.stream}
                     </span>
                   )}
