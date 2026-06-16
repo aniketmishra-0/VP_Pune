@@ -46,3 +46,12 @@ export interface Dropdowns {
   lastLoaded?: string | null;
   isLoading?: boolean;
 }
+
+export type Role = "admin" | "teacher" | "staff";
+
+export interface SessionUser {
+  email: string;
+  name?: string;
+  role: Role;
+  center?: string;
+}

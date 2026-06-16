@@ -33,14 +33,9 @@ import {
 } from "lucide-react";
 import QRCode from "qrcode";
 
-export type Role = "admin" | "teacher" | "staff";
+export type { Role, SessionUser } from "../types";
+import type { Role, SessionUser } from "../types";
 
-export interface SessionUser {
-  email: string;
-  name?: string;
-  role: Role;
-  center?: string;
-}
 
 interface AppUser {
   email: string;

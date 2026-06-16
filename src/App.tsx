@@ -1,6 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
-// @ts-ignore
-import html2pdf from "html2pdf.js";
+import React, { useState, useEffect, useRef, Suspense } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Search,
@@ -43,18 +41,31 @@ import {
   Zap,
   QrCode,
 } from "lucide-react";
-import { Student, Dropdowns, TestRecord, Profile } from "./types";
-import AdminSettings, { Role, SessionUser } from "./components/AdminSettings";
-import StudentQR from "./components/StudentQR";
+import { Student, Dropdowns, TestRecord, Profile, Role, SessionUser } from "./types";
 import FloatingEducationBg from "./components/FloatingEducationBg";
 import InstallPrompt from "./components/InstallPrompt";
-import TimetableViewer from "./components/TimetableViewer";
-import TimetableGenerator from "./components/TimetableGenerator";
 import ErrorBoundary from "./components/ErrorBoundary";
-import TimetableConfig from "./components/TimetableConfig";
-import SheetEditorPage from "./components/SheetEditorPage";
-import PublicResult from "./components/PublicResult";
-import PortalAdmin from "./components/PortalAdmin";
+
+// ── Lazy-loaded heavy components (code-split into separate chunks) ──
+const AdminSettings = React.lazy(() => import("./components/AdminSettings"));
+const StudentQR = React.lazy(() => import("./components/StudentQR"));
+const TimetableViewer = React.lazy(() => import("./components/TimetableViewer"));
+const TimetableGenerator = React.lazy(() => import("./components/TimetableGenerator"));
+const TimetableConfig = React.lazy(() => import("./components/TimetableConfig"));
+const SheetEditorPage = React.lazy(() => import("./components/SheetEditorPage"));
+const PublicResult = React.lazy(() => import("./components/PublicResult"));
+const PortalAdmin = React.lazy(() => import("./components/PortalAdmin"));
+
+// Lazy-load html2pdf only when needed (PDF export)
+let html2pdfModule: any = null;
+const getHtml2Pdf = async () => {
+  if (!html2pdfModule) {
+    // @ts-ignore
+    html2pdfModule = (await import("html2pdf.js")).default || window.html2pdf;
+  }
+  return html2pdfModule;
+};
+
 
 function PWLogo({ size = "h-10 w-10", textSize = "text-sm", className = "" }: { size?: string, textSize?: string, className?: string }) {
   const [hasError, setHasError] = React.useState(false);
@@ -1242,9 +1253,10 @@ export default function App() {
     } as any;
 
     // Wait slightly for DOM adjustment (CSS repaint)
-    setTimeout(() => {
+    setTimeout(async () => {
       try {
-        html2pdf().set(opt).from(exportAreaRef.current).save().then(() => {
+        const pdf = await getHtml2Pdf();
+        pdf().set(opt).from(exportAreaRef.current).save().then(() => {
           setExportMode(false);
           // Restore dark mode state
           if (isDark) {
