@@ -1,4 +1,4 @@
-/* Pimpri PW Vidyapeeth — minimal service worker.
+/* Pune Vidyapeeth — minimal service worker.
  * Strategy:
  *   - HTML/navigation: network-first (so deploys roll out immediately, fall back to cache when offline)
  *   - Static assets (JS/CSS/images): stale-while-revalidate

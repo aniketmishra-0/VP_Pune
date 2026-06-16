@@ -1466,7 +1466,7 @@ export default function App() {
           <div className="mb-6 flex flex-col items-center text-center">
             <PWLogo size="w-16 h-16" className="mb-3" />
             <span className="text-[10px] text-[#5277f7] uppercase tracking-[0.25em] font-mono font-black">
-              Pimpri PW Vidyapeeth
+              Pune Vidyapeeth
             </span>
             <h2 className="text-xl font-extrabold text-slate-900 dark:text-white uppercase tracking-wider font-display mt-1 animate-pulse">
               Academic Assessment Hub
@@ -1543,7 +1543,7 @@ export default function App() {
         <div id="initialSplash" className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-white dark:bg-[#0b0f19]">
           <div className="animate-spin h-10 w-10 border-2 border-slate-250 dark:border-gray-800 border-t-blue-600 dark:border-t-blue-500 rounded-full mb-6"></div>
           <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white font-display uppercase tracking-widest">
-            Pimpri PW Vidyapeeth
+            Pune Vidyapeeth
           </h1>
           <p className="text-xs text-slate-400 mt-1 dark:text-slate-500 font-mono">Caching administrative indices...</p>
         </div>
@@ -1666,7 +1666,7 @@ export default function App() {
                           <div className="py-3.5 space-y-2">
                             <div className="flex justify-between text-[10px] text-slate-400 dark:text-slate-500 font-mono">
                               <span>Center:</span>
-                              <span className="font-bold text-slate-700 dark:text-gray-300">Pimpri PW Vidyapeeth</span>
+                              <span className="font-bold text-slate-700 dark:text-gray-300">Pune Vidyapeeth</span>
                             </div>
                             <div className="flex justify-between text-[10px] text-slate-400 dark:text-slate-500 font-mono">
                               <span>Access Category:</span>
@@ -1907,7 +1907,7 @@ export default function App() {
                         <div className="py-3.5 space-y-2">
                           <div className="flex justify-between text-[10px] text-slate-400 dark:text-slate-500 font-mono">
                             <span>Center:</span>
-                            <span className="font-bold text-slate-700 dark:text-gray-300">Pimpri PW Vidyapeeth</span>
+                            <span className="font-bold text-slate-700 dark:text-gray-300">Pune Vidyapeeth</span>
                           </div>
                           <div className="flex justify-between text-[10px] text-slate-400 dark:text-slate-500 font-mono">
                             <span>Access Category:</span>
@@ -2509,7 +2509,7 @@ export default function App() {
                         PW Vidyapeeth
                       </h2>
                       <p className="text-[9px] text-gray-500 font-mono tracking-widest uppercase mt-0.5">
-                        {activeStudent.profile.center || "Pimpri PW Vidyapeeth"} Student Analytics
+                        {activeStudent.profile.center || "Pune Vidyapeeth"} Student Analytics
                       </p>
                     </div>
                   </div>
@@ -2607,8 +2607,8 @@ export default function App() {
                           </span>
                           <span className={`text-xs font-semibold truncate block ${
                             exportMode ? "text-slate-800" : "text-slate-200"
-                          }`} title={activeStudent.profile.center || "Pimpri PW Vidyapeeth"}>
-                            {activeStudent.profile.center || "Pimpri PW Vidyapeeth"}
+                          }`} title={activeStudent.profile.center || "Pune Vidyapeeth"}>
+                            {activeStudent.profile.center || "Pune Vidyapeeth"}
                           </span>
                         </div>
                         <div className="space-y-0.5 min-w-0">
@@ -2939,7 +2939,7 @@ export default function App() {
 
                 {/* VISUAL FOOTER PRINT COMPONENT */}
                 <div className={`${exportMode ? "block" : "hidden md:print:block"} print-footer mt-8 pt-4 border-t border-slate-200 text-center text-gray-500 text-[10px] italic`}>
-                  This report was compiled and printed generated via automatic performance matrices on PW {activeStudent.profile.center || "Pimpri PW Vidyapeeth"} Hub database.
+                  This report was compiled and printed generated via automatic performance matrices on PW {activeStudent.profile.center || "Pune Vidyapeeth"} Hub database.
                 </div>
 
               </div>
@@ -3140,11 +3140,11 @@ export default function App() {
                     }
                   }
 
-                  return { type: "System Default", pattern: "N/A", center: "Pimpri PW Vidyapeeth" };
+                  return { type: "System Default", pattern: "N/A", center: "Pune Vidyapeeth" };
                 };
 
                 const allKnownCenters = Array.from(new Set([
-                  "Pimpri PW Vidyapeeth",
+                  "Pune Vidyapeeth",
                   "Pimple Saudagar Tuition Center",
                   ...spreadsheetCenters.map(c => c.center),
                   ...subsheetCenters.map(c => c.center),
@@ -3777,7 +3777,7 @@ export default function App() {
                               <li><span className="text-blue-600 dark:text-blue-400">Tab-level mappings</span> (highest priority)</li>
                               <li><span className="text-blue-600 dark:text-blue-400">Default 12-sheet templates</span></li>
                               <li><span className="text-blue-600 dark:text-blue-400">File-level mappings</span> (spreadsheet ID match)</li>
-                                              <li><span className="text-blue-600 dark:text-blue-400">System Fallback center</span> (Pimpri PW Vidyapeeth)</li>
+                                              <li><span className="text-blue-600 dark:text-blue-400">System Fallback center</span> (Pune Vidyapeeth)</li>
                             </ol>
                           </div>
                         </div>

@@ -89,7 +89,7 @@ function generateSVG(w, h) {
   <image href="${logoDataUri}" x="${logoX}" y="${logoY}" width="${logoSize}" height="${logoSize}"/>
   
   <!-- Title -->
-  <text x="${centerX}" y="${centerY + boxSize / 2 + 50 * scale}" text-anchor="middle" font-family="'Space Grotesk','Inter',system-ui,sans-serif" font-size="${26 * scale}" font-weight="700" fill="rgba(30,40,70,0.9)">Pimpri PW Vidyapeeth</text>
+  <text x="${centerX}" y="${centerY + boxSize / 2 + 50 * scale}" text-anchor="middle" font-family="'Space Grotesk','Inter',system-ui,sans-serif" font-size="${26 * scale}" font-weight="700" fill="rgba(30,40,70,0.9)">Pune Vidyapeeth</text>
   
   <!-- Subtitle -->
   <text x="${centerX}" y="${centerY + boxSize / 2 + 80 * scale}" text-anchor="middle" font-family="'Space Grotesk','Inter',system-ui,sans-serif" font-size="${15 * scale}" font-weight="500" fill="rgba(50,60,100,0.7)">Student Performance Hub</text>

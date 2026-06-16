@@ -260,7 +260,7 @@ function isTestSheet(sheetName: string): boolean {
 }
 
 function resolveCenter(sheetName: string, sourceUrl: string): string {
-  if (!sheetName) return "Pimpri PW Vidyapeeth";
+  if (!sheetName) return "Pune Vidyapeeth";
   
   const cleanSheetName = sheetName.trim().toLowerCase();
   const cleanSourceUrl = String(sourceUrl || "").trim().toLowerCase();
@@ -403,7 +403,7 @@ function resolveCenter(sheetName: string, sourceUrl: string): string {
     return "Pimple Saudagar Tuition Center";
   }
 
-  return "Pimpri PW Vidyapeeth";
+  return "Pune Vidyapeeth";
 }
 
 function expandTestName(name: string): string {
@@ -1431,7 +1431,7 @@ app.get("/auth/google/mock-consent", (req, res) => {
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Sign in with Google - Pimpri PW Vidyapeeth Hub</title>
+      <title>Sign in with Google - Pune Vidyapeeth Hub</title>
       <script src="https://cdn.tailwindcss.com"></script>
       <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
       <style>
@@ -1449,7 +1449,7 @@ app.get("/auth/google/mock-consent", (req, res) => {
         </svg>
 
         <h1 class="text-xl font-medium text-[#202124] mb-1">Choose an account</h1>
-        <p class="text-sm text-[#5f6368] mb-6">to continue to <span class="font-bold text-slate-800">Pimpri PW Vidyapeeth Hub</span></p>
+        <p class="text-sm text-[#5f6368] mb-6">to continue to <span class="font-bold text-slate-800">Pune Vidyapeeth Hub</span></p>
 
         <!-- Developer Mode Notification -->
         <div class="w-full mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 space-y-1.5 text-left">
@@ -2147,7 +2147,7 @@ app.post("/api/student-public", express.json(), (req, res) => {
           const name = idxName !== -1 ? String(row[idxName] || "").trim() : "";
           const batch = idxBatch !== -1 ? String(row[idxBatch] || "").trim() : "";
           if (!profilesMap[reg]) {
-            profilesMap[reg] = { regNo: reg, name: name || "N/A", batch: batch || "N/A", center: sheetObj.center || "Pimpri PW Vidyapeeth" };
+            profilesMap[reg] = { regNo: reg, name: name || "N/A", batch: batch || "N/A", center: sheetObj.center || "Pune Vidyapeeth" };
           } else {
             if (name && name !== "N/A" && name !== "#N/A" && (profilesMap[reg].name === "N/A" || profilesMap[reg].name === "#N/A")) profilesMap[reg].name = name;
             if (batch && batch !== "N/A" && !profilesMap[reg].batch) profilesMap[reg].batch = batch;
@@ -2227,7 +2227,7 @@ app.post("/api/student-public", express.json(), (req, res) => {
           centerRank: idxRank !== -1 && row[idxRank] !== undefined ? row[idxRank] : "-",
           subjectScores: subjectCols.map((col) => ({ subject: col.name, score: row[col.index] !== undefined && row[col.index] !== "" ? row[col.index] : "-" })),
           stream: testStream,
-          center: sheetObj.center || "Pimpri PW Vidyapeeth",
+          center: sheetObj.center || "Pune Vidyapeeth",
         };
 
         if (testObj.score !== "N/A" && testObj.score !== "") {
@@ -2257,7 +2257,7 @@ app.post("/api/student-public", express.json(), (req, res) => {
     profile.stream = detectedInfo.stream;
     profile.class = detectedInfo.class;
 
-    let latestCenter = profile.center || "Pimpri PW Vidyapeeth";
+    let latestCenter = profile.center || "Pune Vidyapeeth";
     if (updatedTests.length > 0) {
       const latestTest = updatedTests[updatedTests.length - 1];
       if (latestTest && latestTest.center) latestCenter = latestTest.center;
@@ -2534,7 +2534,7 @@ app.get("/api/student", verifyRequest, (req, res) => {
               regNo: reg,
               name: name || "N/A",
               batch: batch || "N/A",
-              center: sheetObj.center || "Pimpri PW Vidyapeeth",
+              center: sheetObj.center || "Pune Vidyapeeth",
             };
           } else {
             if (name && name !== "N/A" && name !== "#N/A" && (profilesMap[reg].name === "N/A" || profilesMap[reg].name === "#N/A")) {
@@ -2675,7 +2675,7 @@ app.get("/api/student", verifyRequest, (req, res) => {
               score: row[col.index] !== undefined && row[col.index] !== "" ? row[col.index] : "-",
             })),
             stream: testStream,
-            center: sheetObj.center || "Pimpri PW Vidyapeeth",
+            center: sheetObj.center || "Pune Vidyapeeth",
           };
 
           if (testObj.score !== "N/A" && testObj.score !== "") {
@@ -2731,7 +2731,7 @@ app.get("/api/student", verifyRequest, (req, res) => {
       profile.class = detectedInfo.class;
       
       // Determine the mapped center based on the student's latest test record
-      let latestCenter = profile.center || "Pimpri PW Vidyapeeth";
+      let latestCenter = profile.center || "Pune Vidyapeeth";
       if (updatedTests.length > 0) {
         const latestTest = updatedTests[updatedTests.length - 1];
         if (latestTest && latestTest.center) {

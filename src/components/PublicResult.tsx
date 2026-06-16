@@ -506,7 +506,7 @@ export default function PublicResult() {
                         </div>
                         <div className="space-y-0.5 min-w-0">
                           <span className="text-[9px] uppercase tracking-widest font-mono font-bold text-slate-400 block">Mapped Center</span>
-                          <span className="text-xs font-semibold text-slate-200 truncate block">{p.center || "Pimpri PW Vidyapeeth"}</span>
+                          <span className="text-xs font-semibold text-slate-200 truncate block">{p.center || "Pune Vidyapeeth"}</span>
                         </div>
                         <div className="space-y-0.5 min-w-0">
                           <span className="text-[9px] uppercase tracking-widest font-mono font-bold text-slate-400 block">Study Division</span>
