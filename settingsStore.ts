@@ -427,17 +427,13 @@ export async function ensureTimetableConfigHeader(): Promise<void> {
 
 /* ===== Timetable Spreadsheet helpers (separate sheet) ===== */
 
-/**
- * The timetable data lives in a DIFFERENT spreadsheet than the settings one.
- * This spreadsheet ID is the one containing Faculty Details, weekly grids, etc.
- */
-const TIMETABLE_SPREADSHEET_ID = "1EChiZIoa53KhaZSELkBrIpuTgyBqJf1PVl28y2BcS7g";
+export const TIMETABLE_SPREADSHEET_ID = "1EChiZIoa53KhaZSELkBrIpuTgyBqJf1PVl28y2BcS7g";
 
 /**
  * Like apiFetch, but targets an arbitrary spreadsheet by ID rather than
  * the default settings spreadsheet.
  */
-async function timetableApiFetch(
+export async function timetableApiFetch(
   spreadsheetId: string,
   pathAndQuery: string,
   init?: RequestInit,

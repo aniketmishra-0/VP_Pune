@@ -249,6 +249,9 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
   const [isSwapMode, setIsSwapMode] = useState(false);
   const [swapSelection, setSwapSelection] = useState<{ day: string; slotId: number; batchCode: string } | null>(null);
   const [focusedCell, setFocusedCell] = useState<{ day: string; slotId: number; batchCode: string } | null>(null);
+  const [existingTabs, setExistingTabs] = useState<string[]>([]);
+  const [selectedLoadTab, setSelectedLoadTab] = useState("");
+  const [loadingTab, setLoadingTab] = useState(false);
 
   // Step 5 — Export
   const [tabName, setTabName] = useState("");
@@ -268,7 +271,7 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
   const weekDates = useMemo(() => getWeekDates(weekStart), [weekStart]);
 
   const activeFaculty = useMemo(
-    () => faculty.filter(f => f.status.toLowerCase() === "active" && f.code && !disabledTeachers.has(f.code)),
+    () => faculty.filter(f => f.status?.toLowerCase() === "active" && f.code && !disabledTeachers.has(f.code)),
     [faculty, disabledTeachers],
   );
 
@@ -523,6 +526,112 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [focusedCell, editingCell, allBatches, handleCellEdit, navigateCell]);
+
+  // Load existing sheet tabs list from Google Sheet on mount
+  useEffect(() => {
+    const fetchTabs = async () => {
+      try {
+        const r = await fetch("/api/timetable/tabs", { headers: adminHeaders() });
+        if (r.ok) {
+          const d = await r.json();
+          if (d.success) {
+            setExistingTabs(d.tabs || []);
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to fetch sheet tabs:", err);
+      }
+    };
+    fetchTabs();
+  }, [adminHeaders]);
+
+  // Read raw cell values from the Google Sheet and parse them back to slots state
+  const handleLoadTab = useCallback(async () => {
+    if (!selectedLoadTab) return;
+    setLoadingTab(true);
+    setGenError(null);
+    try {
+      const r = await fetch(`/api/timetable/tab-values?tabName=${encodeURIComponent(selectedLoadTab)}`, {
+        headers: adminHeaders()
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const d = await r.json();
+      if (!d.success) throw new Error(d.error || "Failed to load tab values");
+
+      const parsedSlots: GeneratedSlot[] = [];
+      const values: string[][] = d.values || [];
+      if (values.length < 2) {
+        throw new Error("Timetable sheet format invalid (too few rows)");
+      }
+
+      const headerRow = values[0];
+      
+      // Map column index -> BatchInfo
+      const colIndexToBatch: Record<number, BatchInfo> = {};
+      for (let c = 0; c < headerRow.length; c++) {
+        const code = String(headerRow[c] || "").trim();
+        const batch = allBatches.find(b => b.code === code);
+        if (batch) {
+          colIndexToBatch[c] = batch;
+        }
+      }
+
+      let currentDay = "";
+      let currentDate = "";
+
+      for (let rowIdx = 2; rowIdx < values.length; rowIdx++) {
+        const row = values[rowIdx];
+        if (!row || row.length === 0) continue;
+
+        if (row[0]) currentDay = String(row[0]).trim().toUpperCase();
+        if (row[1]) currentDate = String(row[1]).trim();
+
+        // Check if holiday
+        const isHoliday = row.some(cell => String(cell).toUpperCase() === "HOLIDAY");
+        if (isHoliday) continue;
+
+        for (let c = 0; c < row.length; c++) {
+          const batch = colIndexToBatch[c];
+          if (!batch) continue;
+
+          const teacherCode = String(row[c] || "").trim();
+          if (!teacherCode || teacherCode === "—" || teacherCode.toUpperCase() === "HOLIDAY") {
+            continue;
+          }
+
+          const slotNum = ((rowIdx - 2) % 6) + 1;
+          const standardSlot = SLOTS.find(sl => sl.id === slotNum);
+          const startTime = standardSlot?.start || "";
+          const endTime = standardSlot?.end || "";
+
+          parsedSlots.push({
+            day: currentDay,
+            date: currentDate,
+            slotNum,
+            startTime,
+            endTime,
+            batchCode: batch.code,
+            teacherCode,
+            room: batchRooms[batch.code] || getDefaultRoom(batch.code) || batch.room || "",
+            section: batch.section,
+          });
+        }
+      }
+
+      if (parsedSlots.length === 0) {
+        throw new Error("No lecture entries parsed from this sheet. Make sure the format matches standard timetable.");
+      }
+
+      setGeneratedSlots(parsedSlots);
+      setTabName(selectedLoadTab); 
+      setStep(4); // Jump directly to Step 4 Preview Grid!
+      setWarnings([]); // Clear previous warnings since we loaded a clean sheet
+    } catch (err: any) {
+      setGenError(err.message || "Failed to load tab");
+    } finally {
+      setLoadingTab(false);
+    }
+  }, [selectedLoadTab, allBatches, batchRooms, adminHeaders]);
 
   // ─── Fetch Faculty ────────────────────────────────────────────────
 
@@ -964,6 +1073,37 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
                       </p>
                     </div>
                   )}
+                </div>
+              </GlassCard>
+
+              <GlassCard title="Load Existing Week to Edit" icon={<FileSpreadsheet className="w-3.5 h-3.5 text-emerald-500" />}>
+                <div className="space-y-4">
+                  <p className="text-[11px] text-slate-400 font-mono">
+                    Google Sheets se pehle se bana hua kisi bhi week ka timetable load karke edit ya duplicate karein.
+                  </p>
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <select
+                      value={selectedLoadTab}
+                      onChange={(e) => setSelectedLoadTab(e.target.value)}
+                      className="flex-1 bg-slate-50 dark:bg-gray-900/40 rounded-xl border border-slate-200 dark:border-gray-800 px-4 py-3 text-xs text-slate-700 dark:text-slate-200 outline-none focus:border-[#5277f7] transition-colors"
+                    >
+                      <option value="">-- Choose Week / Subsheet --</option>
+                      {existingTabs.map(t => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={handleLoadTab}
+                      disabled={!selectedLoadTab || loadingTab}
+                      className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-5 py-3 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 cursor-pointer shadow-lg shadow-emerald-500/15"
+                    >
+                      {loadingTab ? (
+                        <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading...</>
+                      ) : (
+                        <><Download className="w-3.5 h-3.5" /> Load & Edit</>
+                      )}
+                    </button>
+                  </div>
                 </div>
               </GlassCard>
             </div>

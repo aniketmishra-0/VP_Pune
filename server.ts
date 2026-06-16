@@ -3397,6 +3397,48 @@ app.post("/api/timetable/write-sheet", verifyRequest, superAdminOnly, async (req
 
 
 /**
+ * GET /api/timetable/tabs
+ * Return all weekly timetable tab titles.
+ */
+app.get("/api/timetable/tabs", verifyRequest, superAdminOnly, async (req, res) => {
+  try {
+    const metaRes = await settingsStore.timetableApiFetch(settingsStore.TIMETABLE_SPREADSHEET_ID, "?fields=sheets.properties.title");
+    const sheets = metaRes.sheets || [];
+    const titles = sheets
+      .map((s: any) => s.properties?.title)
+      .filter((title: string) => {
+        if (!title) return false;
+        const lower = title.toLowerCase();
+        return !["faculty details", "settings", "activity log", "timetableconfig"].includes(lower);
+      });
+    res.json({ success: true, tabs: titles });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to fetch spreadsheet tabs: " + err.message });
+  }
+});
+
+/**
+ * GET /api/timetable/tab-values
+ * Return raw 2D values of a specific tab
+ */
+app.get("/api/timetable/tab-values", verifyRequest, superAdminOnly, async (req, res) => {
+  try {
+    const tabName = String(req.query.tabName || "").trim();
+    if (!tabName) {
+      return res.status(400).json({ error: "tabName parameter is required" });
+    }
+    const data = await settingsStore.timetableApiFetch(
+      settingsStore.TIMETABLE_SPREADSHEET_ID,
+      `/values/${encodeURIComponent(tabName)}`
+    );
+    res.json({ success: true, values: data.values || [] });
+  } catch (err: any) {
+    res.status(500).json({ error: `Failed to fetch data for tab "${req.query.tabName}": ` + err.message });
+  }
+});
+
+
+/**
  * POST /api/timetable/rebuild-patterns
  * Rebuild historical patterns from ALL subsheets in the timetable spreadsheet.
  * This fetches every tab dynamically — no manual CSV download needed.
