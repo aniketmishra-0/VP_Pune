@@ -584,7 +584,7 @@ export default function SheetEditorPage({ adminHeaders }: SheetEditorPageProps) 
 
       // 3. Set data
       setSheetFormats(d.formats || null);
-      setSheetSourceTab(latestTab);
+      setSheetSourceTab(tabToLoad);
       setUndoStack([]);
       setHighlightedTeacher(null);
 
