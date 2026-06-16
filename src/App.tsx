@@ -66,6 +66,19 @@ const getHtml2Pdf = async () => {
   return html2pdfModule;
 };
 
+// ── Loading fallback for lazy-loaded views (prevents black screen flash) ──
+function LazyLoadFallback() {
+  return (
+    <div className="flex flex-col items-center justify-center py-24 gap-4 w-full">
+      <div className="relative w-12 h-12">
+        <div className="absolute inset-0 rounded-full border-2 border-slate-200 dark:border-gray-800" />
+        <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-[#5277f7] dark:border-t-blue-400 animate-spin" />
+      </div>
+      <p className="text-xs font-medium text-slate-400 dark:text-gray-500 tracking-wide">Loading…</p>
+    </div>
+  );
+}
+
 
 function PWLogo({ size = "h-10 w-10", textSize = "text-sm", className = "" }: { size?: string, textSize?: string, className?: string }) {
   const [hasError, setHasError] = React.useState(false);
@@ -2598,11 +2611,13 @@ export default function App() {
                             {activeStudent.profile.name}
                           </h2>
                           {!exportMode && activeStudent.profile.shareToken && (
-                            <StudentQR
-                              url={`${window.location.origin}/student/${encodeURIComponent(activeStudent.profile.regNo || "")}/${encodeURIComponent(activeStudent.profile.shareToken)}`}
-                              name={activeStudent.profile.name}
-                              regNo={activeStudent.profile.regNo}
-                            />
+                            <Suspense fallback={null}>
+                              <StudentQR
+                                url={`${window.location.origin}/student/${encodeURIComponent(activeStudent.profile.regNo || "")}/${encodeURIComponent(activeStudent.profile.shareToken)}`}
+                                name={activeStudent.profile.name}
+                                regNo={activeStudent.profile.regNo}
+                              />
+                            </Suspense>
                           )}
                         </div>
                       </div>
@@ -4106,11 +4121,15 @@ export default function App() {
                     )}
 
                     {adminTab === "timetable" && (
-                      <TimetableConfig adminHeaders={adminHeaders} />
+                      <Suspense fallback={<LazyLoadFallback />}>
+                        <TimetableConfig adminHeaders={adminHeaders} />
+                      </Suspense>
                     )}
 
                     {adminTab === "portal" && (
-                      <PortalAdmin currentUser={{ email: loggedInUser?.email || "", role: userRole } as SessionUser} />
+                      <Suspense fallback={<LazyLoadFallback />}>
+                        <PortalAdmin currentUser={{ email: loggedInUser?.email || "", role: userRole } as SessionUser} />
+                      </Suspense>
                     )}
                   </div>
                 );
@@ -4126,7 +4145,9 @@ export default function App() {
               exit={{ opacity: 0, y: -15 }}
               className="space-y-6 max-w-6xl mx-auto py-2 w-full text-slate-800 dark:text-slate-100"
             >
-              <TimetableViewer adminHeaders={adminHeaders} />
+              <Suspense fallback={<LazyLoadFallback />}>
+                <TimetableViewer adminHeaders={adminHeaders} />
+              </Suspense>
             </motion.div>
           )}
 
@@ -4138,9 +4159,11 @@ export default function App() {
               exit={{ opacity: 0, y: -15 }}
               className="space-y-6 max-w-7xl mx-auto py-2 w-full text-slate-800 dark:text-slate-100"
             >
-              <ErrorBoundary fallbackTitle="Timetable Generator crashed">
-                <TimetableGenerator adminHeaders={adminHeaders} />
-              </ErrorBoundary>
+              <Suspense fallback={<LazyLoadFallback />}>
+                <ErrorBoundary fallbackTitle="Timetable Generator crashed">
+                  <TimetableGenerator adminHeaders={adminHeaders} />
+                </ErrorBoundary>
+              </Suspense>
             </motion.div>
           )}
 
@@ -4152,9 +4175,11 @@ export default function App() {
               exit={{ opacity: 0, y: -15 }}
               className="space-y-6 max-w-7xl mx-auto py-2 w-full text-slate-800 dark:text-slate-100"
             >
-              <ErrorBoundary fallbackTitle="Sheet Editor crashed">
-                <SheetEditorPage adminHeaders={adminHeaders} />
-              </ErrorBoundary>
+              <Suspense fallback={<LazyLoadFallback />}>
+                <ErrorBoundary fallbackTitle="Sheet Editor crashed">
+                  <SheetEditorPage adminHeaders={adminHeaders} />
+                </ErrorBoundary>
+              </Suspense>
             </motion.div>
           )}
 
@@ -4285,14 +4310,16 @@ export default function App() {
       {isAdmin && loggedInUser && showAdminPanel && (
         <div className="fixed inset-0 z-[70] bg-black/50 backdrop-blur-sm overflow-y-auto p-2 sm:p-6 no-print">
           <div className="min-h-full flex items-start justify-center py-2 sm:py-4">
-            <AdminSettings
-              currentUser={{ email: loggedInUser.email, name: loggedInUser.name, role: userRole, center: userCenter } as SessionUser}
-              isSuperAdmin={isSuperAdmin}
-              onClose={() => setShowAdminPanel(false)}
-              onUnreadChange={(n) => setNotifUnread(n)}
-              featureFlags={featureFlags}
-              onFeatureFlagsChange={setFeatureFlags}
-            />
+            <Suspense fallback={<LazyLoadFallback />}>
+              <AdminSettings
+                currentUser={{ email: loggedInUser.email, name: loggedInUser.name, role: userRole, center: userCenter } as SessionUser}
+                isSuperAdmin={isSuperAdmin}
+                onClose={() => setShowAdminPanel(false)}
+                onUnreadChange={(n) => setNotifUnread(n)}
+                featureFlags={featureFlags}
+                onFeatureFlagsChange={setFeatureFlags}
+              />
+            </Suspense>
           </div>
         </div>
       )}
