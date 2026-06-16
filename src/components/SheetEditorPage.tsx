@@ -546,7 +546,7 @@ export default function SheetEditorPage({ adminHeaders }: SheetEditorPageProps) 
     }
   }, [sheetData, sheetSourceTab, adminHeaders]);
 
-  // ── NEW: Quick Generate (1-click) ──
+  // ── NEW: Quick Generate (smart — always targets next upcoming Monday from today) ──
   const handleQuickGenerate = useCallback(async () => {
     setQuickGenerating(true);
     setLoadError(null);
@@ -581,55 +581,72 @@ export default function SheetEditorPage({ adminHeaders }: SheetEditorPageProps) 
         return padded;
       });
 
-      // 3. Set data + auto apply "next week"
+      // 3. Set data
       setSheetFormats(d.formats || null);
       setSheetSourceTab(latestTab);
       setUndoStack([]);
       setHighlightedTeacher(null);
 
-      // Apply next week dates
       const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
       const monthsFull = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
-      let mondayDate: Date | null = null;
+      // ═══ SMART DATE LOGIC ═══
+      // Always calculate next Monday from TODAY (not +7 from loaded sheet)
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const dayOfWeek = today.getDay(); // 0=Sun, 1=Mon, ...
+
+      let nextMonday: Date;
+      if (dayOfWeek === 1) {
+        // Today is Monday — use NEXT Monday (today + 7)
+        nextMonday = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+      } else if (dayOfWeek === 0) {
+        // Sunday — tomorrow is Monday
+        nextMonday = new Date(today.getTime() + 1 * 24 * 60 * 60 * 1000);
+      } else {
+        // Tue-Sat — find next Monday
+        const daysUntilMonday = 8 - dayOfWeek; // Tue=6, Wed=5, Thu=4, Fri=3, Sat=2
+        nextMonday = new Date(today.getTime() + daysUntilMonday * 24 * 60 * 60 * 1000);
+      }
+
+      // Check if loaded sheet ALREADY has this week's dates (don't advance if so)
+      let loadedMonday: Date | null = null;
       for (let rx = 2; rx < normalized.length; rx++) {
         const col0 = (normalized[rx][0] || "").trim().toUpperCase();
         if (col0 === "MONDAY" && normalized[rx][1]) {
           const dateStr = normalized[rx][1].replace(/(\d+)(st|nd|rd|th)/i, "$1");
           const parsed = new Date(dateStr);
-          if (!isNaN(parsed.getTime())) mondayDate = parsed;
+          if (!isNaN(parsed.getTime())) { loadedMonday = parsed; loadedMonday.setHours(0, 0, 0, 0); }
           break;
         }
       }
 
-      const nextMonday = mondayDate ? new Date(mondayDate.getTime() + 7 * 24 * 60 * 60 * 1000) : new Date();
-      if (!mondayDate) {
-        const today = new Date();
-        const dayOfWeek = today.getDay();
-        const daysUntilMonday = dayOfWeek === 0 ? 1 : dayOfWeek === 1 ? 7 : 8 - dayOfWeek;
-        nextMonday.setTime(today.getTime() + daysUntilMonday * 24 * 60 * 60 * 1000);
-      }
+      // If loaded sheet already has next Monday's date, don't change dates
+      const loadedIsNextWeek = loadedMonday && loadedMonday.getTime() === nextMonday.getTime();
 
       // Update dates in the data
       const copy = normalized.map((r: string[]) => [...r]);
-      let dayOffset = 0;
-      for (let rx = 2; rx < copy.length; rx++) {
-        const cellDay = (copy[rx][0] || "").trim().toUpperCase();
-        if (DAY_NAMES.includes(cellDay)) {
-          const dateObj = new Date(nextMonday);
-          dateObj.setDate(dateObj.getDate() + dayOffset);
-          const dayNum = dateObj.getDate();
-          const suffix = dayNum === 1 || dayNum === 21 || dayNum === 31 ? "st" :
-                         dayNum === 2 || dayNum === 22 ? "nd" :
-                         dayNum === 3 || dayNum === 23 ? "rd" : "th";
-          copy[rx][1] = `${dayNum}${suffix}-${months[dateObj.getMonth()]}-${dateObj.getFullYear()}`;
-          dayOffset++;
+
+      if (!loadedIsNextWeek) {
+        let dayOffset = 0;
+        for (let rx = 2; rx < copy.length; rx++) {
+          const cellDay = (copy[rx][0] || "").trim().toUpperCase();
+          if (DAY_NAMES.includes(cellDay)) {
+            const dateObj = new Date(nextMonday);
+            dateObj.setDate(dateObj.getDate() + dayOffset);
+            const dayNum = dateObj.getDate();
+            const suffix = dayNum === 1 || dayNum === 21 || dayNum === 31 ? "st" :
+                           dayNum === 2 || dayNum === 22 ? "nd" :
+                           dayNum === 3 || dayNum === 23 ? "rd" : "th";
+            copy[rx][1] = `${dayNum}${suffix}-${months[dateObj.getMonth()]}-${dateObj.getFullYear()}`;
+            dayOffset++;
+          }
         }
       }
 
       setSheetData(copy);
 
-      // Generate tab name
+      // Generate tab name from next Monday
       const endDate = new Date(nextMonday);
       endDate.setDate(endDate.getDate() + 5);
       const startDay = nextMonday.getDate();
