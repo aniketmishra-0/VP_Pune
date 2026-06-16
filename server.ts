@@ -967,7 +967,10 @@ let papersLastLoaded: string | null = null;
 let papersLoading = false;
 let papersError: string | null = null;
 
+let cachedPapersUrl: string = "";
+
 function getPapersSpreadsheetUrl(): string {
+  if (cachedPapersUrl) return normalizeSpreadsheetUrl(cachedPapersUrl);
   const config = getAppConfig();
   const envUrl = process.env.PAPERS_SPREADSHEET_URL || "";
   const configUrl = config.PAPERS_SPREADSHEET_URL || "";
@@ -976,6 +979,21 @@ function getPapersSpreadsheetUrl(): string {
   const defaultUrl = "https://docs.google.com/spreadsheets/d/1R1jK_tiisgx1xVbZAvjxBJ1IdulX6bJZFP4udsQ9PD0/edit";
   
   return normalizeSpreadsheetUrl(envUrl || configUrl || defaultUrl);
+}
+
+/** Load papers URL from Google Sheet's PapersConfig tab (runs on startup) */
+async function loadPapersUrlFromSheet() {
+  if (!settingsStore.isConfigured()) return;
+  try {
+    await settingsStore.ensurePapersConfigHeader();
+    const entries = await settingsStore.readPapersConfig();
+    if (entries.length > 0 && entries[0].sheetLink) {
+      cachedPapersUrl = entries[0].sheetLink;
+      console.log(`[PapersConfig] Loaded URL from sheet: ${entries[0].sheetName || "(unnamed)"}`);
+    }
+  } catch (err) {
+    console.error("[PapersConfig] Failed to read from sheet:", (err as Error).message);
+  }
 }
 
 function extractLinksFromCell(cell: any): PaperLink[] {
@@ -1196,7 +1214,7 @@ async function loadPapersData() {
 
 // Initial pull on start
 loadSpreadsheetData();
-loadPapersData();
+loadPapersUrlFromSheet().then(() => loadPapersData()).catch(() => loadPapersData());
 
 
 
@@ -2037,7 +2055,21 @@ app.post("/api/config", verifyRequest, superAdminOnly, async (req, res) => {
       newConfig.FEATURE_FLAGS = FEATURE_FLAGS;
     }
     if (typeof PAPERS_SPREADSHEET_URL === "string") {
-      newConfig.PAPERS_SPREADSHEET_URL = normalizeSpreadsheetUrl(PAPERS_SPREADSHEET_URL);
+      const normalizedUrl = normalizeSpreadsheetUrl(PAPERS_SPREADSHEET_URL);
+      newConfig.PAPERS_SPREADSHEET_URL = normalizedUrl;
+      cachedPapersUrl = normalizedUrl;
+      
+      // Also persist to Google Sheet settings store (survives deploys/restarts)
+      if (settingsStore.isConfigured()) {
+        try {
+          await settingsStore.writePapersConfig([
+            { sheetName: "PapersMaster", sheetLink: normalizedUrl }
+          ]);
+          console.log("[PapersConfig] Persisted configuration URL to Google Sheet settings store.");
+        } catch (e: any) {
+          console.error("[PapersConfig] Failed to write config to sheet:", e.message);
+        }
+      }
     }
 
     fs.writeFileSync(CONFIG_PATH, JSON.stringify(newConfig, null, 2), "utf-8");

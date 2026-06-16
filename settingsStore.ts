@@ -425,6 +425,75 @@ export async function ensureTimetableConfigHeader(): Promise<void> {
   }
 }
 
+/* ===== PapersConfig persistence (Google Sheet tab) ===== */
+
+export const PAPERS_CONFIG_TAB = "PapersConfig";
+
+export interface PapersConfigEntry {
+  sheetName: string;
+  sheetLink: string;
+}
+
+/**
+ * Read all papers config entries from the PapersConfig tab.
+ * Columns: A = Sheet Name, B = Sheet Link
+ */
+export async function readPapersConfig(): Promise<PapersConfigEntry[]> {
+  await ensureTab(PAPERS_CONFIG_TAB);
+  let data: any;
+  try {
+    data = await apiFetch(`/values/${encodeURIComponent(PAPERS_CONFIG_TAB)}!A1:B100`);
+  } catch {
+    return [];
+  }
+  const rows: any[][] = data.values || [];
+  let start = 0;
+  // Skip header row
+  if (rows.length > 0 && /name|sheet/i.test(String(rows[0][0] || ""))) start = 1;
+  const entries: PapersConfigEntry[] = [];
+  for (let i = start; i < rows.length; i++) {
+    const r = rows[i] || [];
+    const sheetName = String(r[0] || "").trim();
+    const sheetLink = String(r[1] || "").trim();
+    if (!sheetName && !sheetLink) continue;
+    entries.push({ sheetName, sheetLink });
+  }
+  return entries;
+}
+
+/**
+ * Write/update papers config entries.
+ * Fully rewrites the tab.
+ */
+export async function writePapersConfig(entries: PapersConfigEntry[]): Promise<void> {
+  const values = [
+    ["Sheet Name", "Sheet Link"],
+    ...entries.map((e) => [e.sheetName, e.sheetLink]),
+  ];
+  await rewriteTab(PAPERS_CONFIG_TAB, values, "B");
+}
+
+/**
+ * Ensure PapersConfig tab has header, without overwriting data.
+ */
+export async function ensurePapersConfigHeader(): Promise<void> {
+  await ensureTab(PAPERS_CONFIG_TAB);
+  let data: any;
+  try {
+    data = await apiFetch(`/values/${encodeURIComponent(PAPERS_CONFIG_TAB)}!A1:B1`);
+  } catch {
+    data = {};
+  }
+  const rows: any[][] = data.values || [];
+  const hasContent = rows.length > 0 && String(rows[0][0] || "").trim() !== "";
+  if (!hasContent) {
+    await apiFetch(
+      `/values/${encodeURIComponent(PAPERS_CONFIG_TAB)}!A1?valueInputOption=RAW`,
+      { method: "PUT", body: JSON.stringify({ values: [["Sheet Name", "Sheet Link"]] }) }
+    );
+  }
+}
+
 /* ===== Timetable Spreadsheet helpers (separate sheet) ===== */
 
 export const TIMETABLE_SPREADSHEET_ID = "1EChiZIoa53KhaZSELkBrIpuTgyBqJf1PVl28y2BcS7g";
