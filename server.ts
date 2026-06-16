@@ -2927,6 +2927,36 @@ async function loadTimetableData() {
 // ── Timetable API endpoints ─────────────────────────────────────────────
 
 /**
+ * GET /api/timetable/my-code
+ * Return the teacher code matching the logged-in user's email.
+ * Uses Faculty Details sheet to find email → code mapping.
+ */
+app.get("/api/timetable/my-code", verifyRequest, async (req, res) => {
+  try {
+    const email = String(req.headers["x-user-email"] || "").trim().toLowerCase();
+    if (!email) return res.json({ code: null, reason: "No email provided" });
+
+    const faculty = await settingsStore.readFacultyDetails();
+    const match = faculty.find(f => f.email.toLowerCase() === email && f.code);
+
+    if (match) {
+      res.json({
+        code: match.code,
+        name: match.name,
+        email: match.email,
+        subject: match.subject,
+        division: match.division,
+      });
+    } else {
+      res.json({ code: null, reason: "No matching faculty found for this email" });
+    }
+  } catch (err: any) {
+    console.error("[/api/timetable/my-code] Error:", err.message);
+    res.json({ code: null, reason: "Error looking up faculty: " + err.message });
+  }
+});
+
+/**
  * GET /api/timetable?code=CSI
  * Return filtered lectures for a teacher code, or all if no code given.
  */

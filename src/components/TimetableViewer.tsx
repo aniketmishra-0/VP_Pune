@@ -112,12 +112,38 @@ export default function TimetableViewer({ adminHeaders }: TimetableViewerProps) 
     try { const r = await fetch(`/api/timetable?code=${encodeURIComponent(code)}`, { headers: adminHeaders() }); if (r.ok) { const d = await r.json(); setLectures(d.lectures || []); } } catch {}
   }, [adminHeaders]);
 
+  // Auto-detect logged-in teacher's code
+  const [myCode, setMyCode] = useState<string | null>(null);
+  const [myName, setMyName] = useState<string | null>(null);
+  const autoDetectDone = useRef(false);
+
+  useEffect(() => { fetchConfig(); fetchCodes(); fetchTeacherNames(); }, [fetchConfig, fetchCodes, fetchTeacherNames]);
+
+  // Auto-detect teacher code from email on first load
+  useEffect(() => {
+    if (autoDetectDone.current) return;
+    autoDetectDone.current = true;
+    (async () => {
+      try {
+        const r = await fetch("/api/timetable/my-code", { headers: adminHeaders() });
+        if (r.ok) {
+          const d = await r.json();
+          if (d.code) {
+            setMyCode(d.code);
+            setMyName(d.name || null);
+            setSelectedCode(d.code);
+            setSearchQuery(d.code);
+          }
+        }
+      } catch {}
+    })();
+  }, [adminHeaders]);
+
   const handleRefresh = async () => {
     setIsLoading(true);
     try { await fetch("/api/timetable/refresh", { method: "POST", headers: adminHeaders() }); setTimeout(() => { fetchCodes(); fetchConfig(); setIsLoading(false); }, 2000); } catch { setIsLoading(false); }
   };
 
-  useEffect(() => { fetchConfig(); fetchCodes(); fetchTeacherNames(); }, [fetchConfig, fetchCodes, fetchTeacherNames]);
   useEffect(() => { if (selectedCode) fetchLectures(selectedCode); else setLectures([]); }, [selectedCode, fetchLectures]);
 
   // Close suggestions on outside click
@@ -210,6 +236,18 @@ export default function TimetableViewer({ adminHeaders }: TimetableViewerProps) 
         <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2 mb-3">
           <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
           <p className="text-[11px] text-red-600 dark:text-red-400 truncate">{apiError}</p>
+        </div>
+      )}
+
+      {/* Auto-detected teacher welcome */}
+      {myCode && myName && (
+        <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-3 py-2 mb-3">
+          <div className="w-6 h-6 rounded-lg bg-emerald-500/20 flex items-center justify-center shrink-0">
+            <span className="text-xs">👋</span>
+          </div>
+          <p className="text-[11px] text-emerald-600 dark:text-emerald-400">
+            Welcome, <span className="font-bold">{myName}</span>! Your timetable (<span className="font-mono font-bold">{myCode}</span>) is loaded automatically.
+          </p>
         </div>
       )}
 
