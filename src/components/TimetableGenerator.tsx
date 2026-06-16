@@ -5,6 +5,7 @@ import {
   RefreshCw, Users, Settings, Eye, FileSpreadsheet, Zap,
   AlertTriangle, CheckCircle2, Loader2, Sun, CloudOff, Hash,
   Sliders, Trash2, Plus, Download, Sparkles, X, Save,
+  Undo2, Search, Replace, CalendarDays, Eraser, Umbrella,
 } from "lucide-react";
 
 // ─── Types ──────────────────────────────────────────────────────────────
@@ -765,6 +766,194 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
     });
   }, []);
 
+  // ─── Sheet Editor: Undo ────────────────────────────────────────────
+  const [sheetUndoStack, setSheetUndoStack] = useState<string[][][]>([]);
+
+  const sheetPushUndo = useCallback(() => {
+    if (!sheetData) return;
+    setSheetUndoStack(prev => [...prev.slice(-19), sheetData.map(r => [...r])]);
+  }, [sheetData]);
+
+  const sheetUndo = useCallback(() => {
+    setSheetUndoStack(prev => {
+      if (prev.length === 0) return prev;
+      const last = prev[prev.length - 1];
+      setSheetData(last);
+      return prev.slice(0, -1);
+    });
+  }, []);
+
+  // ─── Sheet Editor: Find & Replace ──────────────────────────────────
+  const [sheetFindText, setSheetFindText] = useState("");
+  const [sheetReplaceText, setSheetReplaceText] = useState("");
+
+  const sheetFindCount = useMemo(() => {
+    if (!sheetData || !sheetFindText) return 0;
+    const search = sheetFindText.toUpperCase();
+    let count = 0;
+    for (const row of sheetData) {
+      for (const cell of row) {
+        if (cell.toUpperCase() === search) count++;
+      }
+    }
+    return count;
+  }, [sheetData, sheetFindText]);
+
+  const handleSheetReplace = useCallback(() => {
+    if (!sheetData || !sheetFindText) return;
+    sheetPushUndo();
+    const search = sheetFindText.toUpperCase();
+    setSheetData(prev => {
+      if (!prev) return prev;
+      return prev.map(row =>
+        row.map(cell => cell.toUpperCase() === search ? sheetReplaceText : cell)
+      );
+    });
+  }, [sheetData, sheetFindText, sheetReplaceText, sheetPushUndo]);
+
+  // ─── Sheet Editor: Auto-date update for new week ───────────────────
+  const handleSheetAutoDate = useCallback((newWeekStart: string) => {
+    if (!sheetData || !newWeekStart) return;
+    sheetPushUndo();
+    const start = new Date(newWeekStart);
+    if (isNaN(start.getTime())) return;
+
+    const dayNames = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
+    const shortDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+    setSheetData(prev => {
+      if (!prev) return prev;
+      const copy = prev.map(r => [...r]);
+      let dayOffset = 0;
+
+      for (let r = 2; r < copy.length; r++) {
+        const cellDay = (copy[r][0] || "").trim().toUpperCase();
+        if (dayNames.includes(cellDay)) {
+          const dateObj = new Date(start);
+          dateObj.setDate(dateObj.getDate() + dayOffset);
+          const dayNum = dateObj.getDate();
+          const suffix = dayNum === 1 || dayNum === 21 || dayNum === 31 ? "st" :
+                         dayNum === 2 || dayNum === 22 ? "nd" :
+                         dayNum === 3 || dayNum === 23 ? "rd" : "th";
+          copy[r][1] = `${dayNum}${suffix}-${months[dateObj.getMonth()]}-${dateObj.getFullYear()}`;
+          dayOffset++;
+        }
+      }
+      return copy;
+    });
+  }, [sheetData, sheetPushUndo]);
+
+  // ─── Sheet Editor: Clear a day ─────────────────────────────────────
+  const handleSheetClearDay = useCallback((dayName: string) => {
+    if (!sheetData) return;
+    sheetPushUndo();
+    const dayNames = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
+    const target = dayName.toUpperCase();
+
+    setSheetData(prev => {
+      if (!prev) return prev;
+      const copy = prev.map(r => [...r]);
+      let inDay = false;
+
+      for (let r = 2; r < copy.length; r++) {
+        const cellDay = (copy[r][0] || "").trim().toUpperCase();
+        if (dayNames.includes(cellDay)) {
+          inDay = cellDay === target;
+        }
+        if (inDay) {
+          // Clear teacher columns (skip day col 0, date col 1)
+          for (let c = 2; c < copy[r].length; c++) {
+            copy[r][c] = "";
+          }
+        }
+      }
+      return copy;
+    });
+  }, [sheetData, sheetPushUndo]);
+
+  // ─── Sheet Editor: Mark day as Holiday ─────────────────────────────
+  const handleSheetMarkHoliday = useCallback((dayName: string) => {
+    if (!sheetData) return;
+    sheetPushUndo();
+    const dayNames = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
+    const target = dayName.toUpperCase();
+
+    setSheetData(prev => {
+      if (!prev) return prev;
+      const copy = prev.map(r => [...r]);
+      let inDay = false;
+      let isFirstRow = true;
+
+      for (let r = 2; r < copy.length; r++) {
+        const cellDay = (copy[r][0] || "").trim().toUpperCase();
+        if (dayNames.includes(cellDay)) {
+          inDay = cellDay === target;
+          isFirstRow = true;
+        }
+        if (inDay) {
+          for (let c = 2; c < copy[r].length; c++) {
+            copy[r][c] = isFirstRow && c === 2 ? "HOLIDAY" : "";
+          }
+          isFirstRow = false;
+        }
+      }
+      return copy;
+    });
+  }, [sheetData, sheetPushUndo]);
+
+  // ─── Sheet Editor: Teacher stats ───────────────────────────────────
+  const sheetTeacherStats = useMemo(() => {
+    if (!sheetData) return [];
+    const counts: Record<string, number> = {};
+    // Skip header (row 0) and room row (row 1), skip col 0 (day) and col 1 (date)
+    for (let r = 2; r < sheetData.length; r++) {
+      for (let c = 2; c < sheetData[r].length; c++) {
+        const val = (sheetData[r][c] || "").trim().toUpperCase();
+        if (val && val !== "HOLIDAY" && val !== "—" && val !== "-" && val.length >= 2 && val.length <= 6) {
+          counts[val] = (counts[val] || 0) + 1;
+        }
+      }
+    }
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  }, [sheetData]);
+
+  // ─── Sheet Editor: Conflict detection ──────────────────────────────
+  const sheetConflicts = useMemo(() => {
+    if (!sheetData) return new Set<string>();
+    const conflicts = new Set<string>();
+    const dayNames = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
+    let currentDay = "";
+    let slotInDay = 0;
+
+    for (let r = 2; r < sheetData.length; r++) {
+      const cellDay = (sheetData[r][0] || "").trim().toUpperCase();
+      if (dayNames.includes(cellDay)) {
+        currentDay = cellDay;
+        slotInDay = 0;
+      }
+      slotInDay++;
+
+      // Check if any teacher appears twice in the same row (same time slot)
+      const teacherCols: Record<string, number[]> = {};
+      for (let c = 2; c < sheetData[r].length; c++) {
+        const val = (sheetData[r][c] || "").trim().toUpperCase();
+        if (val && val !== "HOLIDAY" && val !== "—" && val !== "-" && val.length >= 2 && val.length <= 6) {
+          if (!teacherCols[val]) teacherCols[val] = [];
+          teacherCols[val].push(c);
+        }
+      }
+      for (const [, cols] of Object.entries(teacherCols)) {
+        if (cols.length > 1) {
+          for (const c of cols) {
+            conflicts.add(`${r}-${c}`);
+          }
+        }
+      }
+    }
+    return conflicts;
+  }, [sheetData]);
+
   // ─── Fetch Faculty ────────────────────────────────────────────────
 
   const fetchFaculty = useCallback(async () => {
@@ -1245,89 +1434,240 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
                 </div>
               </GlassCard>
 
-              {/* ─── Inline Sheet Editor ─── */}
+              {/* ─── Smart Sheet Editor ─── */}
               {sheetData && (
-                <GlassCard
-                  title={`Editing: ${sheetSourceTab}`}
-                  icon={<FileSpreadsheet className="w-3.5 h-3.5 text-[#5277f7]" />}
-                  action={
-                    <button
-                      onClick={() => { setSheetData(null); setSheetSourceTab(""); setSheetSaveResult(null); }}
-                      className="flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-red-500 cursor-pointer transition-colors"
-                    >
-                      <X className="w-3 h-3" />
-                      Close
-                    </button>
-                  }
-                >
-                  <div className="space-y-4">
-                    {/* Scrollable table */}
-                    <div className="overflow-auto max-h-[65vh] rounded-xl border border-slate-200/50 dark:border-gray-800/50">
+                <div className="space-y-3">
+                  {/* ═══ Toolbar ═══ */}
+                  <GlassCard
+                    title={`Editing: ${sheetSourceTab}`}
+                    icon={<FileSpreadsheet className="w-3.5 h-3.5 text-[#5277f7]" />}
+                    action={
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={sheetUndo}
+                          disabled={sheetUndoStack.length === 0}
+                          className="flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-[#5277f7] cursor-pointer transition-colors disabled:opacity-30"
+                          title="Undo (Ctrl+Z)"
+                        >
+                          <Undo2 className="w-3 h-3" />
+                          Undo
+                        </button>
+                        <button
+                          onClick={() => { setSheetData(null); setSheetSourceTab(""); setSheetSaveResult(null); setSheetUndoStack([]); }}
+                          className="flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-red-500 cursor-pointer transition-colors"
+                        >
+                          <X className="w-3 h-3" />
+                          Close
+                        </button>
+                      </div>
+                    }
+                  >
+                    <div className="space-y-3">
+                      {/* Find & Replace */}
+                      <div className="flex flex-col sm:flex-row gap-2 items-stretch">
+                        <div className="flex items-center gap-2 flex-1">
+                          <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <input
+                            type="text"
+                            value={sheetFindText}
+                            onChange={(e) => setSheetFindText(e.target.value)}
+                            placeholder="Find teacher (e.g. PKK)"
+                            className="flex-1 bg-slate-50 dark:bg-gray-900/40 rounded-lg border border-slate-200 dark:border-gray-800 px-3 py-2 text-xs text-slate-700 dark:text-slate-200 outline-none focus:border-[#5277f7] transition-colors font-mono"
+                          />
+                          {sheetFindText && (
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${sheetFindCount > 0 ? "bg-amber-500/20 text-amber-500" : "bg-slate-200 dark:bg-gray-800 text-slate-400"}`}>
+                              {sheetFindCount} found
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 flex-1">
+                          <Replace className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <input
+                            type="text"
+                            value={sheetReplaceText}
+                            onChange={(e) => setSheetReplaceText(e.target.value)}
+                            placeholder="Replace with (e.g. AKM)"
+                            className="flex-1 bg-slate-50 dark:bg-gray-900/40 rounded-lg border border-slate-200 dark:border-gray-800 px-3 py-2 text-xs text-slate-700 dark:text-slate-200 outline-none focus:border-[#5277f7] transition-colors font-mono"
+                          />
+                          <button
+                            onClick={handleSheetReplace}
+                            disabled={!sheetFindText || sheetFindCount === 0}
+                            className="bg-amber-500 hover:bg-amber-400 text-white font-bold text-[10px] px-3 py-2 rounded-lg transition-all disabled:opacity-30 cursor-pointer shrink-0"
+                          >
+                            Replace All
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Quick Actions Row */}
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-[9px] font-bold tracking-widest uppercase text-slate-400 font-mono">Quick:</span>
+                        
+                        {/* Auto-date */}
+                        <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-gray-900/30 rounded-lg px-2 py-1.5 border border-slate-200/50 dark:border-gray-800/40">
+                          <CalendarDays className="w-3 h-3 text-[#5277f7]" />
+                          <input
+                            type="date"
+                            onChange={(e) => handleSheetAutoDate(e.target.value)}
+                            className="bg-transparent text-[10px] text-slate-600 dark:text-slate-300 outline-none font-mono cursor-pointer w-24"
+                            title="Set new week start → auto-update all dates"
+                          />
+                          <span className="text-[9px] text-slate-400">Auto Dates</span>
+                        </div>
+
+                        {/* Day actions dropdown */}
+                        {["MON", "TUE", "WED", "THU", "FRI"].map(d => {
+                          const full = d === "MON" ? "MONDAY" : d === "TUE" ? "TUESDAY" : d === "WED" ? "WEDNESDAY" : d === "THU" ? "THURSDAY" : "FRIDAY";
+                          return (
+                            <div key={d} className="flex items-center gap-0.5">
+                              <button
+                                onClick={() => handleSheetClearDay(full)}
+                                className="text-[9px] font-bold px-1.5 py-1 rounded-l-md bg-slate-100 dark:bg-gray-800/50 text-slate-500 hover:bg-red-500/10 hover:text-red-500 cursor-pointer transition-colors border border-slate-200/50 dark:border-gray-800/40 border-r-0"
+                                title={`Clear ${d}`}
+                              >
+                                <Eraser className="w-2.5 h-2.5" />
+                              </button>
+                              <span className="text-[9px] font-bold px-1 py-1 bg-slate-100 dark:bg-gray-800/50 text-slate-500 border-y border-slate-200/50 dark:border-gray-800/40">{d}</span>
+                              <button
+                                onClick={() => handleSheetMarkHoliday(full)}
+                                className="text-[9px] font-bold px-1.5 py-1 rounded-r-md bg-slate-100 dark:bg-gray-800/50 text-slate-500 hover:bg-amber-500/10 hover:text-amber-500 cursor-pointer transition-colors border border-slate-200/50 dark:border-gray-800/40 border-l-0"
+                                title={`Mark ${d} Holiday`}
+                              >
+                                <Umbrella className="w-2.5 h-2.5" />
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Conflict badge */}
+                      {sheetConflicts.size > 0 && (
+                        <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
+                          <AlertTriangle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                          <p className="text-[10px] text-red-400 font-bold">{sheetConflicts.size} double-booking conflict{sheetConflicts.size > 1 ? "s" : ""} — same teacher in same time slot!</p>
+                        </div>
+                      )}
+                    </div>
+                  </GlassCard>
+
+                  {/* ═══ Grid ═══ */}
+                  <div className="bg-white dark:bg-[#111827] rounded-2xl border border-slate-200/50 dark:border-gray-800/40 shadow-sm overflow-hidden">
+                    <div className="overflow-auto max-h-[60vh]">
                       <table className="w-full border-collapse text-[10px] font-mono">
                         <tbody>
-                          {sheetData.map((row, rIdx) => (
-                            <tr key={rIdx} className={rIdx === 0 ? "bg-[#5277f7]/10 dark:bg-[#5277f7]/5 sticky top-0 z-10" : rIdx === 1 ? "bg-slate-100/50 dark:bg-gray-800/30" : ""}>
-                              {row.map((cell, cIdx) => {
-                                const isEditing = sheetEditingCell?.r === rIdx && sheetEditingCell?.c === cIdx;
-                                const isHeader = rIdx === 0;
-                                const isDay = cIdx === 0 && rIdx >= 2 && cell.trim().length > 0;
-                                return (
-                                  <td
-                                    key={cIdx}
-                                    className={`border border-slate-200/40 dark:border-gray-800/40 px-1.5 py-1 min-w-[45px] max-w-[100px] transition-all ${
-                                      isHeader ? "font-bold text-[#5277f7] dark:text-[#7b9bff] text-center" :
-                                      isDay ? "font-bold text-slate-700 dark:text-slate-300 bg-slate-50/50 dark:bg-gray-800/20" :
-                                      "text-slate-600 dark:text-slate-300"
-                                    } ${!isEditing ? "cursor-pointer hover:bg-[#5277f7]/5" : ""}`}
-                                    onClick={() => {
-                                      if (!isEditing) setSheetEditingCell({ r: rIdx, c: cIdx });
-                                    }}
-                                  >
-                                    {isEditing ? (
-                                      <input
-                                        type="text"
-                                        defaultValue={cell}
-                                        autoFocus
-                                        onBlur={(e) => {
-                                          handleSheetCellChange(rIdx, cIdx, e.target.value);
-                                          setSheetEditingCell(null);
-                                        }}
-                                        onKeyDown={(e) => {
-                                          if (e.key === "Enter") {
-                                            handleSheetCellChange(rIdx, cIdx, (e.target as HTMLInputElement).value);
-                                            // Move down
-                                            setSheetEditingCell(rIdx + 1 < sheetData.length ? { r: rIdx + 1, c: cIdx } : null);
-                                          } else if (e.key === "Tab") {
-                                            e.preventDefault();
-                                            handleSheetCellChange(rIdx, cIdx, (e.target as HTMLInputElement).value);
-                                            // Move right
-                                            if (cIdx + 1 < row.length) {
-                                              setSheetEditingCell({ r: rIdx, c: cIdx + 1 });
-                                            } else if (rIdx + 1 < sheetData.length) {
-                                              setSheetEditingCell({ r: rIdx + 1, c: 0 });
-                                            }
-                                          } else if (e.key === "Escape") {
+                          {sheetData.map((row, rIdx) => {
+                            const isHeaderRow = rIdx === 0;
+                            const isRoomRow = rIdx === 1;
+                            const cellDayVal = rIdx >= 2 ? (row[0] || "").trim().toUpperCase() : "";
+                            const dayColors: Record<string, string> = {
+                              MONDAY: "border-l-4 border-l-orange-400",
+                              TUESDAY: "border-l-4 border-l-fuchsia-400",
+                              WEDNESDAY: "border-l-4 border-l-emerald-400",
+                              THURSDAY: "border-l-4 border-l-cyan-400",
+                              FRIDAY: "border-l-4 border-l-pink-400",
+                              SATURDAY: "border-l-4 border-l-violet-400",
+                            };
+                            const rowDayColor = dayColors[cellDayVal] || "";
+
+                            return (
+                              <tr
+                                key={rIdx}
+                                className={
+                                  isHeaderRow ? "bg-[#5277f7]/10 dark:bg-[#5277f7]/5 sticky top-0 z-10" :
+                                  isRoomRow ? "bg-slate-100/60 dark:bg-gray-800/30 sticky top-[26px] z-[9]" :
+                                  row.some(c => c.toUpperCase() === "HOLIDAY") ? "bg-amber-500/5" :
+                                  ""
+                                }
+                              >
+                                {row.map((cell, cIdx) => {
+                                  const isEditing = sheetEditingCell?.r === rIdx && sheetEditingCell?.c === cIdx;
+                                  const isConflict = sheetConflicts.has(`${rIdx}-${cIdx}`);
+                                  const isHighlighted = sheetFindText && cell.toUpperCase() === sheetFindText.toUpperCase();
+                                  const isDay = cIdx === 0 && rIdx >= 2 && cell.trim().length > 0;
+
+                                  return (
+                                    <td
+                                      key={cIdx}
+                                      className={`border border-slate-200/30 dark:border-gray-800/30 px-1.5 py-[3px] min-w-[42px] max-w-[90px] transition-all ${
+                                        isHeaderRow ? "font-bold text-[#5277f7] dark:text-[#7b9bff] text-center text-[9px] py-1.5" :
+                                        isRoomRow ? "font-bold text-[9px] text-slate-400 text-center" :
+                                        isDay ? `font-bold text-slate-700 dark:text-slate-200 bg-slate-50/30 dark:bg-gray-900/20 ${rowDayColor}` :
+                                        "text-slate-700 dark:text-slate-200"
+                                      } ${isConflict ? "!bg-red-500/15 !text-red-600 dark:!text-red-400 ring-1 ring-red-500/30 ring-inset" : ""}
+                                      ${isHighlighted ? "!bg-amber-400/20 !text-amber-700 dark:!text-amber-300 ring-1 ring-amber-400/40 ring-inset" : ""}
+                                      ${!isEditing && !isHeaderRow ? "cursor-pointer hover:bg-[#5277f7]/5" : ""}`}
+                                      onClick={() => {
+                                        if (!isEditing) {
+                                          sheetPushUndo();
+                                          setSheetEditingCell({ r: rIdx, c: cIdx });
+                                        }
+                                      }}
+                                    >
+                                      {isEditing ? (
+                                        <input
+                                          type="text"
+                                          defaultValue={cell}
+                                          autoFocus
+                                          onBlur={(e) => {
+                                            handleSheetCellChange(rIdx, cIdx, e.target.value);
                                             setSheetEditingCell(null);
-                                          }
-                                        }}
-                                        className="w-full bg-white dark:bg-gray-900 border border-[#5277f7] rounded px-1 py-0.5 text-[10px] outline-none text-slate-800 dark:text-white"
-                                      />
-                                    ) : (
-                                      <span className="block truncate" title={cell}>{cell || "\u00A0"}</span>
-                                    )}
-                                  </td>
-                                );
-                              })}
-                            </tr>
-                          ))}
+                                          }}
+                                          onKeyDown={(e) => {
+                                            if (e.key === "Enter") {
+                                              handleSheetCellChange(rIdx, cIdx, (e.target as HTMLInputElement).value);
+                                              setSheetEditingCell(rIdx + 1 < sheetData.length ? { r: rIdx + 1, c: cIdx } : null);
+                                            } else if (e.key === "Tab") {
+                                              e.preventDefault();
+                                              handleSheetCellChange(rIdx, cIdx, (e.target as HTMLInputElement).value);
+                                              if (cIdx + 1 < row.length) setSheetEditingCell({ r: rIdx, c: cIdx + 1 });
+                                              else if (rIdx + 1 < sheetData.length) setSheetEditingCell({ r: rIdx + 1, c: 0 });
+                                            } else if (e.key === "Escape") {
+                                              setSheetEditingCell(null);
+                                            }
+                                          }}
+                                          className="w-full bg-white dark:bg-gray-900 border border-[#5277f7] rounded px-1 py-0.5 text-[10px] outline-none text-slate-800 dark:text-white"
+                                        />
+                                      ) : (
+                                        <span className="block truncate" title={cell}>{cell || "\u00A0"}</span>
+                                      )}
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
+                  </div>
 
-                    {/* Save as Copy controls */}
-                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 pt-2 border-t border-slate-100 dark:border-gray-800/40">
-                      <div className="flex-1">
-                        <label className="text-[9px] font-bold tracking-widest uppercase text-slate-400 font-mono block mb-1">New Tab Name</label>
+                  {/* ═══ Bottom: Teacher Stats + Save ═══ */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                    {/* Teacher Stats */}
+                    <GlassCard title="Teacher Load" icon={<Users className="w-3.5 h-3.5 text-emerald-500" />}>
+                      <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto">
+                        {sheetTeacherStats.map(([teacher, count]) => (
+                          <button
+                            key={teacher}
+                            onClick={() => setSheetFindText(teacher)}
+                            className={`text-[9px] font-bold font-mono px-2 py-1 rounded-md cursor-pointer transition-all ${
+                              sheetFindText.toUpperCase() === teacher
+                                ? "bg-[#5277f7] text-white shadow-md"
+                                : "bg-slate-100 dark:bg-gray-800/50 text-slate-600 dark:text-slate-300 hover:bg-[#5277f7]/10"
+                            }`}
+                          >
+                            {teacher} <span className="opacity-60">({count})</span>
+                          </button>
+                        ))}
+                        {sheetTeacherStats.length === 0 && (
+                          <p className="text-[10px] text-slate-400 italic">No teachers found</p>
+                        )}
+                      </div>
+                    </GlassCard>
+
+                    {/* Save as Copy */}
+                    <GlassCard title="Save as Copy" icon={<Save className="w-3.5 h-3.5 text-[#5277f7]" />}>
+                      <div className="space-y-3">
                         <input
                           type="text"
                           value={sheetCopyName}
@@ -1335,38 +1675,29 @@ export default function TimetableGenerator({ adminHeaders }: TimetableGeneratorP
                           placeholder="e.g. 22nd-27th June 2026"
                           className="w-full bg-slate-50 dark:bg-gray-900/40 rounded-xl border border-slate-200 dark:border-gray-800 px-4 py-2.5 text-xs text-slate-700 dark:text-slate-200 outline-none focus:border-[#5277f7] transition-colors font-mono"
                         />
-                      </div>
-                      <button
-                        onClick={handleSaveAsCopy}
-                        disabled={sheetSaving || !sheetCopyName.trim()}
-                        className="bg-gradient-to-r from-[#5277f7] to-[#7c3aed] text-white font-bold text-xs px-6 py-2.5 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 cursor-pointer shadow-lg shadow-[#5277f7]/20 hover:shadow-xl active:scale-[0.98] mt-auto"
-                      >
-                        {sheetSaving ? (
-                          <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving...</>
-                        ) : (
-                          <><Save className="w-3.5 h-3.5" /> Save as Copy</>
+                        <button
+                          onClick={handleSaveAsCopy}
+                          disabled={sheetSaving || !sheetCopyName.trim()}
+                          className="w-full bg-gradient-to-r from-[#5277f7] to-[#7c3aed] text-white font-bold text-xs px-6 py-2.5 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 cursor-pointer shadow-lg shadow-[#5277f7]/20 hover:shadow-xl active:scale-[0.98]"
+                        >
+                          {sheetSaving ? (
+                            <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving...</>
+                          ) : (
+                            <><Save className="w-3.5 h-3.5" /> Save to Google Sheets</>
+                          )}
+                        </button>
+                        {sheetSaveResult && (
+                          <div className={`flex items-center gap-2 rounded-xl px-3 py-2 ${
+                            sheetSaveResult.success ? "bg-emerald-500/10 border border-emerald-500/20" : "bg-red-500/10 border border-red-500/20"
+                          }`}>
+                            {sheetSaveResult.success ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" /> : <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />}
+                            <p className={`text-[11px] ${sheetSaveResult.success ? "text-emerald-400" : "text-red-400"}`}>{sheetSaveResult.message}</p>
+                          </div>
                         )}
-                      </button>
-                    </div>
-
-                    {sheetSaveResult && (
-                      <div className={`flex items-center gap-2 rounded-xl px-3 py-2.5 ${
-                        sheetSaveResult.success
-                          ? "bg-emerald-500/10 border border-emerald-500/20"
-                          : "bg-red-500/10 border border-red-500/20"
-                      }`}>
-                        {sheetSaveResult.success ? (
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                        ) : (
-                          <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
-                        )}
-                        <p className={`text-[11px] ${sheetSaveResult.success ? "text-emerald-400" : "text-red-400"}`}>
-                          {sheetSaveResult.message}
-                        </p>
                       </div>
-                    )}
+                    </GlassCard>
                   </div>
-                </GlassCard>
+                </div>
               )}
             </div>
           )}
