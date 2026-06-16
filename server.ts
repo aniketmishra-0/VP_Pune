@@ -41,6 +41,7 @@ interface SavedConfig {
   STAFF_ACCESS?: Record<string, string[]>;
   FEATURE_FLAGS?: Partial<FeatureFlags>;
   PAPERS_SPREADSHEET_URL?: string;
+  PAPERS_SHEETS?: Array<{ name: string; url: string }>;
 }
 
 function getAppConfig(): SavedConfig {
@@ -962,6 +963,17 @@ interface PaperTab {
   rows: PaperRow[];
 }
 
+interface CachedPapersState {
+  papersData: PaperTab[];
+  lastLoaded: string | null;
+  error: string | null;
+  loading: boolean;
+}
+
+let cachedPapersSheets: settingsStore.PapersConfigEntry[] = [];
+let papersCache = new Map<string, CachedPapersState>();
+
+// Legacy fallback variables
 let papersData: PaperTab[] = [];
 let papersLastLoaded: string | null = null;
 let papersLoading = false;
@@ -969,7 +981,14 @@ let papersError: string | null = null;
 
 let cachedPapersUrl: string = "";
 
-function getPapersSpreadsheetUrl(): string {
+function getPapersSpreadsheetUrl(sheetName?: string): string {
+  if (sheetName) {
+    const found = cachedPapersSheets.find(s => s.sheetName === sheetName);
+    if (found) return normalizeSpreadsheetUrl(found.sheetLink);
+  }
+  if (cachedPapersSheets.length > 0 && cachedPapersSheets[0].sheetLink) {
+    return normalizeSpreadsheetUrl(cachedPapersSheets[0].sheetLink);
+  }
   if (cachedPapersUrl) return normalizeSpreadsheetUrl(cachedPapersUrl);
   const config = getAppConfig();
   const envUrl = process.env.PAPERS_SPREADSHEET_URL || "";
@@ -983,13 +1002,31 @@ function getPapersSpreadsheetUrl(): string {
 
 /** Load papers URL from Google Sheet's PapersConfig tab (runs on startup) */
 async function loadPapersUrlFromSheet() {
-  if (!settingsStore.isConfigured()) return;
+  if (!settingsStore.isConfigured()) {
+    const config = getAppConfig();
+    if (config.PAPERS_SHEETS && config.PAPERS_SHEETS.length > 0) {
+      cachedPapersSheets = config.PAPERS_SHEETS.map(s => ({ sheetName: s.name, sheetLink: s.url }));
+    } else if (config.PAPERS_SPREADSHEET_URL) {
+      cachedPapersSheets = [{ sheetName: "Default Papers", sheetLink: config.PAPERS_SPREADSHEET_URL }];
+    }
+    return;
+  }
   try {
     await settingsStore.ensurePapersConfigHeader();
     const entries = await settingsStore.readPapersConfig();
-    if (entries.length > 0 && entries[0].sheetLink) {
+    if (entries.length > 0) {
+      cachedPapersSheets = entries;
       cachedPapersUrl = entries[0].sheetLink;
-      console.log(`[PapersConfig] Loaded URL from sheet: ${entries[0].sheetName || "(unnamed)"}`);
+      console.log(`[PapersConfig] Loaded ${entries.length} URLs from settings sheet.`);
+    } else {
+      const config = getAppConfig();
+      if (config.PAPERS_SHEETS && config.PAPERS_SHEETS.length > 0) {
+        cachedPapersSheets = config.PAPERS_SHEETS.map(s => ({ sheetName: s.name, sheetLink: s.url }));
+        await settingsStore.writePapersConfig(cachedPapersSheets);
+      } else if (config.PAPERS_SPREADSHEET_URL) {
+        cachedPapersSheets = [{ sheetName: "Default Papers", sheetLink: config.PAPERS_SPREADSHEET_URL }];
+        await settingsStore.writePapersConfig(cachedPapersSheets);
+      }
     }
   } catch (err) {
     console.error("[PapersConfig] Failed to read from sheet:", (err as Error).message);
@@ -1154,31 +1191,38 @@ function parsePapersSheet(worksheet: XLSX.WorkSheet): PaperRow[] {
   return rows;
 }
 
-async function loadPapersData() {
-  const url = getPapersSpreadsheetUrl();
-  if (!url) {
-    papersError = "No papers sheet URL configured.";
-    return;
+async function loadPapersDataForSheet(sheetName: string, url: string) {
+  let state = papersCache.get(sheetName);
+  if (!state) {
+    state = { papersData: [], lastLoaded: null, error: null, loading: false };
+    papersCache.set(sheetName, state);
   }
-  if (papersLoading) return;
-  papersLoading = true;
-  papersError = null;
-  console.log(`Starting Papers spreadsheet download and load from: ${url}`);
+  if (state.loading) return;
+  state.loading = true;
+  state.error = null;
+  
+  // Set global papersLoading for backward-compatibility if it's the first sheet
+  if (cachedPapersSheets.length > 0 && cachedPapersSheets[0].sheetName === sheetName) {
+    papersLoading = true;
+    papersError = null;
+  }
+
+  const cleanUrl = normalizeSpreadsheetUrl(url);
+  console.log(`Starting Papers spreadsheet load for [${sheetName}] from: ${cleanUrl}`);
   try {
-    const res = await fetch(url);
+    const res = await fetch(cleanUrl);
     if (!res.ok) {
       if (res.status === 401 || res.status === 403) {
         throw new Error(
           `HTTP ${res.status} ${res.statusText} — the Papers sheet is not publicly accessible. ` +
-          `Open the sheet → Share → set "General access" to "Anyone with the link" (Viewer), ` +
-          `or use File → Share → Publish to web and paste the /pub URL in admin settings.`
+          `Open the sheet → Share → set "General access" to "Anyone with the link" (Viewer).`
         );
       }
       throw new Error(`HTTP Error Status: ${res.status} ${res.statusText}`);
     }
     
     const contentType = res.headers.get("content-type") || "";
-    if (contentType.includes("html") && !url.includes("pub?output=xlsx")) {
+    if (contentType.includes("html") && !cleanUrl.includes("pub?output=xlsx")) {
       throw new Error("Returned HTML/Google login redirection page instead of spreadsheet binary (Permission denied).");
     }
 
@@ -1189,26 +1233,61 @@ async function loadPapersData() {
     }
 
     const loadedTabs: PaperTab[] = [];
-    wb.SheetNames.forEach((sheetName) => {
-      const worksheet = wb.Sheets[sheetName];
+    wb.SheetNames.forEach((tabName) => {
+      const worksheet = wb.Sheets[tabName];
       if (!worksheet) return;
       const rows = parsePapersSheet(worksheet);
       if (rows.length > 0) {
         loadedTabs.push({
-          name: sheetName,
+          name: tabName,
           rows
         });
       }
     });
 
-    papersData = loadedTabs;
-    papersLastLoaded = fmtIST();
-    console.log(`Successfully loaded Papers. Tabs: ${papersData.length}. Total rows: ${papersData.reduce((acc, t) => acc + t.rows.length, 0)}`);
+    state.papersData = loadedTabs;
+    state.lastLoaded = fmtIST();
+    state.error = null;
+    
+    // Sync to global variables for first sheet (legacy support)
+    if (cachedPapersSheets.length > 0 && cachedPapersSheets[0].sheetName === sheetName) {
+      papersData = loadedTabs;
+      papersLastLoaded = state.lastLoaded;
+      papersError = null;
+    }
+    
+    console.log(`Successfully loaded Papers for [${sheetName}]. Tabs: ${loadedTabs.length}. Total rows: ${loadedTabs.reduce((acc, t) => acc + t.rows.length, 0)}`);
   } catch (err: any) {
-    console.error("Error loading Papers spreadsheet:", err.message || err);
-    papersError = err.message || String(err);
+    console.error(`Error loading Papers spreadsheet for [${sheetName}]:`, err.message || err);
+    state.error = err.message || String(err);
+    if (cachedPapersSheets.length > 0 && cachedPapersSheets[0].sheetName === sheetName) {
+      papersError = state.error;
+    }
   } finally {
-    papersLoading = false;
+    state.loading = false;
+    if (cachedPapersSheets.length > 0 && cachedPapersSheets[0].sheetName === sheetName) {
+      papersLoading = false;
+    }
+  }
+}
+
+async function loadPapersData(sheetName?: string) {
+  if (sheetName) {
+    const found = cachedPapersSheets.find(s => s.sheetName === sheetName);
+    if (found) {
+      await loadPapersDataForSheet(found.sheetName, found.sheetLink);
+    }
+    return;
+  }
+
+  if (cachedPapersSheets.length === 0) {
+    const defaultUrl = "https://docs.google.com/spreadsheets/d/1R1jK_tiisgx1xVbZAvjxBJ1IdulX6bJZFP4udsQ9PD0/edit";
+    cachedPapersSheets = [{ sheetName: "Default Papers", sheetLink: defaultUrl }];
+  }
+
+  console.log(`[PapersConfig] Auto-loading all ${cachedPapersSheets.length} configured papers sheets...`);
+  for (const entry of cachedPapersSheets) {
+    await loadPapersDataForSheet(entry.sheetName, entry.sheetLink);
   }
 }
 
@@ -2013,6 +2092,7 @@ app.get("/api/config", verifyRequest, superAdminOnly, (req, res) => {
       SUBSHEET_CENTERS: config.SUBSHEET_CENTERS || {},
       STAFF_ACCESS: config.STAFF_ACCESS || {},
       PAPERS_SPREADSHEET_URL: config.PAPERS_SPREADSHEET_URL || "",
+      PAPERS_SHEETS: config.PAPERS_SHEETS || [],
     },
     combined: {
       SPREADSHEET_URL: getSpreadsheetUrls().join(", "),
@@ -2020,6 +2100,7 @@ app.get("/api/config", verifyRequest, superAdminOnly, (req, res) => {
       SUBSHEET_CENTERS: getSubsheetCenters(),
       STAFF_ACCESS: getStaffAccess(),
       PAPERS_SPREADSHEET_URL: getPapersSpreadsheetUrl(),
+      PAPERS_SHEETS: cachedPapersSheets.map(s => ({ name: s.sheetName, url: s.sheetLink })),
     },
     featureFlags: { ...DEFAULT_FEATURES, ...(config.FEATURE_FLAGS || {}) },
     activeSheets: userSheets.map(s => ({
@@ -2033,7 +2114,7 @@ app.get("/api/config", verifyRequest, superAdminOnly, (req, res) => {
 // API: Save custom configurations to local config file and trigger load
 app.post("/api/config", verifyRequest, superAdminOnly, async (req, res) => {
   try {
-    const { SPREADSHEET_URL, SPREADSHEET_CENTERS, SUBSHEET_CENTERS, STAFF_ACCESS, FEATURE_FLAGS, PAPERS_SPREADSHEET_URL } = req.body;
+    const { SPREADSHEET_URL, SPREADSHEET_CENTERS, SUBSHEET_CENTERS, STAFF_ACCESS, FEATURE_FLAGS, PAPERS_SPREADSHEET_URL, PAPERS_SHEETS } = req.body;
     const newConfig: SavedConfig = {};
 
     if (typeof SPREADSHEET_URL === "string") {
@@ -2054,17 +2135,38 @@ app.post("/api/config", verifyRequest, superAdminOnly, async (req, res) => {
     if (FEATURE_FLAGS && typeof FEATURE_FLAGS === "object") {
       newConfig.FEATURE_FLAGS = FEATURE_FLAGS;
     }
-    if (typeof PAPERS_SPREADSHEET_URL === "string") {
+    
+    if (Array.isArray(PAPERS_SHEETS)) {
+      const cleanSheets = PAPERS_SHEETS.map((s: any) => ({
+        sheetName: String(s.name || s.sheetName || "").trim(),
+        sheetLink: normalizeSpreadsheetUrl(String(s.url || s.sheetLink || "").trim())
+      })).filter(s => s.sheetName && s.sheetLink);
+      
+      newConfig.PAPERS_SHEETS = cleanSheets.map(s => ({ name: s.sheetName, url: s.sheetLink }));
+      cachedPapersSheets = cleanSheets;
+      if (cleanSheets.length > 0) {
+        newConfig.PAPERS_SPREADSHEET_URL = cleanSheets[0].sheetLink;
+        cachedPapersUrl = cleanSheets[0].sheetLink;
+      }
+      
+      if (settingsStore.isConfigured()) {
+        try {
+          await settingsStore.writePapersConfig(cleanSheets);
+          console.log("[PapersConfig] Persisted multiple papers sheets to Google Sheet settings store.");
+        } catch (e: any) {
+          console.error("[PapersConfig] Failed to write papers sheets to store:", e.message);
+        }
+      }
+    } else if (typeof PAPERS_SPREADSHEET_URL === "string") {
       const normalizedUrl = normalizeSpreadsheetUrl(PAPERS_SPREADSHEET_URL);
       newConfig.PAPERS_SPREADSHEET_URL = normalizedUrl;
       cachedPapersUrl = normalizedUrl;
+      const cleanSheets = [{ sheetName: "Default Papers", sheetLink: normalizedUrl }];
+      cachedPapersSheets = cleanSheets;
       
-      // Also persist to Google Sheet settings store (survives deploys/restarts)
       if (settingsStore.isConfigured()) {
         try {
-          await settingsStore.writePapersConfig([
-            { sheetName: "PapersMaster", sheetLink: normalizedUrl }
-          ]);
+          await settingsStore.writePapersConfig(cleanSheets);
           console.log("[PapersConfig] Persisted configuration URL to Google Sheet settings store.");
         } catch (e: any) {
           console.error("[PapersConfig] Failed to write config to sheet:", e.message);
@@ -4741,15 +4843,37 @@ function requireTeacherOrAdmin(req: express.Request, res: express.Response): App
  * GET /api/papers
  * Retrieve cached test papers data (Teachers and Admins only)
  */
-app.get("/api/papers", verifyRequest, (req, res) => {
+app.get("/api/papers", verifyRequest, async (req, res) => {
   const user = requireTeacherOrAdmin(req, res);
   if (!user) return;
+
+  if (cachedPapersSheets.length === 0) {
+    const defaultUrl = "https://docs.google.com/spreadsheets/d/1R1jK_tiisgx1xVbZAvjxBJ1IdulX6bJZFP4udsQ9PD0/edit";
+    cachedPapersSheets = [{ sheetName: "Default Papers", sheetLink: defaultUrl }];
+  }
+
+  let sheetName = String(req.query.sheet || "").trim();
+  if (!sheetName || !cachedPapersSheets.some(s => s.sheetName === sheetName)) {
+    sheetName = cachedPapersSheets[0].sheetName;
+  }
+
+  let state = papersCache.get(sheetName);
+  if (!state) {
+    const configEntry = cachedPapersSheets.find(s => s.sheetName === sheetName);
+    if (configEntry) {
+      await loadPapersDataForSheet(configEntry.sheetName, configEntry.sheetLink);
+      state = papersCache.get(sheetName);
+    }
+  }
+
   res.json({
-    papers: papersData,
-    lastLoaded: papersLastLoaded,
-    isLoading: papersLoading,
-    error: papersError,
-    url: getPapersSpreadsheetUrl(),
+    papers: state?.papersData || [],
+    lastLoaded: state?.lastLoaded || null,
+    isLoading: state?.loading || false,
+    error: state?.error || null,
+    sheets: cachedPapersSheets.map(s => ({ name: s.sheetName, url: s.sheetLink })),
+    currentSheet: sheetName,
+    url: getPapersSpreadsheetUrl(sheetName),
   });
 });
 
@@ -4760,21 +4884,38 @@ app.get("/api/papers", verifyRequest, (req, res) => {
 app.post("/api/papers/refresh", verifyRequest, async (req, res) => {
   const user = requireTeacherOrAdmin(req, res);
   if (!user) return;
-  
-  if (papersLoading) {
+
+  if (cachedPapersSheets.length === 0) {
+    const defaultUrl = "https://docs.google.com/spreadsheets/d/1R1jK_tiisgx1xVbZAvjxBJ1IdulX6bJZFP4udsQ9PD0/edit";
+    cachedPapersSheets = [{ sheetName: "Default Papers", sheetLink: defaultUrl }];
+  }
+
+  let sheetName = String(req.body.sheet || "").trim();
+  if (!sheetName || !cachedPapersSheets.some(s => s.sheetName === sheetName)) {
+    sheetName = cachedPapersSheets[0].sheetName;
+  }
+
+  const configEntry = cachedPapersSheets.find(s => s.sheetName === sheetName);
+  if (!configEntry) {
+    return res.status(404).json({ error: `Sheet configuration not found for: ${sheetName}` });
+  }
+
+  let state = papersCache.get(sheetName);
+  if (state?.loading) {
     return res.json({ message: "Papers reload already in progress...", isLoading: true });
   }
 
-  await loadPapersData();
-  
-  if (papersError) {
-    return res.status(500).json({ error: papersError });
+  await loadPapersDataForSheet(configEntry.sheetName, configEntry.sheetLink);
+  state = papersCache.get(sheetName);
+
+  if (state?.error) {
+    return res.status(500).json({ error: state.error });
   }
 
   res.json({
     success: true,
-    count: papersData.length,
-    lastLoaded: papersLastLoaded,
+    count: state?.papersData.length || 0,
+    lastLoaded: state?.lastLoaded || null,
   });
 });
 

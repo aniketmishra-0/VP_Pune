@@ -47,6 +47,8 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
   const [lastLoaded, setLastLoaded] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [availableSheets, setAvailableSheets] = useState<Array<{ name: string; url: string }>>([]);
+  const [selectedSheetName, setSelectedSheetName] = useState<string>("");
 
   // Sync state
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
@@ -106,7 +108,7 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
     setTimeout(() => setCopied(false), 2000);
   }, []);
 
-  const fetchPapers = useCallback(async (isRefresh = false) => {
+  const fetchPapers = useCallback(async (isRefresh = false, targetSheet = selectedSheetName) => {
     if (isRefresh) {
       setIsSyncing(true);
       setSyncNotice(null);
@@ -116,11 +118,22 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
     setApiError(null);
 
     try {
-      const url = isRefresh ? "/api/papers/refresh" : "/api/papers";
+      const url = isRefresh 
+        ? "/api/papers/refresh" 
+        : `/api/papers?sheet=${encodeURIComponent(targetSheet)}`;
       const method = isRefresh ? "POST" : "GET";
+      const body = isRefresh ? JSON.stringify({ sheet: targetSheet }) : undefined;
+      const headers: Record<string, string> = {
+        ...adminHeaders(),
+      };
+      if (isRefresh) {
+        headers["Content-Type"] = "application/json";
+      }
+
       const res = await fetch(url, {
         method,
-        headers: adminHeaders(),
+        headers,
+        body,
       });
 
       if (!res.ok) {
@@ -134,23 +147,16 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
 
       const data = await res.json();
       if (isRefresh) {
-        setSyncNotice(`Centralized cache refreshed successfully!`);
+        setSyncNotice(`Refreshed sheet successfully!`);
         setTimeout(() => setSyncNotice(null), 4000);
-      }
-
-      // If it was a standard GET call
-      if (!isRefresh) {
+        // Refresh again to pull fresh data
+        await fetchPapers(false, targetSheet);
+      } else {
         setPapersData(data.papers || []);
         setLastLoaded(data.lastLoaded || null);
         setApiError(data.error || null);
-      } else {
-        // Refresh API returns count and success, so we fetch standard data right after to display
-        const getRes = await fetch("/api/papers", { headers: adminHeaders() });
-        if (getRes.ok) {
-          const getData = await getRes.json();
-          setPapersData(getData.papers || []);
-          setLastLoaded(getData.lastLoaded || null);
-        }
+        setAvailableSheets(data.sheets || []);
+        setSelectedSheetName(data.currentSheet || "");
       }
     } catch (err: any) {
       console.error("[PapersViewer] Error fetching:", err);
@@ -159,11 +165,11 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
       setIsLoading(false);
       setIsSyncing(false);
     }
-  }, [adminHeaders]);
+  }, [adminHeaders, selectedSheetName]);
 
   useEffect(() => {
-    fetchPapers();
-  }, [fetchPapers]);
+    fetchPapers(false, "");
+  }, []);
 
   // Flattened papers list
   const allPapers = useMemo(() => {
@@ -258,6 +264,26 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
+          {availableSheets.length > 1 && (
+            <div className="relative flex items-center">
+              <select
+                value={selectedSheetName}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setSelectedSheetName(val);
+                  fetchPapers(false, val);
+                }}
+                className="pl-3 pr-8 py-1.5 bg-slate-50 dark:bg-gray-800 text-slate-700 dark:text-gray-300 rounded-xl text-xs font-bold border border-slate-200/50 dark:border-gray-700/60 appearance-none focus:outline-none focus:ring-1 focus:ring-[#5277f7] cursor-pointer"
+              >
+                {availableSheets.map((s) => (
+                  <option key={s.name} value={s.name}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-2.5 top-2.5 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+            </div>
+          )}
           {lastLoaded && (
             <span className="text-[10px] text-slate-400 dark:text-gray-500 font-medium">
               Synced: {lastLoaded}

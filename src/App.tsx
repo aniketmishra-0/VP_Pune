@@ -396,6 +396,9 @@ export default function App() {
   // Configuration Settings states (Visual Interface)
   const [spreadsheetUrls, setSpreadsheetUrls] = useState<string[]>([]);
   const [papersSpreadsheetUrl, setPapersSpreadsheetUrl] = useState<string>("");
+  const [papersSheets, setPapersSheets] = useState<Array<{ name: string; url: string }>>([]);
+  const [newPapersSheetName, setNewPapersSheetName] = useState<string>("");
+  const [newPapersSheetUrl, setNewPapersSheetUrl] = useState<string>("");
   const [spreadsheetCenters, setSpreadsheetCenters] = useState<Array<{ pattern: string; center: string }>>([]);
   const [subsheetCenters, setSubsheetCenters] = useState<Array<{ center: string; patterns: string[] }>>([]);
   const [staffAccess, setStaffAccess] = useState<Array<{ email: string; centers: string[] }>>([]);
@@ -442,6 +445,13 @@ export default function App() {
         .filter(Boolean);
       setSpreadsheetUrls(urls);
       setPapersSpreadsheetUrl(data.local?.PAPERS_SPREADSHEET_URL || "");
+      if (data.local?.PAPERS_SHEETS && Array.isArray(data.local.PAPERS_SHEETS)) {
+        setPapersSheets(data.local.PAPERS_SHEETS);
+      } else if (data.local?.PAPERS_SPREADSHEET_URL) {
+        setPapersSheets([{ name: "Default Papers", url: data.local.PAPERS_SPREADSHEET_URL }]);
+      } else {
+        setPapersSheets([]);
+      }
 
       // Parse Spreadsheet centers (File mappings)
       const sCenters = data.local?.SPREADSHEET_CENTERS || {};
@@ -1099,6 +1109,7 @@ export default function App() {
           STAFF_ACCESS: staffAccessObj,
           FEATURE_FLAGS: featureFlags,
           PAPERS_SPREADSHEET_URL: papersSpreadsheetUrl.trim(),
+          PAPERS_SHEETS: papersSheets.map(s => ({ name: s.name.trim(), url: s.url.trim() })).filter(s => s.name && s.url),
         }),
       });
 
@@ -3356,17 +3367,102 @@ export default function App() {
 
                           <hr className="border-slate-100 dark:border-gray-800/30" />
 
-                          {/* Papers Google Sheet URL */}
-                          <div>
-                            <h3 className="text-sm font-bold tracking-wider uppercase text-slate-400 font-mono mb-1 font-semibold">Papers Google Sheet Source</h3>
-                            <p className="text-[10px] text-slate-400 mb-3">Add the spreadsheet URL containing test question papers and answer keys. Ensure the sheet is shared as viewer-accessible.</p>
-                            <input
-                              type="text"
-                              placeholder="Paste Papers Google Sheet URL..."
-                              value={papersSpreadsheetUrl}
-                              onChange={(e) => setPapersSpreadsheetUrl(e.target.value)}
-                              className="w-full p-2.5 text-xs rounded-xl border border-slate-200 dark:border-gray-800 bg-slate-50 dark:bg-gray-900/60 text-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-[#5277f7]"
-                            />
+                           {/* Papers Google Sheets (Multiple support) */}
+                          <div className="space-y-3">
+                            <div>
+                              <h3 className="text-sm font-bold tracking-wider uppercase text-slate-400 font-mono mb-1 font-semibold">Papers Google Sheets</h3>
+                              <p className="text-[10px] text-slate-400">Configure multiple papers Google Sheets (e.g. for different academic years: 2025-2026 Papers, 2024-2025 Papers).</p>
+                            </div>
+
+                            <div className="space-y-3">
+                              {papersSheets.length === 0 ? (
+                                <div className="p-3 border border-dashed border-slate-200 dark:border-gray-800/60 rounded-xl text-center text-xs text-slate-400 italic bg-slate-50/50 dark:bg-transparent">
+                                  No papers sheets added yet.
+                                </div>
+                              ) : (
+                                papersSheets.map((sheet, idx) => (
+                                  <div key={idx} className="flex flex-col sm:flex-row gap-3 items-start sm:items-center p-3 bg-slate-50 dark:bg-gray-900/40 border border-slate-200/50 dark:border-gray-800/40 rounded-xl relative group w-full">
+                                    <div className="flex-1 w-full space-y-1">
+                                      <label className="text-[9px] font-bold text-slate-400 block uppercase">Session / Sheet Name</label>
+                                      <input
+                                        type="text"
+                                        placeholder="e.g. 2025-2026 Papers"
+                                        value={sheet.name}
+                                        onChange={(e) => {
+                                          const val = e.target.value;
+                                          const updated = [...papersSheets];
+                                          updated[idx].name = val;
+                                          setPapersSheets(updated);
+                                        }}
+                                        className="w-full p-2 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-gray-800 bg-white dark:bg-gray-950 text-slate-800 dark:text-white focus:outline-none"
+                                      />
+                                    </div>
+                                    <div className="flex-[2] w-full space-y-1">
+                                      <label className="text-[9px] font-bold text-slate-400 block uppercase">Google Sheet URL</label>
+                                      <input
+                                        type="text"
+                                        placeholder="https://docs.google.com/spreadsheets/d/..."
+                                        value={sheet.url}
+                                        onChange={(e) => {
+                                          const val = e.target.value;
+                                          const updated = [...papersSheets];
+                                          updated[idx].url = val;
+                                          setPapersSheets(updated);
+                                        }}
+                                        className="w-full p-2 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-gray-800 bg-white dark:bg-gray-950 text-slate-800 dark:text-white focus:outline-none"
+                                      />
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setPapersSheets(papersSheets.filter((_, i) => i !== idx));
+                                      }}
+                                      className="absolute top-2 right-2 sm:static sm:mt-5 p-1.5 text-rose-500 hover:text-rose-750 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-lg transition-colors cursor-pointer"
+                                      title="Remove sheet"
+                                    >
+                                      <X className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                ))
+                              )}
+
+                              <div className="flex flex-col sm:flex-row gap-3 items-center pt-2">
+                                <div className="flex-1 w-full">
+                                  <input
+                                    type="text"
+                                    placeholder="e.g. 2025-2026 Papers"
+                                    value={newPapersSheetName}
+                                    onChange={(e) => setNewPapersSheetName(e.target.value)}
+                                    className="w-full p-2.5 text-xs rounded-xl border border-slate-200 dark:border-gray-800 bg-slate-50 dark:bg-gray-905 bg-slate-50 dark:bg-gray-900/60 text-slate-800 dark:text-white focus:outline-none"
+                                  />
+                                </div>
+                                <div className="flex-[2] w-full">
+                                  <input
+                                    type="text"
+                                    placeholder="Paste Google Sheet URL..."
+                                    value={newPapersSheetUrl}
+                                    onChange={(e) => setNewPapersSheetUrl(e.target.value)}
+                                    className="w-full p-2.5 text-xs rounded-xl border border-slate-200 dark:border-gray-800 bg-slate-50 dark:bg-gray-905 bg-slate-50 dark:bg-gray-900/60 text-slate-800 dark:text-white focus:outline-none"
+                                  />
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (newPapersSheetName.trim() && newPapersSheetUrl.trim()) {
+                                      setPapersSheets([...papersSheets, {
+                                        name: newPapersSheetName.trim(),
+                                        url: newPapersSheetUrl.trim()
+                                      }]);
+                                      setNewPapersSheetName("");
+                                      setNewPapersSheetUrl("");
+                                    }
+                                  }}
+                                  className="w-full sm:w-auto bg-[#5277f7] hover:bg-[#3d62dd] text-white px-4 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1 cursor-pointer transition-all shadow-sm shrink-0"
+                                >
+                                  <Plus className="w-4 h-4 shrink-0" /> Add Sheet
+                                </button>
+                              </div>
+                            </div>
                           </div>
 
                           <hr className="border-slate-100 dark:border-gray-800/30" />
