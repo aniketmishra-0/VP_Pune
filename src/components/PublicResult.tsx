@@ -237,6 +237,23 @@ export default function PublicResult() {
     qrFooterText: "",
   });
 
+  // Date formatter helper
+  const formatDateString = (val: string) => {
+    if (!val || val === "N/A") return "N/A";
+    const d = new Date(val);
+    if (isNaN(d.getTime())) {
+      const match = val.match(/^(\d{1,2})\s+([a-zA-Z]+)/);
+      if (match) {
+        const day = match[1];
+        const month = match[2].slice(0, 3);
+        const formattedMonth = month.charAt(0).toUpperCase() + month.slice(1).toLowerCase();
+        return `${day.padStart(2, "0")} ${formattedMonth}`;
+      }
+      return val;
+    }
+    return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
+  };
+
   /* Fetch portal settings on mount */
   useEffect(() => {
     fetch("/api/portal-settings")
@@ -561,8 +578,15 @@ export default function PublicResult() {
                       <span className="text-[9px] uppercase tracking-widest font-mono font-bold text-slate-400 block mb-0.5">Latest Rank</span>
                       <span className="text-xl md:text-2xl font-black flex items-center gap-1 font-display tracking-tight text-amber-400 drop-shadow-md">
                         <Award className="w-5 h-5 text-yellow-400 shrink-0" />
-                        {bestRank ? `#${bestRank}` : "N/A"}
+                        {p.latestRank && p.latestRank !== "N/A"
+                          ? `#${p.latestRank}`
+                          : "N/A"}
                       </span>
+                      {p.latestRank && p.latestRank !== "N/A" && p.latestRankDate && p.latestRankDate !== "N/A" && (
+                        <span className="text-[9px] font-bold font-mono uppercase tracking-wider mt-1.5 px-2.5 py-0.5 rounded-full border bg-white/10 text-slate-200 border-white/10">
+                          {formatDateString(p.latestRankDate)}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>

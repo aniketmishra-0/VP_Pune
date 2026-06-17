@@ -2738,6 +2738,19 @@ app.post("/api/student-public", express.json(), (req, res) => {
     }
     profile.center = latestCenter;
 
+    // Calculate latest rank like we do in the admin route
+    let latestRank = "N/A";
+    let latestRankDate = "N/A";
+    if (updatedTests.length > 0) {
+      const validRanks = updatedTests.filter((t: any) => t.centerRank !== "-" && t.centerRank !== "");
+      if (validRanks.length > 0) {
+        latestRank = validRanks[validRanks.length - 1].centerRank;
+        latestRankDate = validRanks[validRanks.length - 1].date;
+      }
+    }
+    profile.latestRank = latestRank;
+    profile.latestRankDate = latestRankDate;
+
     // Don't include shareToken in public response (security)
     delete profile.shareToken;
 
