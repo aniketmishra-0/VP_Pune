@@ -354,18 +354,6 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
 
   return (
     <div className="space-y-6">
-      {/* Header Panel */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white dark:bg-[#111827] p-4 sm:p-6 rounded-2xl sm:rounded-3xl border border-slate-200/50 dark:border-gray-800/40 shadow-sm">
-        <div className="space-y-1">
-          <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white flex items-center gap-2">
-            <FileText className="w-5 h-5 text-[#5277f7] dark:text-blue-400" />
-            Test Papers & Answer Keys
-          </h2>
-          <p className="text-xs sm:text-sm text-slate-500 dark:text-gray-400">
-            View, search, and download question papers and answer keys parsed from the Google Sheet.
-          </p>
-        </div>
-      </div>
 
       {/* Sync Notification Banner */}
       <AnimatePresence>
