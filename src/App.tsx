@@ -393,6 +393,8 @@ export default function App() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [dbStatus, setDbStatus] = useState<{ lastLoaded?: string | null; sheetCount?: number }>({});
 
+  const [isSyncingPapers, setIsSyncingPapers] = useState<boolean>(false);
+
   // Configuration Settings states (Visual Interface)
   const [spreadsheetUrls, setSpreadsheetUrls] = useState<string[]>([]);
   const [papersSpreadsheetUrl, setPapersSpreadsheetUrl] = useState<string>("");
@@ -1133,6 +1135,39 @@ export default function App() {
       setConfigSaveError(err.message || String(err));
     } finally {
       setIsSavingConfig(false);
+    }
+  };
+
+  const handlePapersSync = async () => {
+    setIsSyncingPapers(true);
+    setConfigSaveMessage(null);
+    setConfigSaveError(null);
+    try {
+      if (papersSheets.length === 0) {
+        throw new Error("No papers sheets configured to sync.");
+      }
+      for (const sheet of papersSheets) {
+        const response = await securedFetch("/api/papers/refresh", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ sheet: sheet.name }),
+        });
+        if (!response.ok) {
+          let msg = `Failed to sync sheet "${sheet.name}".`;
+          try {
+            const data = await response.json();
+            if (data?.error) msg = data.error;
+          } catch (_) {}
+          throw new Error(msg);
+        }
+      }
+      setConfigSaveMessage("All papers sheets successfully synced and cache updated!");
+    } catch (err: any) {
+      setConfigSaveError(err.message || String(err));
+    } finally {
+      setIsSyncingPapers(false);
     }
   };
 
@@ -3462,6 +3497,23 @@ export default function App() {
                                   <Plus className="w-4 h-4 shrink-0" /> Add Sheet
                                 </button>
                               </div>
+                            </div>
+
+                            {/* Papers Sheets Manual Sync Action */}
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-3 bg-slate-50/50 dark:bg-gray-900/10 p-4 rounded-2xl border border-slate-200/40 dark:border-gray-800/30 mt-3">
+                              <div className="space-y-0.5">
+                                <h4 className="text-xs font-bold text-slate-800 dark:text-white">Manual Papers Synchronization</h4>
+                                <p className="text-[10px] text-slate-400">Fetch and reload the test papers cache from all configured sheets listed above.</p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={handlePapersSync}
+                                disabled={isSyncingPapers}
+                                className="w-full sm:w-auto bg-white dark:bg-gray-800 hover:bg-slate-50 dark:hover:bg-gray-700 text-slate-800 dark:text-white border border-slate-200 dark:border-gray-700 text-xs font-bold py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 select-none"
+                              >
+                                <RefreshCw className={`w-3.5 h-3.5 ${isSyncingPapers ? "animate-spin text-[#5277f7]" : ""}`} />
+                                Sync Papers Sheets
+                              </button>
                             </div>
                           </div>
 

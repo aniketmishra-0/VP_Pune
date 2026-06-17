@@ -365,42 +365,6 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
             View, search, and download question papers and answer keys parsed from the Google Sheet.
           </p>
         </div>
-
-        <div className="flex flex-wrap items-center gap-3">
-          {availableSheets.length > 1 && (
-            <div className="relative flex items-center">
-              <select
-                value={selectedSheetName}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setSelectedSheetName(val);
-                  fetchPapers(false, val);
-                }}
-                className="pl-3 pr-8 py-1.5 bg-slate-50 dark:bg-gray-800 text-slate-700 dark:text-gray-300 rounded-xl text-xs font-bold border border-slate-200/50 dark:border-gray-700/60 appearance-none focus:outline-none focus:ring-1 focus:ring-[#5277f7] cursor-pointer"
-              >
-                {availableSheets.map((s) => (
-                  <option key={s.name} value={s.name}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-2.5 top-2.5 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
-            </div>
-          )}
-          {lastLoaded && (
-            <span className="text-[10px] text-slate-400 dark:text-gray-500 font-medium">
-              Synced: {lastLoaded}
-            </span>
-          )}
-          <button
-            onClick={() => fetchPapers(true)}
-            disabled={isSyncing || isLoading}
-            className="flex items-center gap-1.5 px-4 py-2 bg-slate-50 dark:bg-gray-800 hover:bg-[#5277f7] hover:text-white dark:hover:bg-blue-600 text-slate-600 dark:text-gray-300 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm border border-slate-200/40 dark:border-gray-700/50 disabled:opacity-50"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? "animate-spin" : ""}`} />
-            {isSyncing ? "Syncing..." : "Sync Sheets"}
-          </button>
-        </div>
       </div>
 
       {/* Sync Notification Banner */}
@@ -444,7 +408,30 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
           />
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+          {/* Year of Paper Filter */}
+          <div className="space-y-1">
+            <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Year of Paper</label>
+            <div className="relative">
+              <select
+                value={selectedSheetName}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setSelectedSheetName(val);
+                  fetchPapers(false, val);
+                }}
+                className="w-full p-2.5 pr-8 text-xs rounded-lg border border-slate-200 dark:border-gray-800 bg-slate-50/50 dark:bg-gray-950 text-slate-800 dark:text-white appearance-none focus:outline-none focus:ring-1 focus:ring-[#5277f7] font-medium"
+              >
+                {availableSheets.map((s) => (
+                  <option key={s.name} value={s.name}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-2.5 top-3.5 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+            </div>
+          </div>
+
           {/* Category/Tab Filter */}
           <div className="space-y-1">
             <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Category Tab</label>
