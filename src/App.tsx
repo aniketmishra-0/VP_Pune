@@ -602,7 +602,7 @@ export default function App() {
       if (themeMeta) themeMeta.setAttribute("content", "#0c0e17");
     } else {
       root.classList.remove("dark");
-      if (themeMeta) themeMeta.setAttribute("content", "#4e74e6");
+      if (themeMeta) themeMeta.setAttribute("content", "#f4f7fc");
     }
     localStorage.setItem("theme", theme);
   }, [theme]);
@@ -1648,7 +1648,7 @@ export default function App() {
     <div className={`w-screen font-sans flex flex-col transition-all text-slate-800 dark:text-slate-100 ${
       exportMode 
         ? "export-mode bg-white p-0 text-black min-h-screen h-auto overflow-visible" 
-        : "h-[100dvh] overflow-hidden md:justify-center md:items-center bg-[#4e74e6] dark:bg-[#0c0e17] p-0 sm:p-4 md:p-6"
+        : "h-[100dvh] overflow-hidden md:justify-center md:items-center bg-[#f4f7fc] dark:bg-[#0c0e17] md:bg-[#4e74e6] p-0 sm:p-4 md:p-6"
     } ${theme === "dark" && !exportMode ? "dark" : ""}`}>
 
       {/* FLOATING ACTION OVERLAY IF DB IS PROCESSING CLIENT LOAD */}

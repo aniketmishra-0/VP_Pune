@@ -362,21 +362,19 @@ html.dark .fbg-icon:hover {
    standalone app feels seamless (no stray black bands).
    ============================================================ */
 html {
-  background-color: #4e74e6;
+  background-color: #f4f7fc;
   height: 100%;
   min-height: 100%;
 }
 body {
-  background-color: #4e74e6;
+  background-color: #f4f7fc;
   margin: 0;
   padding: 0;
   min-height: 100%;
   min-height: 100dvh;
-  /* Extend bg behind Android nav bar / iOS home indicator */
-  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 #root {
-  background-color: #4e74e6;
+  background-color: #f4f7fc;
   min-height: 100dvh;
 }
 html.dark,
