@@ -127,6 +127,12 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
     return () => window.removeEventListener("click", handleOutsideClick);
   }, [openFilterDropdown]);
 
+  // Pagination for performance (lazy load 30 at a time)
+  const [visibleCount, setVisibleCount] = useState<number>(30);
+  useEffect(() => {
+    setVisibleCount(30);
+  }, [searchQuery, selectedTab, selectedClass, selectedStream, selectedPhase]);
+
   // Preview and copy states
   const [previewDoc, setPreviewDoc] = useState<{ title: string; url: string; type: "QP" | "AK" } | null>(null);
   const [copied, setCopied] = useState<boolean>(false);
@@ -802,7 +808,7 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800/30">
-                  {filteredPapers.map((paper, idx) => (
+                  {filteredPapers.slice(0, visibleCount).map((paper, idx) => (
                     <tr
                       key={idx}
                       className="hover:bg-slate-50/70 dark:hover:bg-slate-800/20 transition-all duration-150"
@@ -968,7 +974,7 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
 
           {/* Mobile Card Layout View */}
           <div className="md:hidden space-y-3">
-            {filteredPapers.map((paper, idx) => {
+            {filteredPapers.slice(0, visibleCount).map((paper, idx) => {
               const leftBorderColor = "border-l-4 border-l-slate-300 dark:border-l-slate-700";
 
               return (
@@ -1072,6 +1078,18 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
               );
             })}
           </div>
+
+          {/* Load More Button */}
+          {filteredPapers.length > visibleCount && (
+            <div className="pt-6 pb-2 text-center no-print">
+              <button
+                onClick={() => setVisibleCount((prev) => prev + 30)}
+                className="inline-flex items-center gap-1.5 px-6 py-3 bg-white hover:bg-slate-50 dark:bg-slate-900/60 dark:hover:bg-slate-800/80 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold border border-slate-250 dark:border-slate-800 transition-all cursor-pointer shadow-sm hover:scale-[1.02] active:scale-[0.98]"
+              >
+                Load More Papers ({filteredPapers.length - visibleCount} remaining)
+              </button>
+            </div>
+          )}
         </div>
       )}
 

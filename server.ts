@@ -1363,7 +1363,22 @@ interface AppState {
   portalSettings: PortalSettings;
 }
 
-const DATA_DIR = path.join(process.cwd(), "data");
+let DATA_DIR = path.join(process.cwd(), "data");
+if (process.env.SPACE_ID || process.env.HF_ACTIONS) {
+  try {
+    if (!fs.existsSync("/data")) {
+      fs.mkdirSync("/data", { recursive: true });
+    }
+    const testFile = "/data/.write_test";
+    fs.writeFileSync(testFile, "test");
+    fs.unlinkSync(testFile);
+    DATA_DIR = "/data";
+    console.log("[Server] Persistent storage active: using /data directory");
+  } catch (e: any) {
+    console.log("[Server] /data is not writable, using local data dir:", e.message);
+  }
+}
+
 const STATE_FILE = path.join(DATA_DIR, "app-state.json");
 const MAX_LOG_ENTRIES = 2000;
 const MAX_NOTIFICATIONS = 500;
