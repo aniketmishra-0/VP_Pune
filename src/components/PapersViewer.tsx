@@ -115,6 +115,17 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
   const [selectedClass, setSelectedClass] = useState<string>("all");
   const [selectedStream, setSelectedStream] = useState<string>("all");
   const [selectedPhase, setSelectedPhase] = useState<string>("all");
+  
+  // Custom dropdown open state
+  const [openFilterDropdown, setOpenFilterDropdown] = useState<"year" | "category" | "class" | "stream" | "phase" | null>(null);
+
+  // Close custom filters on outside click
+  useEffect(() => {
+    if (!openFilterDropdown) return;
+    const handleOutsideClick = () => setOpenFilterDropdown(null);
+    window.addEventListener("click", handleOutsideClick);
+    return () => window.removeEventListener("click", handleOutsideClick);
+  }, [openFilterDropdown]);
 
   // Preview and copy states
   const [previewDoc, setPreviewDoc] = useState<{ title: string; url: string; type: "QP" | "AK" } | null>(null);
@@ -328,28 +339,11 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
 
   // Badge styles mapping
   const getStreamBadgeStyle = (stream: string, cls: string = "") => {
-    const norm = normalizeStream(stream, cls);
-    if (norm === "JEE") {
-      return "bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-100 dark:border-blue-900/30";
-    }
-    if (norm === "NEET") {
-      return "bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-300 border border-rose-100 dark:border-rose-900/30";
-    }
-    return "bg-slate-100 text-slate-600 dark:bg-slate-800/40 dark:text-slate-300 border border-slate-200/40 dark:border-slate-800/30";
+    return "bg-slate-100/80 text-slate-750 dark:bg-slate-800/60 dark:text-slate-300 border border-slate-200/50 dark:border-slate-700/40";
   };
 
   const getClassBadgeStyle = (cls: string) => {
-    const norm = normalizeClass(cls);
-    if (norm === "12th") {
-      return "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-100 dark:border-emerald-900/30";
-    }
-    if (norm === "11th") {
-      return "bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-300 border border-purple-100 dark:border-purple-900/30";
-    }
-    if (norm === "Dropper") {
-      return "bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-100 dark:border-amber-900/30";
-    }
-    return "bg-slate-50 text-slate-600 dark:bg-gray-800 dark:text-gray-300";
+    return "bg-slate-100/80 text-slate-750 dark:bg-slate-800/60 dark:text-slate-300 border border-slate-200/50 dark:border-slate-700/40";
   };
 
   return (
@@ -384,157 +378,261 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
       )}
 
       {/* Search & Filter Controls */}
-      <div className="bg-white/60 dark:bg-[#0f172a]/60 backdrop-blur-md p-6 rounded-3xl border border-slate-200/50 dark:border-slate-800/40 shadow-xl space-y-4 animate-fade-in">
+      <div className="bg-white dark:bg-[#111827] p-4 rounded-2xl border border-slate-250/50 dark:border-slate-800/80 shadow-sm space-y-3 animate-fade-in no-print" onClick={(e) => e.stopPropagation()}>
+        {/* Search bar */}
         <div className="relative">
-          <Search className="absolute left-4 top-3.5 w-4 h-4 text-slate-400 dark:text-gray-500" />
+          <Search className="absolute left-3.5 top-3 w-4 h-4 text-slate-400 dark:text-gray-500" />
           <input
             type="text"
             placeholder="Search papers by test name, class, stream, or date..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-11 pr-4 py-3 text-xs rounded-xl border border-slate-200 dark:border-gray-800 bg-slate-50/30 dark:bg-gray-950/60 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 placeholder-slate-400 dark:placeholder-gray-500 transition-all font-medium shadow-inner"
+            className="w-full pl-10 pr-4 py-2.5 text-xs rounded-xl border border-slate-200 dark:border-gray-800 bg-slate-50/50 dark:bg-gray-950/40 text-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-slate-400 dark:focus:ring-slate-600 focus:border-slate-400 placeholder-slate-400 dark:placeholder-gray-500 transition-all font-medium shadow-inner"
           />
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-          {/* Year of Paper Filter */}
-          <div className="space-y-1">
-            <label className="text-[9px] font-black text-slate-450 dark:text-gray-400 uppercase tracking-widest block mb-1">Year of Paper</label>
-            <div className="relative">
-              <select
-                value={selectedSheetName}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setSelectedSheetName(val);
-                  fetchPapers(false, val);
-                }}
-                className="w-full p-2.5 pr-9 text-xs rounded-xl border border-slate-200 dark:border-gray-800 bg-slate-50/40 dark:bg-gray-950 text-slate-800 dark:text-white appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-semibold cursor-pointer transition-all shadow-sm"
-              >
+        {/* Filter Pills scrollable container */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-1.5 pt-0.5 custom-scrollbar scroll-smooth select-none">
+          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider whitespace-nowrap shrink-0">
+            Filters:
+          </span>
+
+          {/* Year Filter Pill */}
+          <div className="relative shrink-0">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpenFilterDropdown(openFilterDropdown === "year" ? null : "year");
+              }}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all flex items-center gap-1 cursor-pointer whitespace-nowrap ${
+                selectedSheetName
+                  ? "bg-slate-50 dark:bg-slate-800/60 text-slate-800 dark:text-slate-200 border-slate-350 dark:border-slate-700"
+                  : "bg-white dark:bg-slate-900/40 text-slate-500 border-slate-250 dark:border-slate-800"
+              }`}
+            >
+              <span>{selectedSheetName || "Year"}</span>
+              <ChevronDown className="w-3 h-3 text-slate-450" />
+            </button>
+            {openFilterDropdown === "year" && (
+              <div className="absolute left-0 mt-1.5 w-48 bg-white dark:bg-[#1f2937] rounded-xl shadow-xl border border-slate-200/50 dark:border-gray-700 z-50 py-1 max-h-60 overflow-y-auto">
                 {availableSheets.map((s) => (
-                  <option key={s.name} value={s.name}>
-                    {s.name}
-                  </option>
+                  <button
+                    key={s.name}
+                    onClick={() => {
+                      setSelectedSheetName(s.name);
+                      fetchPapers(false, s.name);
+                      setOpenFilterDropdown(null);
+                    }}
+                    className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-gray-800 text-slate-705 dark:text-slate-250 font-semibold transition-colors flex items-center justify-between cursor-pointer ${
+                      selectedSheetName === s.name ? "bg-slate-50 dark:bg-gray-800 text-blue-600 dark:text-blue-450" : ""
+                    }`}
+                  >
+                    <span>{s.name}</span>
+                    {selectedSheetName === s.name && <Check className="w-3.5 h-3.5" />}
+                  </button>
                 ))}
-              </select>
-              <ChevronDown className="absolute right-3 top-3.5 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
-            </div>
+              </div>
+            )}
           </div>
 
-          {/* Category/Tab Filter */}
-          <div className="space-y-1">
-            <label className="text-[9px] font-black text-slate-450 dark:text-gray-400 uppercase tracking-widest block mb-1">Category Tab</label>
-            <div className="relative">
-              <select
-                value={selectedTab}
-                onChange={(e) => setSelectedTab(e.target.value)}
-                className="w-full p-2.5 pr-9 text-xs rounded-xl border border-slate-200 dark:border-gray-800 bg-slate-50/40 dark:bg-gray-950 text-slate-800 dark:text-white appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-semibold cursor-pointer transition-all shadow-sm"
-              >
-                <option value="all">All Categories</option>
+          {/* Category Filter Pill */}
+          <div className="relative shrink-0">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpenFilterDropdown(openFilterDropdown === "category" ? null : "category");
+              }}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all flex items-center gap-1 cursor-pointer whitespace-nowrap ${
+                selectedTab !== "all"
+                  ? "bg-slate-50 dark:bg-slate-800/60 text-slate-800 dark:text-slate-200 border-slate-350 dark:border-slate-700"
+                  : "bg-white dark:bg-slate-900/40 text-slate-500 border-slate-250 dark:border-slate-800"
+              }`}
+            >
+              <span>{selectedTab === "all" ? "Category" : selectedTab}</span>
+              <ChevronDown className="w-3 h-3 text-slate-450" />
+            </button>
+            {openFilterDropdown === "category" && (
+              <div className="absolute left-0 mt-1.5 w-52 bg-white dark:bg-[#1f2937] rounded-xl shadow-xl border border-slate-200/50 dark:border-gray-700 z-50 py-1 max-h-60 overflow-y-auto">
+                <button
+                  onClick={() => {
+                    setSelectedTab("all");
+                    setOpenFilterDropdown(null);
+                  }}
+                  className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-gray-800 text-slate-705 dark:text-slate-250 font-semibold transition-colors flex items-center justify-between cursor-pointer ${
+                    selectedTab === "all" ? "bg-slate-50 dark:bg-gray-800 text-blue-600 dark:text-blue-450" : ""
+                  }`}
+                >
+                  <span>All Categories</span>
+                  {selectedTab === "all" && <Check className="w-3.5 h-3.5" />}
+                </button>
                 {filterOptions.tabs.map((tab) => (
-                  <option key={tab} value={tab}>
-                    {tab}
-                  </option>
+                  <button
+                    key={tab}
+                    onClick={() => {
+                      setSelectedTab(tab);
+                      setOpenFilterDropdown(null);
+                    }}
+                    className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-gray-800 text-slate-705 dark:text-slate-250 font-semibold transition-colors flex items-center justify-between cursor-pointer ${
+                      selectedTab === tab ? "bg-slate-50 dark:bg-gray-800 text-blue-600 dark:text-blue-450" : ""
+                    }`}
+                  >
+                    <span>{tab}</span>
+                    {selectedTab === tab && <Check className="w-3.5 h-3.5" />}
+                  </button>
                 ))}
-              </select>
-              <ChevronDown className="absolute right-3 top-3.5 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
-            </div>
+              </div>
+            )}
           </div>
 
-          {/* Class Filter */}
-          <div className="space-y-1">
-            <label className="text-[9px] font-black text-slate-455 dark:text-gray-400 uppercase tracking-widest block mb-1">Class</label>
-            <div className="relative">
-              <select
-                value={selectedClass}
-                onChange={(e) => setSelectedClass(e.target.value)}
-                className="w-full p-2.5 pr-9 text-xs rounded-xl border border-slate-200 dark:border-gray-800 bg-slate-50/40 dark:bg-gray-950 text-slate-800 dark:text-white appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-semibold cursor-pointer transition-all shadow-sm"
-              >
-                <option value="all">All Classes</option>
+          {/* Class Filter Pill */}
+          <div className="relative shrink-0">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpenFilterDropdown(openFilterDropdown === "class" ? null : "class");
+              }}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all flex items-center gap-1 cursor-pointer whitespace-nowrap ${
+                selectedClass !== "all"
+                  ? "bg-slate-50 dark:bg-slate-800/60 text-slate-800 dark:text-slate-200 border-slate-350 dark:border-slate-700"
+                  : "bg-white dark:bg-slate-900/40 text-slate-500 border-slate-250 dark:border-slate-800"
+              }`}
+            >
+              <span>{selectedClass === "all" ? "Class" : selectedClass}</span>
+              <ChevronDown className="w-3 h-3 text-slate-450" />
+            </button>
+            {openFilterDropdown === "class" && (
+              <div className="absolute left-0 mt-1.5 w-44 bg-white dark:bg-[#1f2937] rounded-xl shadow-xl border border-slate-200/50 dark:border-gray-700 z-50 py-1 max-h-60 overflow-y-auto">
+                <button
+                  onClick={() => {
+                    setSelectedClass("all");
+                    setOpenFilterDropdown(null);
+                  }}
+                  className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-gray-800 text-slate-705 dark:text-slate-250 font-semibold transition-colors flex items-center justify-between cursor-pointer ${
+                    selectedClass === "all" ? "bg-slate-50 dark:bg-gray-800 text-blue-600 dark:text-blue-450" : ""
+                  }`}
+                >
+                  <span>All Classes</span>
+                  {selectedClass === "all" && <Check className="w-3.5 h-3.5" />}
+                </button>
                 {filterOptions.classes.map((cls) => (
-                  <option key={cls} value={cls}>
-                    {cls}
-                  </option>
+                  <button
+                    key={cls}
+                    onClick={() => {
+                      setSelectedClass(cls);
+                      setOpenFilterDropdown(null);
+                    }}
+                    className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-gray-800 text-slate-705 dark:text-slate-250 font-semibold transition-colors flex items-center justify-between cursor-pointer ${
+                      selectedClass === cls ? "bg-slate-50 dark:bg-gray-800 text-blue-600 dark:text-blue-450" : ""
+                    }`}
+                  >
+                    <span>{cls}</span>
+                    {selectedClass === cls && <Check className="w-3.5 h-3.5" />}
+                  </button>
                 ))}
-              </select>
-              <ChevronDown className="absolute right-3 top-3.5 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
-            </div>
+              </div>
+            )}
           </div>
 
-          {/* Stream Filter */}
-          <div className="space-y-1">
-            <label className="text-[9px] font-black text-slate-455 dark:text-gray-400 uppercase tracking-widest block mb-1">Stream</label>
-            <div className="relative">
-              <select
-                value={selectedStream}
-                onChange={(e) => setSelectedStream(e.target.value)}
-                className="w-full p-2.5 pr-9 text-xs rounded-xl border border-slate-200 dark:border-gray-800 bg-slate-50/40 dark:bg-gray-950 text-slate-800 dark:text-white appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-semibold cursor-pointer transition-all shadow-sm"
-              >
-                <option value="all">All Streams</option>
+          {/* Stream Filter Pill */}
+          <div className="relative shrink-0">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpenFilterDropdown(openFilterDropdown === "stream" ? null : "stream");
+              }}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all flex items-center gap-1 cursor-pointer whitespace-nowrap ${
+                selectedStream !== "all"
+                  ? "bg-slate-50 dark:bg-slate-800/60 text-slate-800 dark:text-slate-200 border-slate-350 dark:border-slate-700"
+                  : "bg-white dark:bg-slate-900/40 text-slate-500 border-slate-250 dark:border-slate-800"
+              }`}
+            >
+              <span>{selectedStream === "all" ? "Stream" : selectedStream}</span>
+              <ChevronDown className="w-3 h-3 text-slate-450" />
+            </button>
+            {openFilterDropdown === "stream" && (
+              <div className="absolute left-0 mt-1.5 w-44 bg-white dark:bg-[#1f2937] rounded-xl shadow-xl border border-slate-200/50 dark:border-gray-700 z-50 py-1 max-h-60 overflow-y-auto">
+                <button
+                  onClick={() => {
+                    setSelectedStream("all");
+                    setOpenFilterDropdown(null);
+                  }}
+                  className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-gray-800 text-slate-705 dark:text-slate-250 font-semibold transition-colors flex items-center justify-between cursor-pointer ${
+                    selectedStream === "all" ? "bg-slate-50 dark:bg-gray-800 text-blue-600 dark:text-blue-450" : ""
+                  }`}
+                >
+                  <span>All Streams</span>
+                  {selectedStream === "all" && <Check className="w-3.5 h-3.5" />}
+                </button>
                 {filterOptions.streams.map((st) => (
-                  <option key={st} value={st}>
-                    {st}
-                  </option>
+                  <button
+                    key={st}
+                    onClick={() => {
+                      setSelectedStream(st);
+                      setOpenFilterDropdown(null);
+                    }}
+                    className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-gray-800 text-slate-705 dark:text-slate-250 font-semibold transition-colors flex items-center justify-between cursor-pointer ${
+                      selectedStream === st ? "bg-slate-50 dark:bg-gray-800 text-blue-600 dark:text-blue-450" : ""
+                    }`}
+                  >
+                    <span>{st}</span>
+                    {selectedStream === st && <Check className="w-3.5 h-3.5" />}
+                  </button>
                 ))}
-              </select>
-              <ChevronDown className="absolute right-3 top-3.5 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
-            </div>
+              </div>
+            )}
           </div>
 
-          {/* Phase Filter */}
-          <div className="space-y-1">
-            <label className="text-[9px] font-black text-slate-455 dark:text-gray-400 uppercase tracking-widest block mb-1">Phase</label>
-            <div className="relative">
-              <select
-                value={selectedPhase}
-                onChange={(e) => setSelectedPhase(e.target.value)}
-                className="w-full p-2.5 pr-9 text-xs rounded-xl border border-slate-200 dark:border-gray-800 bg-slate-50/40 dark:bg-gray-950 text-slate-800 dark:text-white appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-semibold cursor-pointer transition-all shadow-sm"
-              >
-                <option value="all">All Phases</option>
+          {/* Phase Filter Pill */}
+          <div className="relative shrink-0">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpenFilterDropdown(openFilterDropdown === "phase" ? null : "phase");
+              }}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all flex items-center gap-1 cursor-pointer whitespace-nowrap ${
+                selectedPhase !== "all"
+                  ? "bg-slate-50 dark:bg-slate-800/60 text-slate-800 dark:text-slate-200 border-slate-350 dark:border-slate-700"
+                  : "bg-white dark:bg-slate-900/40 text-slate-500 border-slate-250 dark:border-slate-800"
+              }`}
+            >
+              <span>{selectedPhase === "all" ? "Phase" : `Phase ${selectedPhase}`}</span>
+              <ChevronDown className="w-3 h-3 text-slate-455" />
+            </button>
+            {openFilterDropdown === "phase" && (
+              <div className="absolute left-0 mt-1.5 w-44 bg-white dark:bg-[#1f2937] rounded-xl shadow-xl border border-slate-200/50 dark:border-gray-700 z-50 py-1 max-h-60 overflow-y-auto">
+                <button
+                  onClick={() => {
+                    setSelectedPhase("all");
+                    setOpenFilterDropdown(null);
+                  }}
+                  className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-gray-800 text-slate-755 dark:text-slate-250 font-semibold transition-colors flex items-center justify-between cursor-pointer ${
+                    selectedPhase === "all" ? "bg-slate-50 dark:bg-gray-800 text-blue-600 dark:text-blue-450" : ""
+                  }`}
+                >
+                  <span>All Phases</span>
+                  {selectedPhase === "all" && <Check className="w-3.5 h-3.5" />}
+                </button>
                 {filterOptions.phases.map((ph) => (
-                  <option key={ph} value={ph}>
-                    Phase {ph}
-                  </option>
+                  <button
+                    key={ph}
+                    onClick={() => {
+                      setSelectedPhase(ph);
+                      setOpenFilterDropdown(null);
+                    }}
+                    className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-gray-800 text-slate-755 dark:text-slate-250 font-semibold transition-colors flex items-center justify-between cursor-pointer ${
+                      selectedPhase === ph ? "bg-slate-50 dark:bg-gray-800 text-blue-600 dark:text-blue-450" : ""
+                    }`}
+                  >
+                    <span>Phase {ph}</span>
+                    {selectedPhase === ph && <Check className="w-3.5 h-3.5" />}
+                  </button>
                 ))}
-              </select>
-              <ChevronDown className="absolute right-3 top-3.5 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
-            </div>
+              </div>
+            )}
           </div>
-        </div>
 
-        {/* Dynamic Active Filters Row */}
-        {(searchQuery !== "" || selectedTab !== "all" || selectedClass !== "all" || selectedStream !== "all" || selectedPhase !== "all") && (
-          <div className="flex flex-wrap items-center gap-1.5 pt-3 border-t border-slate-200/30 dark:border-slate-800/40">
-            <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mr-1">Active Filters:</span>
-            {searchQuery && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[9px] font-semibold bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 border border-blue-100/30">
-                Search: "{searchQuery}"
-                <button onClick={() => setSearchQuery("")} className="hover:text-blue-800 dark:hover:text-blue-200 cursor-pointer"><X className="w-2.5 h-2.5" /></button>
-              </span>
-            )}
-            {selectedTab !== "all" && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[9px] font-semibold bg-slate-50 dark:bg-slate-800/40 text-slate-600 dark:text-slate-400 border border-slate-200/35">
-                Tab: {selectedTab}
-                <button onClick={() => setSelectedTab("all")} className="hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer"><X className="w-2.5 h-2.5" /></button>
-              </span>
-            )}
-            {selectedClass !== "all" && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[9px] font-semibold bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border border-emerald-100/35">
-                Class: {selectedClass}
-                <button onClick={() => setSelectedClass("all")} className="hover:text-emerald-800 dark:hover:text-emerald-250 cursor-pointer"><X className="w-2.5 h-2.5" /></button>
-              </span>
-            )}
-            {selectedStream !== "all" && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[9px] font-semibold bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 border border-indigo-100/35">
-                Stream: {selectedStream}
-                <button onClick={() => setSelectedStream("all")} className="hover:text-indigo-800 dark:hover:text-indigo-250 cursor-pointer"><X className="w-2.5 h-2.5" /></button>
-              </span>
-            )}
-            {selectedPhase !== "all" && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[9px] font-semibold bg-purple-50 dark:bg-purple-950/30 text-purple-600 dark:text-purple-400 border border-purple-100/35">
-                Phase: {selectedPhase}
-                <button onClick={() => setSelectedPhase("all")} className="hover:text-purple-800 dark:hover:text-purple-250 cursor-pointer"><X className="w-2.5 h-2.5" /></button>
-              </span>
-            )}
+          {/* Reset Filters Pill */}
+          {(searchQuery !== "" || selectedTab !== "all" || selectedClass !== "all" || selectedStream !== "all" || selectedPhase !== "all") && (
             <button
               onClick={() => {
                 setSearchQuery("");
@@ -543,12 +641,12 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
                 setSelectedStream("all");
                 setSelectedPhase("all");
               }}
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[9px] font-bold bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/20 dark:hover:bg-rose-950/45 text-rose-600 dark:text-rose-450 border border-rose-100/20 transition-colors cursor-pointer ml-auto shadow-sm"
+              className="px-3 py-1.5 rounded-full text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-600 dark:text-slate-350 transition-colors cursor-pointer shrink-0 border border-slate-200/40 dark:border-slate-700/60 shadow-sm"
             >
               Clear All
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Main Content Area */}
@@ -656,8 +754,8 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
                               </span>
                             )}
                             {selectedSheetName && (
-                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-300 border border-violet-100/20 uppercase">
-                                <Calendar className="w-2.5 h-2.5 text-violet-400" />
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-100/80 text-slate-750 dark:bg-slate-800/60 dark:text-slate-300 border border-slate-200/50 dark:border-slate-700/40 uppercase">
+                                <Calendar className="w-2.5 h-2.5 text-slate-400" />
                                 {selectedSheetName}
                               </span>
                             )}
@@ -783,13 +881,7 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
           {/* Mobile Card Layout View */}
           <div className="md:hidden space-y-3">
             {filteredPapers.map((paper, idx) => {
-              const streamNorm = normalizeStream(paper.stream, paper.class);
-              const leftBorderColor = 
-                streamNorm === "JEE" 
-                  ? "border-l-4 border-l-blue-500 dark:border-l-blue-600" 
-                  : streamNorm === "NEET" 
-                    ? "border-l-4 border-l-rose-500 dark:border-l-rose-600" 
-                    : "border-l-4 border-l-purple-500 dark:border-l-purple-600";
+              const leftBorderColor = "border-l-4 border-l-slate-300 dark:border-l-slate-700";
 
               return (
                 <div
@@ -835,8 +927,8 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
                       </span>
                     )}
                     {selectedSheetName && (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[9px] font-black bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-300 border border-violet-100/15 uppercase">
-                        <Calendar className="w-3 h-3 text-violet-400" />
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[9px] font-black bg-slate-100/80 text-slate-750 dark:bg-slate-800/60 dark:text-slate-300 border border-slate-200/50 dark:border-slate-700/40 uppercase">
+                        <Calendar className="w-3 h-3 text-slate-400" />
                         {selectedSheetName}
                       </span>
                     )}
