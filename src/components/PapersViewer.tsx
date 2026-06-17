@@ -391,14 +391,14 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
           />
         </div>
 
-        {/* Filter Pills scrollable container */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-1.5 pt-0.5 custom-scrollbar scroll-smooth select-none">
-          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider whitespace-nowrap shrink-0">
+        {/* Filter Pills container */}
+        <div className="flex flex-wrap items-center gap-2 pt-0.5 select-none">
+          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider whitespace-nowrap">
             Filters:
           </span>
 
           {/* Year Filter Pill */}
-          <div className="relative shrink-0">
+          <div className="relative">
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -436,7 +436,7 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
           </div>
 
           {/* Category Filter Pill */}
-          <div className="relative shrink-0">
+          <div className="relative">
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -485,7 +485,7 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
           </div>
 
           {/* Class Filter Pill */}
-          <div className="relative shrink-0">
+          <div className="relative">
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -534,7 +534,7 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
           </div>
 
           {/* Stream Filter Pill */}
-          <div className="relative shrink-0">
+          <div className="relative">
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -583,7 +583,7 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
           </div>
 
           {/* Phase Filter Pill */}
-          <div className="relative shrink-0">
+          <div className="relative">
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -641,7 +641,7 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
                 setSelectedStream("all");
                 setSelectedPhase("all");
               }}
-              className="px-3 py-1.5 rounded-full text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-600 dark:text-slate-350 transition-colors cursor-pointer shrink-0 border border-slate-200/40 dark:border-slate-700/60 shadow-sm"
+              className="px-3 py-1.5 rounded-full text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-600 dark:text-slate-350 transition-colors cursor-pointer border border-slate-200/40 dark:border-slate-700/60 shadow-sm"
             >
               Clear All
             </button>
