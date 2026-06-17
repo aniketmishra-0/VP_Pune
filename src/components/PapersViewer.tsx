@@ -346,6 +346,158 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
     return "bg-slate-100/80 text-slate-750 dark:bg-slate-800/60 dark:text-slate-300 border border-slate-200/50 dark:border-slate-700/40";
   };
 
+  const renderDropdownOptions = (type: "year" | "category" | "class" | "stream" | "phase") => {
+    switch (type) {
+      case "year":
+        return availableSheets.map((s) => (
+          <button
+            key={s.name}
+            onClick={() => {
+              setSelectedSheetName(s.name);
+              fetchPapers(false, s.name);
+              setOpenFilterDropdown(null);
+            }}
+            className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-gray-800 text-slate-705 dark:text-slate-250 font-semibold transition-colors flex items-center justify-between cursor-pointer ${
+              selectedSheetName === s.name ? "bg-slate-50 dark:bg-gray-800 text-blue-600 dark:text-blue-450" : ""
+            }`}
+          >
+            <span>{s.name}</span>
+            {selectedSheetName === s.name && <Check className="w-3.5 h-3.5" />}
+          </button>
+        ));
+      case "category":
+        return (
+          <>
+            <button
+              onClick={() => {
+                setSelectedTab("all");
+                setOpenFilterDropdown(null);
+              }}
+              className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-gray-800 text-slate-705 dark:text-slate-250 font-semibold transition-colors flex items-center justify-between cursor-pointer ${
+                selectedTab === "all" ? "bg-slate-50 dark:bg-gray-800 text-blue-600 dark:text-blue-450" : ""
+              }`}
+            >
+              <span>All Categories</span>
+              {selectedTab === "all" && <Check className="w-3.5 h-3.5" />}
+            </button>
+            {filterOptions.tabs.map((tab) => (
+              <button
+                key={tab}
+                onClick={() => {
+                  setSelectedTab(tab);
+                  setOpenFilterDropdown(null);
+                }}
+                className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-gray-800 text-slate-705 dark:text-slate-250 font-semibold transition-colors flex items-center justify-between cursor-pointer ${
+                  selectedTab === tab ? "bg-slate-50 dark:bg-gray-800 text-blue-600 dark:text-blue-450" : ""
+                }`}
+              >
+                <span>{tab}</span>
+                {selectedTab === tab && <Check className="w-3.5 h-3.5" />}
+              </button>
+            ))}
+          </>
+        );
+      case "class":
+        return (
+          <>
+            <button
+              onClick={() => {
+                setSelectedClass("all");
+                setOpenFilterDropdown(null);
+              }}
+              className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-gray-800 text-slate-705 dark:text-slate-250 font-semibold transition-colors flex items-center justify-between cursor-pointer ${
+                selectedClass === "all" ? "bg-slate-50 dark:bg-gray-800 text-blue-600 dark:text-blue-450" : ""
+              }`}
+            >
+              <span>All Classes</span>
+              {selectedClass === "all" && <Check className="w-3.5 h-3.5" />}
+            </button>
+            {filterOptions.classes.map((cls) => (
+              <button
+                key={cls}
+                onClick={() => {
+                  setSelectedClass(cls);
+                  setOpenFilterDropdown(null);
+                }}
+                className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-gray-800 text-slate-705 dark:text-slate-250 font-semibold transition-colors flex items-center justify-between cursor-pointer ${
+                  selectedClass === cls ? "bg-slate-50 dark:bg-gray-800 text-blue-600 dark:text-blue-450" : ""
+                }`}
+              >
+                <span>{cls}</span>
+                {selectedClass === cls && <Check className="w-3.5 h-3.5" />}
+              </button>
+            ))}
+          </>
+        );
+      case "stream":
+        return (
+          <>
+            <button
+              onClick={() => {
+                setSelectedStream("all");
+                setOpenFilterDropdown(null);
+              }}
+              className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-gray-800 text-slate-705 dark:text-slate-250 font-semibold transition-colors flex items-center justify-between cursor-pointer ${
+                selectedStream === "all" ? "bg-slate-50 dark:bg-gray-800 text-blue-600 dark:text-blue-450" : ""
+              }`}
+            >
+              <span>All Streams</span>
+              {selectedStream === "all" && <Check className="w-3.5 h-3.5" />}
+            </button>
+            {filterOptions.streams.map((st) => (
+              <button
+                key={st}
+                onClick={() => {
+                  setSelectedStream(st);
+                  setOpenFilterDropdown(null);
+                }}
+                className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-gray-800 text-slate-705 dark:text-slate-250 font-semibold transition-colors flex items-center justify-between cursor-pointer ${
+                  selectedStream === st ? "bg-slate-50 dark:bg-gray-800 text-blue-600 dark:text-blue-450" : ""
+                }`}
+              >
+                <span>{st}</span>
+                {selectedStream === st && <Check className="w-3.5 h-3.5" />}
+              </button>
+            ))}
+          </>
+        );
+      case "phase":
+        return (
+          <>
+            <button
+              onClick={() => {
+                setSelectedPhase("all");
+                setOpenFilterDropdown(null);
+              }}
+              className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-gray-800 text-slate-755 dark:text-slate-250 font-semibold transition-colors flex items-center justify-between cursor-pointer ${
+                selectedPhase === "all" ? "bg-slate-50 dark:bg-gray-800 text-blue-650 dark:text-blue-450" : ""
+              }`}
+            >
+              <span>All Phases</span>
+              {selectedPhase === "all" && <Check className="w-3.5 h-3.5" />}
+            </button>
+            {filterOptions.phases.map((ph) => (
+              <button
+                key={ph}
+                onClick={() => {
+                  setSelectedPhase(ph);
+                  setOpenFilterDropdown(null);
+                }}
+                className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-gray-800 text-slate-755 dark:text-slate-250 font-semibold transition-colors flex items-center justify-between cursor-pointer ${
+                  selectedPhase === ph ? "bg-slate-50 dark:bg-gray-800 text-blue-650 dark:text-blue-450" : ""
+                }`}
+              >
+                <span>Phase {ph}</span>
+                {selectedPhase === ph && <Check className="w-3.5 h-3.5" />}
+              </button>
+            ))}
+          </>
+        );
+      default:
+        return null;
+    }
+  };
+
   return (
     <div className="space-y-6">
 
@@ -378,7 +530,7 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
       )}
 
       {/* Search & Filter Controls */}
-      <div className="bg-white dark:bg-[#111827] p-4 rounded-2xl border border-slate-250/50 dark:border-slate-800/80 shadow-sm space-y-3 animate-fade-in no-print" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white dark:bg-[#111827] p-4 rounded-2xl border border-slate-250/50 dark:border-slate-800/80 shadow-sm space-y-3 animate-fade-in no-print relative" onClick={(e) => e.stopPropagation()}>
         {/* Search bar */}
         <div className="relative">
           <Search className="absolute left-3.5 top-3 w-4 h-4 text-slate-400 dark:text-gray-500" />
@@ -392,7 +544,7 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
         </div>
 
         {/* Filter Pills container */}
-        <div className="flex flex-wrap items-center gap-2 pt-0.5 select-none">
+        <div className="flex overflow-x-auto no-scrollbar flex-nowrap md:flex-wrap items-center gap-2 pt-0.5 select-none -mx-4 px-4 md:mx-0 md:px-0">
           <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider whitespace-nowrap">
             Filters:
           </span>
@@ -413,26 +565,19 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
               <span>{selectedSheetName || "Year"}</span>
               <ChevronDown className="w-3 h-3 text-slate-450" />
             </button>
-            {openFilterDropdown === "year" && (
-              <div className="absolute left-0 mt-1.5 w-48 bg-white dark:bg-[#1f2937] rounded-xl shadow-xl border border-slate-200/50 dark:border-gray-700 z-50 py-1 max-h-60 overflow-y-auto">
-                {availableSheets.map((s) => (
-                  <button
-                    key={s.name}
-                    onClick={() => {
-                      setSelectedSheetName(s.name);
-                      fetchPapers(false, s.name);
-                      setOpenFilterDropdown(null);
-                    }}
-                    className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-gray-800 text-slate-705 dark:text-slate-250 font-semibold transition-colors flex items-center justify-between cursor-pointer ${
-                      selectedSheetName === s.name ? "bg-slate-50 dark:bg-gray-800 text-blue-600 dark:text-blue-450" : ""
-                    }`}
-                  >
-                    <span>{s.name}</span>
-                    {selectedSheetName === s.name && <Check className="w-3.5 h-3.5" />}
-                  </button>
-                ))}
-              </div>
-            )}
+            <AnimatePresence>
+              {openFilterDropdown === "year" && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: -8 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: -8 }}
+                  transition={{ duration: 0.15, ease: "easeOut" }}
+                  className="hidden md:block absolute left-0 mt-1.5 w-48 bg-white dark:bg-[#1f2937] rounded-xl shadow-xl border border-slate-200/50 dark:border-gray-700 z-50 py-1 max-h-60 overflow-y-auto"
+                >
+                  {renderDropdownOptions("year")}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           {/* Category Filter Pill */}
@@ -451,37 +596,19 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
               <span>{selectedTab === "all" ? "Category" : selectedTab}</span>
               <ChevronDown className="w-3 h-3 text-slate-450" />
             </button>
-            {openFilterDropdown === "category" && (
-              <div className="absolute right-0 md:left-0 md:right-auto mt-1.5 w-52 bg-white dark:bg-[#1f2937] rounded-xl shadow-xl border border-slate-200/50 dark:border-gray-700 z-50 py-1 max-h-60 overflow-y-auto">
-                <button
-                  onClick={() => {
-                    setSelectedTab("all");
-                    setOpenFilterDropdown(null);
-                  }}
-                  className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-gray-800 text-slate-705 dark:text-slate-250 font-semibold transition-colors flex items-center justify-between cursor-pointer ${
-                    selectedTab === "all" ? "bg-slate-50 dark:bg-gray-800 text-blue-600 dark:text-blue-450" : ""
-                  }`}
+            <AnimatePresence>
+              {openFilterDropdown === "category" && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: -8 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: -8 }}
+                  transition={{ duration: 0.15, ease: "easeOut" }}
+                  className="hidden md:block absolute right-0 md:left-0 md:right-auto mt-1.5 w-52 bg-white dark:bg-[#1f2937] rounded-xl shadow-xl border border-slate-200/50 dark:border-gray-700 z-50 py-1 max-h-60 overflow-y-auto"
                 >
-                  <span>All Categories</span>
-                  {selectedTab === "all" && <Check className="w-3.5 h-3.5" />}
-                </button>
-                {filterOptions.tabs.map((tab) => (
-                  <button
-                    key={tab}
-                    onClick={() => {
-                      setSelectedTab(tab);
-                      setOpenFilterDropdown(null);
-                    }}
-                    className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-gray-800 text-slate-705 dark:text-slate-250 font-semibold transition-colors flex items-center justify-between cursor-pointer ${
-                      selectedTab === tab ? "bg-slate-50 dark:bg-gray-800 text-blue-600 dark:text-blue-450" : ""
-                    }`}
-                  >
-                    <span>{tab}</span>
-                    {selectedTab === tab && <Check className="w-3.5 h-3.5" />}
-                  </button>
-                ))}
-              </div>
-            )}
+                  {renderDropdownOptions("category")}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           {/* Class Filter Pill */}
@@ -500,37 +627,19 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
               <span>{selectedClass === "all" ? "Class" : selectedClass}</span>
               <ChevronDown className="w-3 h-3 text-slate-450" />
             </button>
-            {openFilterDropdown === "class" && (
-              <div className="absolute left-0 mt-1.5 w-44 bg-white dark:bg-[#1f2937] rounded-xl shadow-xl border border-slate-200/50 dark:border-gray-700 z-50 py-1 max-h-60 overflow-y-auto">
-                <button
-                  onClick={() => {
-                    setSelectedClass("all");
-                    setOpenFilterDropdown(null);
-                  }}
-                  className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-gray-800 text-slate-705 dark:text-slate-250 font-semibold transition-colors flex items-center justify-between cursor-pointer ${
-                    selectedClass === "all" ? "bg-slate-50 dark:bg-gray-800 text-blue-600 dark:text-blue-450" : ""
-                  }`}
+            <AnimatePresence>
+              {openFilterDropdown === "class" && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: -8 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: -8 }}
+                  transition={{ duration: 0.15, ease: "easeOut" }}
+                  className="hidden md:block absolute left-0 mt-1.5 w-44 bg-white dark:bg-[#1f2937] rounded-xl shadow-xl border border-slate-200/50 dark:border-gray-700 z-50 py-1 max-h-60 overflow-y-auto"
                 >
-                  <span>All Classes</span>
-                  {selectedClass === "all" && <Check className="w-3.5 h-3.5" />}
-                </button>
-                {filterOptions.classes.map((cls) => (
-                  <button
-                    key={cls}
-                    onClick={() => {
-                      setSelectedClass(cls);
-                      setOpenFilterDropdown(null);
-                    }}
-                    className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-gray-800 text-slate-705 dark:text-slate-250 font-semibold transition-colors flex items-center justify-between cursor-pointer ${
-                      selectedClass === cls ? "bg-slate-50 dark:bg-gray-800 text-blue-600 dark:text-blue-450" : ""
-                    }`}
-                  >
-                    <span>{cls}</span>
-                    {selectedClass === cls && <Check className="w-3.5 h-3.5" />}
-                  </button>
-                ))}
-              </div>
-            )}
+                  {renderDropdownOptions("class")}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           {/* Stream Filter Pill */}
@@ -549,37 +658,19 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
               <span>{selectedStream === "all" ? "Stream" : selectedStream}</span>
               <ChevronDown className="w-3 h-3 text-slate-450" />
             </button>
-            {openFilterDropdown === "stream" && (
-              <div className="absolute right-0 md:left-0 md:right-auto mt-1.5 w-44 bg-white dark:bg-[#1f2937] rounded-xl shadow-xl border border-slate-200/50 dark:border-gray-700 z-50 py-1 max-h-60 overflow-y-auto">
-                <button
-                  onClick={() => {
-                    setSelectedStream("all");
-                    setOpenFilterDropdown(null);
-                  }}
-                  className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-gray-800 text-slate-705 dark:text-slate-250 font-semibold transition-colors flex items-center justify-between cursor-pointer ${
-                    selectedStream === "all" ? "bg-slate-50 dark:bg-gray-800 text-blue-600 dark:text-blue-450" : ""
-                  }`}
+            <AnimatePresence>
+              {openFilterDropdown === "stream" && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: -8 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: -8 }}
+                  transition={{ duration: 0.15, ease: "easeOut" }}
+                  className="hidden md:block absolute right-0 md:left-0 md:right-auto mt-1.5 w-44 bg-white dark:bg-[#1f2937] rounded-xl shadow-xl border border-slate-200/50 dark:border-gray-700 z-50 py-1 max-h-60 overflow-y-auto"
                 >
-                  <span>All Streams</span>
-                  {selectedStream === "all" && <Check className="w-3.5 h-3.5" />}
-                </button>
-                {filterOptions.streams.map((st) => (
-                  <button
-                    key={st}
-                    onClick={() => {
-                      setSelectedStream(st);
-                      setOpenFilterDropdown(null);
-                    }}
-                    className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-gray-800 text-slate-705 dark:text-slate-250 font-semibold transition-colors flex items-center justify-between cursor-pointer ${
-                      selectedStream === st ? "bg-slate-50 dark:bg-gray-800 text-blue-600 dark:text-blue-450" : ""
-                    }`}
-                  >
-                    <span>{st}</span>
-                    {selectedStream === st && <Check className="w-3.5 h-3.5" />}
-                  </button>
-                ))}
-              </div>
-            )}
+                  {renderDropdownOptions("stream")}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           {/* Phase Filter Pill */}
@@ -598,37 +689,19 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
               <span>{selectedPhase === "all" ? "Phase" : `Phase ${selectedPhase}`}</span>
               <ChevronDown className="w-3 h-3 text-slate-455" />
             </button>
-            {openFilterDropdown === "phase" && (
-              <div className="absolute right-0 mt-1.5 w-44 bg-white dark:bg-[#1f2937] rounded-xl shadow-xl border border-slate-200/50 dark:border-gray-700 z-50 py-1 max-h-60 overflow-y-auto">
-                <button
-                  onClick={() => {
-                    setSelectedPhase("all");
-                    setOpenFilterDropdown(null);
-                  }}
-                  className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-gray-800 text-slate-755 dark:text-slate-250 font-semibold transition-colors flex items-center justify-between cursor-pointer ${
-                    selectedPhase === "all" ? "bg-slate-50 dark:bg-gray-800 text-blue-600 dark:text-blue-450" : ""
-                  }`}
+            <AnimatePresence>
+              {openFilterDropdown === "phase" && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: -8 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: -8 }}
+                  transition={{ duration: 0.15, ease: "easeOut" }}
+                  className="hidden md:block absolute right-0 mt-1.5 w-44 bg-white dark:bg-[#1f2937] rounded-xl shadow-xl border border-slate-200/50 dark:border-gray-700 z-50 py-1 max-h-60 overflow-y-auto"
                 >
-                  <span>All Phases</span>
-                  {selectedPhase === "all" && <Check className="w-3.5 h-3.5" />}
-                </button>
-                {filterOptions.phases.map((ph) => (
-                  <button
-                    key={ph}
-                    onClick={() => {
-                      setSelectedPhase(ph);
-                      setOpenFilterDropdown(null);
-                    }}
-                    className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-gray-800 text-slate-755 dark:text-slate-250 font-semibold transition-colors flex items-center justify-between cursor-pointer ${
-                      selectedPhase === ph ? "bg-slate-50 dark:bg-gray-800 text-blue-600 dark:text-blue-450" : ""
-                    }`}
-                  >
-                    <span>Phase {ph}</span>
-                    {selectedPhase === ph && <Check className="w-3.5 h-3.5" />}
-                  </button>
-                ))}
-              </div>
-            )}
+                  {renderDropdownOptions("phase")}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           {/* Reset Filters Pill */}
@@ -641,12 +714,27 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
                 setSelectedStream("all");
                 setSelectedPhase("all");
               }}
-              className="px-3 py-1.5 rounded-full text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-600 dark:text-slate-350 transition-colors cursor-pointer border border-slate-200/40 dark:border-slate-700/60 shadow-sm"
+              className="px-3 py-1.5 rounded-full text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-600 dark:text-slate-350 transition-colors cursor-pointer border border-slate-200/40 dark:border-slate-700/60 shadow-sm whitespace-nowrap"
             >
               Clear All
             </button>
           )}
         </div>
+
+        {/* Mobile Filter Dropdown Options List */}
+        <AnimatePresence>
+          {openFilterDropdown && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.15, ease: "easeOut" }}
+              className="md:hidden mt-2 bg-white dark:bg-[#1f2937] rounded-xl shadow-xl border border-slate-200/50 dark:border-gray-700 z-50 py-1 max-h-60 overflow-y-auto w-full"
+            >
+              {renderDropdownOptions(openFilterDropdown)}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Main Content Area */}
@@ -994,6 +1082,7 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
             className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm no-print"
           >
             {/* Backdrop click to close */}
@@ -1004,10 +1093,11 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
 
             {/* Modal Box */}
             <motion.div
-              initial={{ scale: 0.95, opacity: 0, y: 20 }}
+              initial={{ scale: 0.95, opacity: 0, y: 15 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.95, opacity: 0, y: 20 }}
-              className={`relative w-full bg-white dark:bg-[#111827] rounded-3xl shadow-2xl flex flex-col overflow-hidden border border-slate-200/50 dark:border-gray-800/40 z-10 transition-all duration-300 ${
+              exit={{ scale: 0.95, opacity: 0, y: 15 }}
+              transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+              className={`relative w-full bg-white dark:bg-[#111827] rounded-3xl shadow-2xl flex flex-col overflow-hidden border border-slate-200/50 dark:border-gray-800/40 z-10 ${
                 isFolderUrl(previewDoc.url)
                   ? "max-w-md h-auto mx-4 my-auto md:mx-auto"
                   : "max-w-md h-auto mx-4 my-auto md:max-w-6xl md:h-[85vh] md:mx-auto"
