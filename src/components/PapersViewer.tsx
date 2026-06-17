@@ -384,22 +384,22 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
       )}
 
       {/* Search & Filter Controls */}
-      <div className="bg-white dark:bg-[#111827] p-4 sm:p-5 rounded-2xl sm:rounded-3xl border border-slate-200/50 dark:border-gray-800/40 shadow-sm space-y-4">
+      <div className="bg-white/60 dark:bg-[#0f172a]/60 backdrop-blur-md p-6 rounded-3xl border border-slate-200/50 dark:border-slate-800/40 shadow-xl space-y-4 animate-fade-in">
         <div className="relative">
-          <Search className="absolute left-3.5 top-3.5 w-4 h-4 text-slate-400" />
+          <Search className="absolute left-4 top-3.5 w-4 h-4 text-slate-400 dark:text-gray-500" />
           <input
             type="text"
             placeholder="Search papers by test name, class, stream, or date..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-3 text-xs rounded-xl border border-slate-200 dark:border-gray-800 bg-slate-50/50 dark:bg-gray-950 text-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-[#5277f7] placeholder-slate-400 transition-all font-medium"
+            className="w-full pl-11 pr-4 py-3 text-xs rounded-xl border border-slate-200 dark:border-gray-800 bg-slate-50/30 dark:bg-gray-950/60 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 placeholder-slate-400 dark:placeholder-gray-500 transition-all font-medium shadow-inner"
           />
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
           {/* Year of Paper Filter */}
           <div className="space-y-1">
-            <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Year of Paper</label>
+            <label className="text-[9px] font-black text-slate-450 dark:text-gray-400 uppercase tracking-widest block mb-1">Year of Paper</label>
             <div className="relative">
               <select
                 value={selectedSheetName}
@@ -408,7 +408,7 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
                   setSelectedSheetName(val);
                   fetchPapers(false, val);
                 }}
-                className="w-full p-2.5 pr-8 text-xs rounded-lg border border-slate-200 dark:border-gray-800 bg-slate-50/50 dark:bg-gray-950 text-slate-800 dark:text-white appearance-none focus:outline-none focus:ring-1 focus:ring-[#5277f7] font-medium"
+                className="w-full p-2.5 pr-9 text-xs rounded-xl border border-slate-200 dark:border-gray-800 bg-slate-50/40 dark:bg-gray-950 text-slate-800 dark:text-white appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-semibold cursor-pointer transition-all shadow-sm"
               >
                 {availableSheets.map((s) => (
                   <option key={s.name} value={s.name}>
@@ -416,18 +416,18 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
                   </option>
                 ))}
               </select>
-              <ChevronDown className="absolute right-2.5 top-3.5 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+              <ChevronDown className="absolute right-3 top-3.5 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
             </div>
           </div>
 
           {/* Category/Tab Filter */}
           <div className="space-y-1">
-            <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Category Tab</label>
+            <label className="text-[9px] font-black text-slate-450 dark:text-gray-400 uppercase tracking-widest block mb-1">Category Tab</label>
             <div className="relative">
               <select
                 value={selectedTab}
                 onChange={(e) => setSelectedTab(e.target.value)}
-                className="w-full p-2.5 pr-8 text-xs rounded-lg border border-slate-200 dark:border-gray-800 bg-slate-50/50 dark:bg-gray-950 text-slate-800 dark:text-white appearance-none focus:outline-none focus:ring-1 focus:ring-[#5277f7] font-medium"
+                className="w-full p-2.5 pr-9 text-xs rounded-xl border border-slate-200 dark:border-gray-800 bg-slate-50/40 dark:bg-gray-950 text-slate-800 dark:text-white appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-semibold cursor-pointer transition-all shadow-sm"
               >
                 <option value="all">All Categories</option>
                 {filterOptions.tabs.map((tab) => (
@@ -436,18 +436,18 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
                   </option>
                 ))}
               </select>
-              <ChevronDown className="absolute right-2.5 top-3.5 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+              <ChevronDown className="absolute right-3 top-3.5 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
             </div>
           </div>
 
           {/* Class Filter */}
           <div className="space-y-1">
-            <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Class</label>
+            <label className="text-[9px] font-black text-slate-455 dark:text-gray-400 uppercase tracking-widest block mb-1">Class</label>
             <div className="relative">
               <select
                 value={selectedClass}
                 onChange={(e) => setSelectedClass(e.target.value)}
-                className="w-full p-2.5 pr-8 text-xs rounded-lg border border-slate-200 dark:border-gray-800 bg-slate-50/50 dark:bg-gray-950 text-slate-800 dark:text-white appearance-none focus:outline-none focus:ring-1 focus:ring-[#5277f7] font-medium"
+                className="w-full p-2.5 pr-9 text-xs rounded-xl border border-slate-200 dark:border-gray-800 bg-slate-50/40 dark:bg-gray-950 text-slate-800 dark:text-white appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-semibold cursor-pointer transition-all shadow-sm"
               >
                 <option value="all">All Classes</option>
                 {filterOptions.classes.map((cls) => (
@@ -456,18 +456,18 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
                   </option>
                 ))}
               </select>
-              <ChevronDown className="absolute right-2.5 top-3.5 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+              <ChevronDown className="absolute right-3 top-3.5 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
             </div>
           </div>
 
           {/* Stream Filter */}
           <div className="space-y-1">
-            <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Stream</label>
+            <label className="text-[9px] font-black text-slate-455 dark:text-gray-400 uppercase tracking-widest block mb-1">Stream</label>
             <div className="relative">
               <select
                 value={selectedStream}
                 onChange={(e) => setSelectedStream(e.target.value)}
-                className="w-full p-2.5 pr-8 text-xs rounded-lg border border-slate-200 dark:border-gray-800 bg-slate-50/50 dark:bg-gray-950 text-slate-800 dark:text-white appearance-none focus:outline-none focus:ring-1 focus:ring-[#5277f7] font-medium"
+                className="w-full p-2.5 pr-9 text-xs rounded-xl border border-slate-200 dark:border-gray-800 bg-slate-50/40 dark:bg-gray-950 text-slate-800 dark:text-white appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-semibold cursor-pointer transition-all shadow-sm"
               >
                 <option value="all">All Streams</option>
                 {filterOptions.streams.map((st) => (
@@ -476,18 +476,18 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
                   </option>
                 ))}
               </select>
-              <ChevronDown className="absolute right-2.5 top-3.5 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+              <ChevronDown className="absolute right-3 top-3.5 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
             </div>
           </div>
 
           {/* Phase Filter */}
           <div className="space-y-1">
-            <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Phase</label>
+            <label className="text-[9px] font-black text-slate-455 dark:text-gray-400 uppercase tracking-widest block mb-1">Phase</label>
             <div className="relative">
               <select
                 value={selectedPhase}
                 onChange={(e) => setSelectedPhase(e.target.value)}
-                className="w-full p-2.5 pr-8 text-xs rounded-lg border border-slate-200 dark:border-gray-800 bg-slate-50/50 dark:bg-gray-950 text-slate-800 dark:text-white appearance-none focus:outline-none focus:ring-1 focus:ring-[#5277f7] font-medium"
+                className="w-full p-2.5 pr-9 text-xs rounded-xl border border-slate-200 dark:border-gray-800 bg-slate-50/40 dark:bg-gray-950 text-slate-800 dark:text-white appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-semibold cursor-pointer transition-all shadow-sm"
               >
                 <option value="all">All Phases</option>
                 {filterOptions.phases.map((ph) => (
@@ -496,39 +496,117 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
                   </option>
                 ))}
               </select>
-              <ChevronDown className="absolute right-2.5 top-3.5 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+              <ChevronDown className="absolute right-3 top-3.5 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
             </div>
           </div>
         </div>
+
+        {/* Dynamic Active Filters Row */}
+        {(searchQuery !== "" || selectedTab !== "all" || selectedClass !== "all" || selectedStream !== "all" || selectedPhase !== "all") && (
+          <div className="flex flex-wrap items-center gap-1.5 pt-3 border-t border-slate-200/30 dark:border-slate-800/40">
+            <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mr-1">Active Filters:</span>
+            {searchQuery && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[9px] font-semibold bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 border border-blue-100/30">
+                Search: "{searchQuery}"
+                <button onClick={() => setSearchQuery("")} className="hover:text-blue-800 dark:hover:text-blue-200 cursor-pointer"><X className="w-2.5 h-2.5" /></button>
+              </span>
+            )}
+            {selectedTab !== "all" && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[9px] font-semibold bg-slate-50 dark:bg-slate-800/40 text-slate-600 dark:text-slate-400 border border-slate-200/35">
+                Tab: {selectedTab}
+                <button onClick={() => setSelectedTab("all")} className="hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer"><X className="w-2.5 h-2.5" /></button>
+              </span>
+            )}
+            {selectedClass !== "all" && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[9px] font-semibold bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border border-emerald-100/35">
+                Class: {selectedClass}
+                <button onClick={() => setSelectedClass("all")} className="hover:text-emerald-800 dark:hover:text-emerald-250 cursor-pointer"><X className="w-2.5 h-2.5" /></button>
+              </span>
+            )}
+            {selectedStream !== "all" && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[9px] font-semibold bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 border border-indigo-100/35">
+                Stream: {selectedStream}
+                <button onClick={() => setSelectedStream("all")} className="hover:text-indigo-800 dark:hover:text-indigo-250 cursor-pointer"><X className="w-2.5 h-2.5" /></button>
+              </span>
+            )}
+            {selectedPhase !== "all" && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[9px] font-semibold bg-purple-50 dark:bg-purple-950/30 text-purple-600 dark:text-purple-400 border border-purple-100/35">
+                Phase: {selectedPhase}
+                <button onClick={() => setSelectedPhase("all")} className="hover:text-purple-800 dark:hover:text-purple-250 cursor-pointer"><X className="w-2.5 h-2.5" /></button>
+              </span>
+            )}
+            <button
+              onClick={() => {
+                setSearchQuery("");
+                setSelectedTab("all");
+                setSelectedClass("all");
+                setSelectedStream("all");
+                setSelectedPhase("all");
+              }}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[9px] font-bold bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/20 dark:hover:bg-rose-950/45 text-rose-600 dark:text-rose-450 border border-rose-100/20 transition-colors cursor-pointer ml-auto shadow-sm"
+            >
+              Clear All
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Main Content Area */}
       {isLoading ? (
-        <div className="py-16 flex flex-col items-center justify-center space-y-4">
+        <div className="py-16 flex flex-col items-center justify-center space-y-4 animate-pulse">
           <RefreshCw className="w-8 h-8 text-[#5277f7] animate-spin" />
           <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Loading papers index...</p>
         </div>
       ) : filteredPapers.length === 0 ? (
-        <div className="bg-white dark:bg-[#111827] border border-slate-200/50 dark:border-gray-800/40 rounded-3xl p-12 text-center shadow-sm">
-          <FileText className="w-12 h-12 text-slate-300 dark:text-slate-700 mx-auto mb-3" />
-          <h3 className="text-sm font-bold text-slate-800 dark:text-white mb-1">No Papers Found</h3>
-          <p className="text-xs text-slate-400 dark:text-gray-500 max-w-md mx-auto">
-            We couldn't find any test papers matching your query or filter criteria. Try adjusting your filters.
-          </p>
+        <div className="bg-white/60 dark:bg-[#0f172a]/40 backdrop-blur-md border border-slate-200/55 dark:border-slate-800/45 rounded-3xl p-16 text-center shadow-lg max-w-lg mx-auto space-y-4 animate-fade-in">
+          <div className="w-16 h-16 bg-slate-55 dark:bg-slate-900/60 border border-slate-200/60 dark:border-slate-800/60 rounded-2xl flex items-center justify-center mx-auto shadow-inner">
+            <FileText className="w-8 h-8 text-slate-400 dark:text-slate-600" />
+          </div>
+          <div className="space-y-1">
+            <h3 className="text-sm font-bold text-slate-800 dark:text-white">No Papers Found</h3>
+            <p className="text-xs text-slate-450 dark:text-gray-500 max-w-xs mx-auto leading-relaxed">
+              We couldn't find any test papers matching your query or filter criteria. Try resetting your active filters.
+            </p>
+          </div>
+          <button
+            onClick={() => {
+              setSearchQuery("");
+              setSelectedTab("all");
+              setSelectedClass("all");
+              setSelectedStream("all");
+              setSelectedPhase("all");
+            }}
+            className="inline-flex items-center gap-1.5 px-4.5 py-2.5 bg-blue-50 hover:bg-[#5277f7] text-blue-600 hover:text-white dark:bg-blue-950/30 dark:text-blue-300 dark:hover:bg-blue-600 dark:hover:text-white rounded-xl text-xs font-bold border border-blue-100/20 dark:border-blue-900/45 transition-all cursor-pointer shadow-sm active:scale-95"
+          >
+            Clear All Filters
+          </button>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-4 animate-fade-in">
           {/* Count Header */}
-          <div className="flex items-center justify-between text-[11px] text-slate-400 dark:text-gray-500 font-semibold px-1">
-            <span>SHOWING {filteredPapers.length} OF {allPapers.length} PAPERS</span>
+          <div className="flex items-center justify-between px-1">
+            <div className="inline-flex items-center gap-2 px-3 py-1 bg-slate-50 dark:bg-[#0f172a]/60 border border-slate-200/30 dark:border-slate-800/60 rounded-full shadow-sm">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider">
+                Showing {filteredPapers.length} of {allPapers.length} Papers
+              </span>
+            </div>
+            {lastLoaded && (
+              <span className="text-[9px] text-slate-400 dark:text-slate-500 font-medium">
+                Last Synced: {lastLoaded}
+              </span>
+            )}
           </div>
 
           {/* Desktop Table View */}
-          <div className="hidden md:block bg-white dark:bg-[#111827] border border-slate-200/50 dark:border-gray-800/40 rounded-3xl overflow-hidden shadow-sm">
+          <div className="hidden md:block bg-gradient-to-b from-white to-slate-50/20 dark:from-[#1e293b]/40 dark:to-[#111827] border border-slate-200/50 dark:border-slate-800/40 rounded-3xl overflow-hidden shadow-md">
             <div className="overflow-x-auto">
               <table className="w-full border-collapse text-left text-xs">
                 <thead>
-                  <tr className="bg-slate-50/50 dark:bg-gray-800/30 border-b border-slate-100 dark:border-gray-800/50 text-[10px] tracking-wider uppercase font-bold text-slate-400">
+                  <tr className="bg-slate-50/50 dark:bg-slate-900/40 border-b border-slate-200/50 dark:border-slate-800/40 text-[10px] tracking-wider uppercase font-black text-slate-400 dark:text-gray-400">
                     <th className="p-4 pl-6">Date</th>
                     <th className="p-4">Category</th>
                     <th className="p-4">Test Name</th>
@@ -537,23 +615,23 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
                     <th className="p-4 text-center">AK Link</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-gray-800/50">
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/30">
                   {filteredPapers.map((paper, idx) => (
                     <tr
                       key={idx}
-                      className="hover:bg-slate-50/40 dark:hover:bg-gray-800/10 transition-colors"
+                      className="hover:bg-slate-50/70 dark:hover:bg-slate-800/20 transition-all duration-150"
                     >
                       {/* Date */}
                       <td className="p-4 pl-6 font-medium text-slate-500 dark:text-gray-400 whitespace-nowrap">
                         <div className="flex items-center gap-1.5">
-                          <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <Calendar className="w-3.5 h-3.5 text-slate-450 shrink-0" />
                           {paper.date}
                         </div>
                       </td>
 
                       {/* Category */}
                       <td className="p-4">
-                        <span className="font-semibold text-slate-700 dark:text-slate-350">
+                        <span className="font-semibold text-slate-700 dark:text-slate-300">
                           {paper.tabName}
                         </span>
                       </td>
@@ -561,22 +639,25 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
                       {/* Test Name */}
                       <td className="p-4">
                         <div className="space-y-1">
-                          <span className="font-bold text-slate-800 dark:text-white">
+                          <span className="font-bold text-slate-800 dark:text-white block">
                             {paper.testName}
                           </span>
                           <div className="flex items-center gap-1.5 flex-wrap">
                             {paper.stream && (
-                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${getStreamBadgeStyle(paper.stream, paper.class)}`}>
+                              <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${getStreamBadgeStyle(paper.stream, paper.class)}`}>
+                                <GraduationCap className="w-2.5 h-2.5" />
                                 {paper.stream}
                               </span>
                             )}
                             {paper.phase && (
-                              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-350 border border-slate-200/20">
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-100 text-slate-600 dark:bg-slate-800/60 dark:text-slate-350 border border-slate-200/20">
+                                <Layers className="w-2.5 h-2.5 text-slate-400" />
                                 Phase {paper.phase}
                               </span>
                             )}
                             {selectedSheetName && (
-                              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-300 border border-violet-100/20 uppercase">
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-300 border border-violet-100/20 uppercase">
+                                <Calendar className="w-2.5 h-2.5 text-violet-400" />
                                 {selectedSheetName}
                               </span>
                             )}
@@ -587,7 +668,7 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
                       {/* Target Class */}
                       <td className="p-4">
                         {paper.class ? (
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${getClassBadgeStyle(paper.class)}`}>
+                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${getClassBadgeStyle(paper.class)}`}>
                             {paper.class}
                           </span>
                         ) : (
@@ -601,7 +682,7 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
                           paper.questionPapers.length === 1 ? (
                             <button
                               onClick={() => setPreviewDoc({ title: `${paper.testName} - Question Paper`, url: paper.questionPapers[0].url, type: "QP" })}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-[#5277f7] text-blue-600 hover:text-white dark:bg-blue-950/30 dark:text-blue-300 dark:hover:bg-blue-600 dark:hover:text-white rounded-lg font-bold transition-all cursor-pointer shadow-sm border border-blue-100/20"
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50/60 hover:bg-[#5277f7] text-blue-600 hover:text-white dark:bg-blue-950/30 dark:text-blue-300 dark:hover:bg-blue-600 dark:hover:text-white rounded-xl font-bold border border-blue-200/40 dark:border-blue-900/40 transition-all duration-200 cursor-pointer shadow-sm hover:scale-[1.03] active:scale-[0.98]"
                             >
                               <Download className="w-3.5 h-3.5" />
                               Open
@@ -611,7 +692,7 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
                             <div className="inline-block relative">
                               <button
                                 onClick={() => setActiveDropdown(activeDropdown?.idx === idx && activeDropdown?.type === "QP" ? null : { idx, type: "QP" })}
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-[#5277f7] text-blue-600 hover:text-white dark:bg-blue-950/30 dark:text-blue-300 dark:hover:bg-blue-600 dark:hover:text-white rounded-lg font-bold transition-all cursor-pointer shadow-sm border border-blue-100/20"
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50/60 hover:bg-[#5277f7] text-blue-600 hover:text-white dark:bg-blue-950/30 dark:text-blue-300 dark:hover:bg-blue-600 dark:hover:text-white rounded-xl font-bold border border-blue-200/40 dark:border-blue-900/40 transition-all duration-200 cursor-pointer shadow-sm hover:scale-[1.03] active:scale-[0.98]"
                               >
                                 <Download className="w-3.5 h-3.5" />
                                 Open ({paper.questionPapers.length})
@@ -619,7 +700,7 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
                               </button>
                               
                               {activeDropdown?.idx === idx && activeDropdown?.type === "QP" && (
-                                <div className="absolute right-0 mt-1 w-48 bg-white dark:bg-[#1f2937] rounded-xl shadow-xl border border-slate-200/50 dark:border-gray-700 z-50 py-1 overflow-hidden">
+                                <div className="absolute right-0 mt-1 w-48 bg-white dark:bg-[#1f2937] rounded-xl shadow-xl border border-slate-200/50 dark:border-gray-750 z-50 py-1 overflow-hidden">
                                   {paper.questionPapers.map((link, lIdx) => (
                                     <button
                                       key={lIdx}
@@ -627,9 +708,9 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
                                         setPreviewDoc({ title: `${paper.testName} - ${link.name || `QP ${lIdx + 1}`}`, url: link.url, type: "QP" });
                                         setActiveDropdown(null);
                                       }}
-                                      className="w-full text-left px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-gray-800 text-slate-700 dark:text-slate-200 font-semibold transition-colors flex items-center gap-1.5"
+                                      className="w-full text-left px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-gray-800 text-slate-700 dark:text-slate-200 font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
                                     >
-                                      <FileText className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                                      <FileText className="w-3.5 h-3.5 text-blue-500 shrink-0 animate-pulse" />
                                       <span className="truncate">{link.name || `QP ${lIdx + 1}`}</span>
                                     </button>
                                   ))}
@@ -638,7 +719,7 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
                             </div>
                           )
                         ) : (
-                          <span className="text-[10px] text-slate-350 font-bold bg-slate-50 dark:bg-gray-800/10 px-2 py-1 rounded border border-slate-100 dark:border-gray-800/20 select-none">
+                          <span className="text-[10px] text-slate-350 dark:text-slate-650 font-bold bg-slate-55 dark:bg-gray-900/30 px-2 py-1 rounded-lg border border-slate-100 dark:border-gray-800/40 select-none">
                             Unavailable
                           </span>
                         )}
@@ -650,7 +731,7 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
                           paper.answerKeys.length === 1 ? (
                             <button
                               onClick={() => setPreviewDoc({ title: `${paper.testName} - Answer Key`, url: paper.answerKeys[0].url, type: "AK" })}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-500 text-emerald-600 hover:text-white dark:bg-emerald-950/30 dark:text-emerald-300 dark:hover:bg-emerald-600 dark:hover:text-white rounded-lg font-bold transition-all cursor-pointer shadow-sm border border-emerald-100/20"
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50/60 hover:bg-emerald-500 text-emerald-600 hover:text-white dark:bg-emerald-950/30 dark:text-emerald-300 dark:hover:bg-emerald-600 dark:hover:text-white rounded-xl font-bold border border-emerald-200/40 dark:border-emerald-900/40 transition-all duration-200 cursor-pointer shadow-sm hover:scale-[1.03] active:scale-[0.98]"
                             >
                               <Download className="w-3.5 h-3.5" />
                               Open
@@ -660,7 +741,7 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
                             <div className="inline-block relative">
                               <button
                                 onClick={() => setActiveDropdown(activeDropdown?.idx === idx && activeDropdown?.type === "AK" ? null : { idx, type: "AK" })}
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-500 text-emerald-600 hover:text-white dark:bg-emerald-950/30 dark:text-emerald-300 dark:hover:bg-emerald-600 dark:hover:text-white rounded-lg font-bold transition-all cursor-pointer shadow-sm border border-emerald-100/20"
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50/60 hover:bg-emerald-500 text-emerald-600 hover:text-white dark:bg-emerald-950/30 dark:text-emerald-300 dark:hover:bg-emerald-600 dark:hover:text-white rounded-xl font-bold border border-emerald-200/40 dark:border-emerald-900/40 transition-all duration-200 cursor-pointer shadow-sm hover:scale-[1.03] active:scale-[0.98]"
                               >
                                 <Download className="w-3.5 h-3.5" />
                                 Open ({paper.answerKeys.length})
@@ -668,7 +749,7 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
                               </button>
                               
                               {activeDropdown?.idx === idx && activeDropdown?.type === "AK" && (
-                                <div className="absolute right-0 mt-1 w-48 bg-white dark:bg-[#1f2937] rounded-xl shadow-xl border border-slate-200/50 dark:border-gray-700 z-50 py-1 overflow-hidden">
+                                <div className="absolute right-0 mt-1 w-48 bg-white dark:bg-[#1f2937] rounded-xl shadow-xl border border-slate-200/50 dark:border-gray-750 z-50 py-1 overflow-hidden">
                                   {paper.answerKeys.map((link, lIdx) => (
                                     <button
                                       key={lIdx}
@@ -676,7 +757,7 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
                                         setPreviewDoc({ title: `${paper.testName} - ${link.name || `AK ${lIdx + 1}`}`, url: link.url, type: "AK" });
                                         setActiveDropdown(null);
                                       }}
-                                      className="w-full text-left px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-gray-800 text-slate-700 dark:text-slate-200 font-semibold transition-colors flex items-center gap-1.5"
+                                      className="w-full text-left px-3 py-2 text-xs hover:bg-slate-50 dark:hover:bg-gray-800 text-slate-700 dark:text-slate-200 font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
                                     >
                                       <FileText className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
                                       <span className="truncate">{link.name || `AK ${lIdx + 1}`}</span>
@@ -687,7 +768,7 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
                             </div>
                           )
                         ) : (
-                          <span className="text-[10px] text-slate-350 font-bold bg-slate-50 dark:bg-gray-800/10 px-2 py-1 rounded border border-slate-100 dark:border-gray-800/20 select-none">
+                          <span className="text-[10px] text-slate-350 dark:text-slate-655 font-bold bg-slate-55 dark:bg-gray-900/30 px-2 py-1 rounded-lg border border-slate-100 dark:border-gray-800/40 select-none">
                             Unavailable
                           </span>
                         )}
@@ -701,99 +782,115 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
 
           {/* Mobile Card Layout View */}
           <div className="md:hidden space-y-3">
-            {filteredPapers.map((paper, idx) => (
-              <div
-                key={idx}
-                className="bg-white dark:bg-[#111827] border border-slate-200/50 dark:border-gray-800/40 rounded-2xl p-4 shadow-sm space-y-3"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="space-y-1">
-                    <span className="text-[10px] font-bold text-slate-400 block uppercase tracking-wider">
-                      {paper.tabName}
-                    </span>
-                    <h3 className="font-bold text-slate-800 dark:text-white text-sm">
-                      {paper.testName}
-                    </h3>
+            {filteredPapers.map((paper, idx) => {
+              const streamNorm = normalizeStream(paper.stream, paper.class);
+              const leftBorderColor = 
+                streamNorm === "JEE" 
+                  ? "border-l-4 border-l-blue-500 dark:border-l-blue-600" 
+                  : streamNorm === "NEET" 
+                    ? "border-l-4 border-l-rose-500 dark:border-l-rose-600" 
+                    : "border-l-4 border-l-purple-500 dark:border-l-purple-600";
+
+              return (
+                <div
+                  key={idx}
+                  className={`bg-gradient-to-br from-white to-slate-50/40 dark:from-[#1e293b]/50 dark:to-[#0f172a]/30 border border-slate-200/50 dark:border-slate-800/60 rounded-3xl p-5 shadow-sm space-y-4 hover:shadow-md transition-all duration-300 ${leftBorderColor}`}
+                >
+                  {/* Card Header */}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-1 min-w-0">
+                      <span className="text-[9px] font-black text-[#5277f7] dark:text-blue-400 tracking-wider uppercase block">
+                        {paper.tabName}
+                      </span>
+                      <h3 className="font-extrabold text-slate-800 dark:text-white text-sm leading-snug">
+                        {paper.testName}
+                      </h3>
+                    </div>
+
+                    <div className="flex flex-col items-end gap-1.5 shrink-0">
+                      {paper.class && (
+                        <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black tracking-wider uppercase ${getClassBadgeStyle(paper.class)}`}>
+                          {paper.class}
+                        </span>
+                      )}
+                      <span className="text-[10px] text-slate-450 dark:text-gray-500 font-semibold flex items-center gap-1">
+                        <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        {paper.date}
+                      </span>
+                    </div>
                   </div>
 
-                  <div className="flex flex-col items-end gap-1">
-                    {paper.class && (
-                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${getClassBadgeStyle(paper.class)}`}>
-                        {paper.class}
+                  {/* Badges/Chips Row */}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {paper.stream && (
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[9px] font-black uppercase ${getStreamBadgeStyle(paper.stream, paper.class)}`}>
+                        <GraduationCap className="w-3 h-3" />
+                        {paper.stream}
                       </span>
                     )}
-                    <span className="text-[10px] text-slate-450 dark:text-gray-500 flex items-center gap-1">
-                      <Calendar className="w-3 h-3 text-slate-400" />
-                      {paper.date}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {paper.stream && (
-                    <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase ${getStreamBadgeStyle(paper.stream, paper.class)}`}>
-                      {paper.stream}
-                    </span>
-                  )}
-                  {paper.phase && (
-                    <span className="px-1.5 py-0.5 rounded text-[8px] font-bold bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-350 border border-slate-200/20">
-                      Phase {paper.phase}
-                    </span>
-                  )}
-                  {selectedSheetName && (
-                    <span className="px-1.5 py-0.5 rounded text-[8px] font-bold bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-300 border border-violet-100/20 uppercase">
-                      {selectedSheetName}
-                    </span>
-                  )}
-                </div>
-
-                <hr className="border-slate-100 dark:border-gray-800/30" />
-
-                <div className="grid grid-cols-2 gap-3 pt-0.5 items-start">
-                  {/* QP links container */}
-                  <div className="flex flex-col gap-1.5">
-                    <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">Question Papers</span>
-                    {paper.questionPapers && paper.questionPapers.length > 0 ? (
-                      paper.questionPapers.map((link, lIdx) => (
-                        <button
-                          key={lIdx}
-                          onClick={() => setPreviewDoc({ title: `${paper.testName} - ${link.name || `QP ${lIdx + 1}`}`, url: link.url, type: "QP" })}
-                          className="flex items-center justify-center gap-1 py-2 px-2 bg-blue-50 text-blue-600 dark:bg-blue-950/20 dark:text-blue-300 rounded-xl font-bold text-[10px] border border-blue-100/10 cursor-pointer transition-colors"
-                        >
-                          <Download className="w-3.5 h-3.5 shrink-0" />
-                          <span className="truncate">{link.name || `QP ${lIdx + 1}`}</span>
-                        </button>
-                      ))
-                    ) : (
-                      <div className="flex items-center justify-center py-2 bg-slate-50 dark:bg-gray-800/10 text-slate-350 dark:text-slate-600 rounded-xl font-bold text-[10px] border border-slate-100 dark:border-gray-800/20 select-none">
-                        Unavailable
-                      </div>
+                    {paper.phase && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[9px] font-black bg-slate-100 text-slate-600 dark:bg-slate-800/60 dark:text-slate-350 border border-slate-200/10">
+                        <Layers className="w-3 h-3 text-slate-400" />
+                        Phase {paper.phase}
+                      </span>
+                    )}
+                    {selectedSheetName && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[9px] font-black bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-300 border border-violet-100/15 uppercase">
+                        <Calendar className="w-3 h-3 text-violet-400" />
+                        {selectedSheetName}
+                      </span>
                     )}
                   </div>
 
-                  {/* AK links container */}
-                  <div className="flex flex-col gap-1.5">
-                    <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">Answer Keys</span>
-                    {paper.answerKeys && paper.answerKeys.length > 0 ? (
-                      paper.answerKeys.map((link, lIdx) => (
-                        <button
-                          key={lIdx}
-                          onClick={() => setPreviewDoc({ title: `${paper.testName} - ${link.name || `AK ${lIdx + 1}`}`, url: link.url, type: "AK" })}
-                          className="flex items-center justify-center gap-1 py-2 px-2 bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-300 rounded-xl font-bold text-[10px] border border-emerald-100/10 cursor-pointer transition-colors"
-                        >
-                          <Download className="w-3.5 h-3.5 shrink-0" />
-                          <span className="truncate">{link.name || `AK ${lIdx + 1}`}</span>
-                        </button>
-                      ))
-                    ) : (
-                      <div className="flex items-center justify-center py-2 bg-slate-50 dark:bg-gray-800/10 text-slate-350 dark:text-slate-600 rounded-xl font-bold text-[10px] border border-slate-100 dark:border-gray-800/20 select-none">
-                        Unavailable
-                      </div>
-                    )}
+                  <hr className="border-slate-100 dark:border-gray-800/40" />
+
+                  {/* Actions Grid */}
+                  <div className="grid grid-cols-2 gap-3 pt-0.5 items-start">
+                    {/* QP links container */}
+                    <div className="flex flex-col gap-1.5">
+                      <span className="text-[8px] font-black text-slate-400 dark:text-gray-550 uppercase tracking-widest">Question Papers</span>
+                      {paper.questionPapers && paper.questionPapers.length > 0 ? (
+                        paper.questionPapers.map((link, lIdx) => (
+                          <button
+                            key={lIdx}
+                            onClick={() => setPreviewDoc({ title: `${paper.testName} - ${link.name || `QP ${lIdx + 1}`}`, url: link.url, type: "QP" })}
+                            className="flex items-center justify-center gap-1.5 py-2.5 px-3 bg-blue-50/60 hover:bg-[#5277f7] text-blue-600 hover:text-white dark:bg-blue-950/20 dark:text-blue-300 dark:hover:bg-blue-600 dark:hover:text-white rounded-xl font-extrabold text-[11px] border border-blue-200/50 dark:border-blue-900/40 cursor-pointer transition-all duration-200 shadow-sm active:scale-95"
+                          >
+                            <FileText className="w-3.5 h-3.5 shrink-0 animate-pulse" />
+                            <span className="truncate">{link.name || `QP ${lIdx + 1}`}</span>
+                          </button>
+                        ))
+                      ) : (
+                        <div className="flex items-center justify-center py-2 px-2 bg-slate-50 dark:bg-gray-850/30 text-slate-350 dark:text-slate-650 rounded-xl font-bold text-[10px] border border-slate-100 dark:border-gray-800/20 select-none">
+                          Unavailable
+                        </div>
+                      )}
+                    </div>
+
+                    {/* AK links container */}
+                    <div className="flex flex-col gap-1.5">
+                      <span className="text-[8px] font-black text-slate-400 dark:text-gray-550 uppercase tracking-widest">Answer Keys</span>
+                      {paper.answerKeys && paper.answerKeys.length > 0 ? (
+                        paper.answerKeys.map((link, lIdx) => (
+                          <button
+                            key={lIdx}
+                            onClick={() => setPreviewDoc({ title: `${paper.testName} - ${link.name || `AK ${lIdx + 1}`}`, url: link.url, type: "AK" })}
+                            className="flex items-center justify-center gap-1.5 py-2.5 px-3 bg-emerald-50/60 hover:bg-emerald-500 text-emerald-600 hover:text-white dark:bg-emerald-950/20 dark:text-emerald-300 dark:hover:bg-emerald-600 dark:hover:text-white rounded-xl font-extrabold text-[11px] border border-emerald-200/50 dark:border-emerald-900/40 cursor-pointer transition-all duration-200 shadow-sm active:scale-95"
+                          >
+                            <Check className="w-3.5 h-3.5 shrink-0" />
+                            <span className="truncate">{link.name || `AK ${lIdx + 1}`}</span>
+                          </button>
+                        ))
+                      ) : (
+                        <div className="flex items-center justify-center py-2 px-2 bg-slate-50 dark:bg-gray-850/30 text-slate-350 dark:text-slate-650 rounded-xl font-bold text-[10px] border border-slate-100 dark:border-gray-800/20 select-none">
+                          Unavailable
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

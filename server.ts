@@ -1348,6 +1348,11 @@ interface PortalSettings {
   portalEnabled: boolean;  // Master switch for student result portal
   qrEnabled: boolean;      // Show/hide QR code on result page
   portalMessage: string;   // Custom message when portal is disabled
+  cooldownEnabled: boolean;
+  cooldownHours: number;
+  qrLogoText: string;
+  qrSubtitleText: string;
+  qrFooterText: string;
 }
 
 interface AppState {
@@ -1382,6 +1387,11 @@ const DEFAULT_PORTAL_SETTINGS: PortalSettings = {
   portalEnabled: true,
   qrEnabled: true,
   portalMessage: "Result portal is currently disabled. Please check back later.",
+  cooldownEnabled: true,
+  cooldownHours: 3,
+  qrLogoText: "PW Vidyapeeth Pune",
+  qrSubtitleText: "Student Result Portal",
+  qrFooterText: "",
 };
 
 let appState: AppState = {
@@ -2463,11 +2473,25 @@ app.get("/api/portal-settings", (req, res) => {
 
 app.post("/api/portal-settings", express.json(), (req, res) => {
   if (!requireAdmin(req, res)) return;
-  const { portalEnabled, qrEnabled, portalMessage } = req.body || {};
+  const {
+    portalEnabled,
+    qrEnabled,
+    portalMessage,
+    cooldownEnabled,
+    cooldownHours,
+    qrLogoText,
+    qrSubtitleText,
+    qrFooterText
+  } = req.body || {};
   if (!appState.portalSettings) appState.portalSettings = { ...DEFAULT_PORTAL_SETTINGS };
   if (typeof portalEnabled === "boolean") appState.portalSettings.portalEnabled = portalEnabled;
   if (typeof qrEnabled === "boolean") appState.portalSettings.qrEnabled = qrEnabled;
   if (typeof portalMessage === "string") appState.portalSettings.portalMessage = portalMessage;
+  if (typeof cooldownEnabled === "boolean") appState.portalSettings.cooldownEnabled = cooldownEnabled;
+  if (typeof cooldownHours === "number") appState.portalSettings.cooldownHours = cooldownHours;
+  if (typeof qrLogoText === "string") appState.portalSettings.qrLogoText = qrLogoText;
+  if (typeof qrSubtitleText === "string") appState.portalSettings.qrSubtitleText = qrSubtitleText;
+  if (typeof qrFooterText === "string") appState.portalSettings.qrFooterText = qrFooterText;
   saveAppState();
   const who = String(req.headers["x-user-email"] || "admin");
   logActivity(who, "portal-settings", `Portal: ${appState.portalSettings.portalEnabled ? "ON" : "OFF"}, QR: ${appState.portalSettings.qrEnabled ? "ON" : "OFF"}`);
@@ -2494,40 +2518,43 @@ app.post("/api/student-public", express.json(), (req, res) => {
 
   const cleanRegNo = regNo.trim();
   const clientIP = getClientIP(req);
+  const ipKey = `ip_${crypto.createHash("sha256").update(clientIP).digest("hex").slice(0, 24)}`;
   const now = Date.now();
 
   // --- Multi-layer device check ---
-  // Check by deviceId fingerprint
-  const existingByDevice = deviceBindings[deviceId];
-  if (existingByDevice && new Date(existingByDevice.expiresAt).getTime() > now) {
-    if (existingByDevice.regNo.toLowerCase() !== cleanRegNo.toLowerCase()) {
-      const remainMs = new Date(existingByDevice.expiresAt).getTime() - now;
-      const remainMinutes = Math.ceil(remainMs / 60000);
-      return res.json({
-        allowed: false,
-        remainingMinutes: remainMinutes,
-        expiresAt: existingByDevice.expiresAt,
-        message: `This device has already viewed a result. Please wait ${Math.floor(remainMinutes / 60)}h ${remainMinutes % 60}m before searching another registration.`
-      });
+  const cooldownEnabled = typeof ps.cooldownEnabled === "boolean" ? ps.cooldownEnabled : true;
+  if (cooldownEnabled) {
+    // Check by deviceId fingerprint
+    const existingByDevice = deviceBindings[deviceId];
+    if (existingByDevice && new Date(existingByDevice.expiresAt).getTime() > now) {
+      if (existingByDevice.regNo.toLowerCase() !== cleanRegNo.toLowerCase()) {
+        const remainMs = new Date(existingByDevice.expiresAt).getTime() - now;
+        const remainMinutes = Math.ceil(remainMs / 60000);
+        return res.json({
+          allowed: false,
+          remainingMinutes: remainMinutes,
+          expiresAt: existingByDevice.expiresAt,
+          message: `This device has already viewed a result. Please wait ${Math.floor(remainMinutes / 60)}h ${remainMinutes % 60}m before searching another registration.`
+        });
+      }
+      // Same device + same regNo → allowed (refresh case)
     }
-    // Same device + same regNo → allowed (refresh case)
-  }
 
-  // Check by IP address — prevents copy-paste-to-another-browser bypass
-  const ipKey = `ip_${crypto.createHash("sha256").update(clientIP).digest("hex").slice(0, 24)}`;
-  const existingByIP = deviceBindings[ipKey];
-  if (existingByIP && new Date(existingByIP.expiresAt).getTime() > now) {
-    if (existingByIP.regNo.toLowerCase() !== cleanRegNo.toLowerCase()) {
-      const remainMs = new Date(existingByIP.expiresAt).getTime() - now;
-      const remainMinutes = Math.ceil(remainMs / 60000);
-      return res.json({
-        allowed: false,
-        remainingMinutes: remainMinutes,
-        expiresAt: existingByIP.expiresAt,
-        message: `Another result was recently viewed from this network. Please wait ${Math.floor(remainMinutes / 60)}h ${remainMinutes % 60}m.`
-      });
+    // Check by IP address — prevents copy-paste-to-another-browser bypass
+    const existingByIP = deviceBindings[ipKey];
+    if (existingByIP && new Date(existingByIP.expiresAt).getTime() > now) {
+      if (existingByIP.regNo.toLowerCase() !== cleanRegNo.toLowerCase()) {
+        const remainMs = new Date(existingByIP.expiresAt).getTime() - now;
+        const remainMinutes = Math.ceil(remainMs / 60000);
+        return res.json({
+          allowed: false,
+          remainingMinutes: remainMinutes,
+          expiresAt: existingByIP.expiresAt,
+          message: `Another result was recently viewed from this network. Please wait ${Math.floor(remainMinutes / 60)}h ${remainMinutes % 60}m.`
+        });
+      }
+      // Same IP + same regNo → allowed (same student, same network)
     }
-    // Same IP + same regNo → allowed (same student, same network)
   }
 
   // --- Look up the student in memory ---
@@ -2715,27 +2742,34 @@ app.post("/api/student-public", express.json(), (req, res) => {
     delete profile.shareToken;
 
     // --- Bind device + IP ---
-    const expiresAt = new Date(now + DEVICE_COOLDOWN_MS).toISOString();
-    const lockedAtISO = new Date(now).toISOString();
-    deviceBindings[deviceId] = { regNo: foundReg, ip: clientIP, lockedAt: lockedAtISO, expiresAt };
-    deviceBindings[ipKey] = { regNo: foundReg, ip: clientIP, lockedAt: lockedAtISO, expiresAt };
+    const cooldownEnabled = typeof ps.cooldownEnabled === "boolean" ? ps.cooldownEnabled : true;
+    const cooldownHours = typeof ps.cooldownHours === "number" ? ps.cooldownHours : 3;
+    const cooldownMs = cooldownHours * 60 * 60 * 1000;
+    let expiresAt = "";
 
-    // Set HttpOnly cookie for server-side device tracking (survives JS clear)
-    res.cookie("_vp_device", deviceId, {
-      httpOnly: true,
-      secure: false, // Set to true in production with HTTPS
-      sameSite: "lax",
-      maxAge: DEVICE_COOLDOWN_MS,
-    });
+    if (cooldownEnabled) {
+      expiresAt = new Date(now + cooldownMs).toISOString();
+      const lockedAtISO = new Date(now).toISOString();
+      deviceBindings[deviceId] = { regNo: foundReg, ip: clientIP, lockedAt: lockedAtISO, expiresAt };
+      deviceBindings[ipKey] = { regNo: foundReg, ip: clientIP, lockedAt: lockedAtISO, expiresAt };
 
-    // Queue for Google Sheet persistence — use readable IST for sheet display
-    const lockedAtReadable = fmtIST(now);
-    const expiresAtReadable = fmtIST(now + DEVICE_COOLDOWN_MS);
-    pendingDeviceBindingRows.push(
-      { regNo: foundReg, deviceIdShort: deviceId, ip: clientIP, bindingType: "device", lockedAt: lockedAtReadable, expiresAt: expiresAtReadable, status: "active" },
-      { regNo: foundReg, deviceIdShort: deviceId, ip: clientIP, bindingType: "ip", lockedAt: lockedAtReadable, expiresAt: expiresAtReadable, status: "active" }
-    );
-    flushDeviceBindingsToSheet();
+      // Set HttpOnly cookie for server-side device tracking (survives JS clear)
+      res.cookie("_vp_device", deviceId, {
+        httpOnly: true,
+        secure: false, // Set to true in production with HTTPS
+        sameSite: "lax",
+        maxAge: cooldownMs,
+      });
+
+      // Queue for Google Sheet persistence — use readable IST for sheet display
+      const lockedAtReadable = fmtIST(now);
+      const expiresAtReadable = fmtIST(now + cooldownMs);
+      pendingDeviceBindingRows.push(
+        { regNo: foundReg, deviceIdShort: deviceId, ip: clientIP, bindingType: "device", lockedAt: lockedAtReadable, expiresAt: expiresAtReadable, status: "active" },
+        { regNo: foundReg, deviceIdShort: deviceId, ip: clientIP, bindingType: "ip", lockedAt: lockedAtReadable, expiresAt: expiresAtReadable, status: "active" }
+      );
+      flushDeviceBindingsToSheet();
+    }
 
     // Log public access
     console.log(`[public-result] RegNo=${foundReg} IP=${clientIP} DeviceID=${deviceId.slice(0, 8)}...`);
@@ -2743,7 +2777,7 @@ app.post("/api/student-public", express.json(), (req, res) => {
     return res.json({
       allowed: true,
       student: { profile, tests: updatedTests },
-      expiresAt,
+      expiresAt: expiresAt || null,
     });
 
   } catch (err: any) {
@@ -2754,6 +2788,12 @@ app.post("/api/student-public", express.json(), (req, res) => {
 
 // Check device binding via cookie (for link copy-paste detection)
 app.post("/api/student-public-check", express.json(), (req, res) => {
+  const ps = appState.portalSettings || DEFAULT_PORTAL_SETTINGS;
+  const cooldownEnabled = typeof ps.cooldownEnabled === "boolean" ? ps.cooldownEnabled : true;
+  if (!cooldownEnabled) {
+    return res.json({ bound: false });
+  }
+
   const cookieDeviceId = req.cookies?._vp_device;
   const { deviceId, regNo } = req.body || {};
   const clientIP = getClientIP(req);

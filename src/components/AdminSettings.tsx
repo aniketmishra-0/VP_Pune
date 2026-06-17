@@ -32,6 +32,7 @@ import {
   Power,
   Zap,
   FileSpreadsheet,
+  Save,
 } from "lucide-react";
 import QRCode from "qrcode";
 
@@ -173,6 +174,17 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({
   // Portal settings toggles
   const [portalEnabled, setPortalEnabled] = useState(true);
   const [qrEnabled, setQrEnabled] = useState(true);
+  const [cooldownEnabled, setCooldownEnabled] = useState(true);
+  const [cooldownHours, setCooldownHours] = useState(3);
+  const [qrLogoText, setQrLogoText] = useState("PW Vidyapeeth Pune");
+  const [qrSubtitleText, setQrSubtitleText] = useState("Student Result Portal");
+  const [qrFooterText, setQrFooterText] = useState("");
+
+  // Temp states for text fields to allow editing
+  const [tempLogo, setTempLogo] = useState("PW Vidyapeeth Pune");
+  const [tempSubtitle, setTempSubtitle] = useState("Student Result Portal");
+  const [tempFooter, setTempFooter] = useState("");
+
   const [portalSettingsLoading, setPortalSettingsLoading] = useState(false);
 
   // Load portal settings
@@ -180,6 +192,20 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({
     fetch("/api/portal-settings").then(r => r.json()).then(data => {
       if (typeof data.portalEnabled === "boolean") setPortalEnabled(data.portalEnabled);
       if (typeof data.qrEnabled === "boolean") setQrEnabled(data.qrEnabled);
+      if (typeof data.cooldownEnabled === "boolean") setCooldownEnabled(data.cooldownEnabled);
+      if (typeof data.cooldownHours === "number") setCooldownHours(data.cooldownHours);
+      if (typeof data.qrLogoText === "string") {
+        setQrLogoText(data.qrLogoText);
+        setTempLogo(data.qrLogoText);
+      }
+      if (typeof data.qrSubtitleText === "string") {
+        setQrSubtitleText(data.qrSubtitleText);
+        setTempSubtitle(data.qrSubtitleText);
+      }
+      if (typeof data.qrFooterText === "string") {
+        setQrFooterText(data.qrFooterText);
+        setTempFooter(data.qrFooterText);
+      }
     }).catch(() => {});
   }, []);
 
@@ -197,19 +223,33 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({
     [currentUser.email]
   );
 
-  const togglePortalSetting = useCallback(async (key: "portalEnabled" | "qrEnabled", value: boolean) => {
+  const savePortalSettings = useCallback(async (updates: Record<string, any>) => {
     setPortalSettingsLoading(true);
     try {
       const res = await fetch("/api/portal-settings", {
         method: "POST",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({ [key]: value }),
+        body: JSON.stringify(updates),
       });
       const data = await res.json();
       if (data.ok) {
-        setPortalEnabled(data.portalEnabled);
-        setQrEnabled(data.qrEnabled);
-        setNotice(`${key === "portalEnabled" ? "Student Portal" : "QR Code"} ${value ? "enabled" : "disabled"} successfully.`);
+        if (typeof data.portalEnabled === "boolean") setPortalEnabled(data.portalEnabled);
+        if (typeof data.qrEnabled === "boolean") setQrEnabled(data.qrEnabled);
+        if (typeof data.cooldownEnabled === "boolean") setCooldownEnabled(data.cooldownEnabled);
+        if (typeof data.cooldownHours === "number") setCooldownHours(data.cooldownHours);
+        if (typeof data.qrLogoText === "string") {
+          setQrLogoText(data.qrLogoText);
+          setTempLogo(data.qrLogoText);
+        }
+        if (typeof data.qrSubtitleText === "string") {
+          setQrSubtitleText(data.qrSubtitleText);
+          setTempSubtitle(data.qrSubtitleText);
+        }
+        if (typeof data.qrFooterText === "string") {
+          setQrFooterText(data.qrFooterText);
+          setTempFooter(data.qrFooterText);
+        }
+        setNotice("Portal settings updated successfully.");
       }
     } catch { setError("Failed to update portal settings."); }
     setPortalSettingsLoading(false);
@@ -856,159 +896,270 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({
         )}
 
         {/* ---- RESULT PORTAL ---- */}
-        {tab === "portal" && (
-          <div className="mt-1 space-y-5">
-            {/* Portal Controls — Master Toggles */}
-            <div className="bg-white dark:bg-[#111827] border border-slate-200/60 dark:border-gray-800/80 rounded-2xl p-5 space-y-4">
-              <div className="flex items-center gap-2 mb-1">
-                <Power className="w-4 h-4 text-[#5277f7]" />
-                <span className="text-xs font-extrabold text-slate-800 dark:text-white uppercase tracking-wider">Portal Controls</span>
-              </div>
-
-              {/* Student Portal Toggle */}
-              <div className="flex items-center justify-between bg-slate-50 dark:bg-gray-800/60 border border-slate-200/50 dark:border-gray-700/50 rounded-xl px-4 py-3">
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-bold text-slate-800 dark:text-white">Student Result Portal</p>
-                  <p className="text-[10px] text-slate-400 mt-0.5">Enable or disable public student result checking portal</p>
+        {tab === "portal" && (() => {
+          const portalUrl = `${window.location.origin}/result`;
+          return (
+            <div className="mt-1 space-y-5">
+              {/* Portal Controls — Settings & Toggles */}
+              <div className="bg-white dark:bg-[#111827] border border-slate-200/60 dark:border-gray-800/80 overflow-hidden p-5 rounded-2xl">
+                <div className="flex items-center gap-2 mb-4">
+                  <Power className="w-4 h-4 text-[#5277f7]" />
+                  <span className="text-xs font-extrabold text-slate-800 dark:text-white uppercase tracking-wider">Portal Controls</span>
+                  <div className="flex items-center gap-2 ml-auto">
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold border ${
+                      portalEnabled
+                        ? "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/40"
+                        : "bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-900/40"
+                    }`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${portalEnabled ? "bg-emerald-500 animate-pulse" : "bg-rose-500"}`} />
+                      {portalEnabled ? "Live" : "Off"}
+                    </span>
+                  </div>
                 </div>
-                <button
-                  onClick={() => togglePortalSetting("portalEnabled", !portalEnabled)}
-                  disabled={portalSettingsLoading}
-                  className="cursor-pointer disabled:opacity-50 transition-all"
-                >
-                  {portalEnabled ? (
-                    <ToggleRight className="w-10 h-10 text-emerald-500 drop-shadow-sm" />
-                  ) : (
-                    <ToggleLeft className="w-10 h-10 text-slate-400" />
-                  )}
-                </button>
-              </div>
 
-              {/* QR Code Toggle */}
-              <div className="flex items-center justify-between bg-slate-50 dark:bg-gray-800/60 border border-slate-200/50 dark:border-gray-700/50 rounded-xl px-4 py-3">
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-bold text-slate-800 dark:text-white">QR Code Display</p>
-                  <p className="text-[10px] text-slate-400 mt-0.5">Show or hide QR code on the student result page</p>
-                </div>
-                <button
-                  onClick={() => togglePortalSetting("qrEnabled", !qrEnabled)}
-                  disabled={portalSettingsLoading}
-                  className="cursor-pointer disabled:opacity-50 transition-all"
-                >
-                  {qrEnabled ? (
-                    <ToggleRight className="w-10 h-10 text-emerald-500 drop-shadow-sm" />
-                  ) : (
-                    <ToggleLeft className="w-10 h-10 text-slate-400" />
-                  )}
-                </button>
-              </div>
-
-              {/* Status indicator */}
-              <div className="flex items-center gap-3 text-[10px]">
-                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full font-bold border ${
-                  portalEnabled
-                    ? "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/40"
-                    : "bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-900/40"
-                }`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${portalEnabled ? "bg-emerald-500 animate-pulse" : "bg-rose-500"}`} />
-                  Portal {portalEnabled ? "Live" : "Offline"}
-                </span>
-                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full font-bold border ${
-                  qrEnabled
-                    ? "bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-900/40"
-                    : "bg-slate-100 dark:bg-gray-800 text-slate-500 dark:text-gray-500 border-slate-200 dark:border-gray-700"
-                }`}>
-                  QR {qrEnabled ? "Visible" : "Hidden"}
-                </span>
-              </div>
-            </div>
-            {/* QR Code & Link Section */}
-            <div className="bg-gradient-to-br from-[#5277f7]/5 to-indigo-500/5 dark:from-[#5277f7]/10 dark:to-indigo-500/10 border border-[#5277f7]/20 dark:border-[#5277f7]/15 rounded-2xl p-5">
-              <div className="flex items-center gap-2 mb-4">
-                <QrCode className="w-4 h-4 text-[#5277f7]" />
-                <span className="text-xs font-extrabold text-slate-800 dark:text-white uppercase tracking-wider">Student Result QR Code</span>
-              </div>
-
-              <div className="flex flex-col sm:flex-row items-center gap-5">
-                {/* QR */}
-                {portalQr ? (
-                  <div className="bg-white rounded-2xl p-3 shadow-md shrink-0">
-                    <img src={portalQr} alt="Result QR" className="w-36 h-36 sm:w-40 sm:h-40" />
-                  </div>
-                ) : (
-                  <div className="w-40 h-40 bg-slate-100 dark:bg-gray-800 rounded-2xl flex items-center justify-center">
-                    <RefreshCw className="w-5 h-5 text-slate-400 animate-spin" />
-                  </div>
-                )}
-
-                <div className="flex flex-col gap-3 flex-1 w-full">
-                  {/* URL */}
-                  <div className="bg-white/60 dark:bg-gray-800/60 border border-slate-200/50 dark:border-gray-700/50 rounded-xl px-3 py-2.5">
-                    <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">Portal Link</p>
-                    <p className="text-xs text-[#5277f7] font-mono break-all select-all font-bold">
-                      {window.location.origin}/result
-                    </p>
-                  </div>
-
-                  {/* Buttons */}
-                  <div className="grid grid-cols-2 gap-2">
+                {/* Toggle Rows */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="flex items-center justify-between bg-slate-50 dark:bg-gray-800/40 border border-slate-200/50 dark:border-gray-705/40 rounded-xl px-4 py-3">
+                    <div>
+                      <p className="text-[11px] font-bold text-slate-800 dark:text-white">Student Result Portal</p>
+                      <p className="text-[9px] text-slate-400 mt-0.5">Students can search & view results publicly</p>
+                    </div>
                     <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(`${window.location.origin}/result`);
-                        setPortalCopied(true);
-                        setTimeout(() => setPortalCopied(false), 2000);
-                      }}
-                      className="flex items-center justify-center gap-1.5 py-2.5 bg-slate-100 dark:bg-gray-800 hover:bg-slate-200 dark:hover:bg-gray-700 border border-slate-200 dark:border-gray-700 rounded-xl text-[10px] font-bold text-slate-600 dark:text-slate-300 transition-all cursor-pointer"
+                      onClick={() => savePortalSettings({ portalEnabled: !portalEnabled })}
+                      disabled={portalSettingsLoading}
+                      className="cursor-pointer disabled:opacity-50"
                     >
-                      {portalCopied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-                      {portalCopied ? "Copied!" : "Copy Link"}
-                    </button>
-                    <button
-                      onClick={() => {
-                        const printWin = window.open('', '_blank');
-                        if (!printWin || !portalQr) return;
-                        printWin.document.write(`<!DOCTYPE html><html><head><title>PW Vidyapeeth - Result QR</title>
-                          <style>
-                            body { font-family: 'Inter', system-ui, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: #fff; color: #0f172a; }
-                            .card { border: 3px solid #0f172a; border-radius: 24px; padding: 40px; text-align: center; max-width: 400px; }
-                            .logo { font-size: 32px; font-weight: 900; color: #5277f7; margin-bottom: 8px; letter-spacing: -1px; }
-                            .subtitle { font-size: 14px; color: #64748b; margin-bottom: 24px; }
-                            .qr { width: 280px; height: 280px; margin: 0 auto 20px; }
-                            .url { font-family: monospace; font-size: 13px; color: #5277f7; background: #f1f5f9; padding: 10px 16px; border-radius: 12px; word-break: break-all; }
-                            .instructions { margin-top: 20px; font-size: 13px; color: #475569; line-height: 1.6; }
-                            .step { display: flex; align-items: flex-start; gap: 8px; text-align: left; margin-top: 8px; }
-                            .step-num { background: #5277f7; color: white; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; }
-                            @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
-                          </style></head><body>
-                          <div class="card">
-                            <div class="logo">PW Vidyapeeth Pune</div>
-                            <div class="subtitle">Student Result Portal</div>
-                            <img src="${portalQr}" class="qr" alt="QR Code" />
-                            <div class="url">${window.location.origin}/result</div>
-                            <div class="instructions">
-                              <strong>How to check your result:</strong>
-                              <div class="step"><span class="step-num">1</span><span>Scan QR code or open the link above</span></div>
-                              <div class="step"><span class="step-num">2</span><span>Enter your Registration Number</span></div>
-                              <div class="step"><span class="step-num">3</span><span>View your exam results instantly</span></div>
-                            </div>
-                          </div>
-                        </body></html>`);
-                        printWin.document.close();
-                        setTimeout(() => printWin.print(), 500);
-                      }}
-                      className="flex items-center justify-center gap-1.5 py-2.5 bg-[#5277f7]/10 dark:bg-[#5277f7]/20 hover:bg-[#5277f7]/20 dark:hover:bg-[#5277f7]/30 border border-[#5277f7]/20 dark:border-[#5277f7]/30 rounded-xl text-[10px] font-bold text-[#5277f7] transition-all cursor-pointer"
-                    >
-                      <Printer className="w-3.5 h-3.5" />
-                      Print QR
+                      {portalEnabled ? <ToggleRight className="w-8 h-8 text-emerald-500" /> : <ToggleLeft className="w-8 h-8 text-slate-400" />}
                     </button>
                   </div>
 
-                  <p className="text-[9px] text-slate-400 dark:text-slate-500 leading-relaxed">
-                    Share this link or print the QR for notice board. Students scan → enter Reg ID → see result. One device can view only 1 result per 3 hours.
-                  </p>
+                  <div className="flex items-center justify-between bg-slate-50 dark:bg-gray-800/40 border border-slate-200/50 dark:border-gray-705/40 rounded-xl px-4 py-3">
+                    <div>
+                      <p className="text-[11px] font-bold text-slate-800 dark:text-white">QR Code Display</p>
+                      <p className="text-[9px] text-slate-400 mt-0.5">Show QR code on the student result page</p>
+                    </div>
+                    <button
+                      onClick={() => savePortalSettings({ qrEnabled: !qrEnabled })}
+                      disabled={portalSettingsLoading}
+                      className="cursor-pointer disabled:opacity-50"
+                    >
+                      {qrEnabled ? <ToggleRight className="w-8 h-8 text-emerald-500" /> : <ToggleLeft className="w-8 h-8 text-slate-400" />}
+                    </button>
+                  </div>
+
+                  <div className="flex items-center justify-between bg-slate-50 dark:bg-gray-800/40 border border-slate-200/50 dark:border-gray-705/40 rounded-xl px-4 py-3">
+                    <div>
+                      <p className="text-[11px] font-bold text-slate-800 dark:text-white">Device Lock Cooldown</p>
+                      <p className="text-[9px] text-slate-400 mt-0.5">Prevent students from checking multiple registrations</p>
+                    </div>
+                    <button
+                      onClick={() => savePortalSettings({ cooldownEnabled: !cooldownEnabled })}
+                      disabled={portalSettingsLoading}
+                      className="cursor-pointer disabled:opacity-50"
+                    >
+                      {cooldownEnabled ? <ToggleRight className="w-8 h-8 text-emerald-500" /> : <ToggleLeft className="w-8 h-8 text-slate-400" />}
+                    </button>
+                  </div>
+
+                  <div className="flex items-center justify-between bg-slate-50 dark:bg-gray-800/40 border border-slate-200/50 dark:border-gray-705/40 rounded-xl px-4 py-3">
+                    <div className="flex-1">
+                      <p className="text-[11px] font-bold text-slate-800 dark:text-white">Cooldown Duration (Hours)</p>
+                      <p className="text-[9px] text-slate-400 mt-0.5">Dynamic freeze timer (in decimal hours)</p>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        min="0.1"
+                        max="168"
+                        step="0.5"
+                        disabled={!cooldownEnabled || portalSettingsLoading}
+                        value={cooldownHours}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value);
+                          if (!isNaN(val) && val > 0) {
+                            savePortalSettings({ cooldownHours: val });
+                          }
+                        }}
+                        className="w-16 bg-white dark:bg-gray-800 border border-slate-200 dark:border-gray-700 rounded-lg px-2 py-1 text-[11px] font-bold text-slate-800 dark:text-white text-center focus:outline-none focus:border-[#5277f7] disabled:opacity-50 disabled:cursor-not-allowed"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
+
+              {/* Printable Card Design & QR Customization */}
+              <div className="bg-white dark:bg-[#111827] border border-slate-200/60 dark:border-gray-800/80 overflow-hidden p-5 rounded-2xl space-y-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <QrCode className="w-4 h-4 text-[#5277f7]" />
+                  <span className="text-xs font-extrabold text-slate-800 dark:text-white uppercase tracking-wider">QR Card Customization & Print</span>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                  {/* Card Mockup Preview Column */}
+                  <div className="lg:col-span-5 flex flex-col items-center justify-center bg-slate-50 dark:bg-gray-900/30 border border-slate-150 dark:border-gray-850 rounded-2xl p-4">
+                    <span className="text-[9px] uppercase tracking-widest font-black text-slate-400 dark:text-gray-500 mb-3">Card Live Preview</span>
+                    
+                    {/* The Actual HTML structure to print/download */}
+                    <div 
+                      id="qr-card-print-target-modal" 
+                      className="w-full max-w-[280px] bg-white border-[3px] border-slate-900 rounded-[20px] p-5 text-center text-slate-950 shadow-sm"
+                    >
+                      <div className="text-lg font-black text-[#5277f7] tracking-tight mb-0.5 leading-tight select-none">
+                        {tempLogo}
+                      </div>
+                      <div className="text-[10px] text-slate-500 font-semibold mb-4 leading-none select-none">
+                        {tempSubtitle}
+                      </div>
+                      {portalQr ? (
+                        <img src={portalQr} alt="QR Code" className="w-36 h-36 mx-auto mb-4 object-contain" />
+                      ) : (
+                        <div className="w-36 h-36 mx-auto mb-4 bg-slate-100 rounded-xl flex items-center justify-center text-slate-400 text-[10px]">
+                          Generating QR...
+                        </div>
+                      )}
+                      <div className="font-mono text-[9px] text-[#5277f7] bg-slate-100 px-3 py-1.5 rounded-lg break-all font-bold select-none">
+                        {tempFooter || portalUrl}
+                      </div>
+                      
+                      <div className="mt-4 text-left border-t border-slate-100 pt-3 space-y-1.5 text-[9px] text-slate-600 leading-relaxed select-none">
+                        <strong>How to check your result:</strong>
+                        <div className="flex gap-1.5 items-center">
+                          <span className="w-3.5 h-3.5 bg-[#5277f7] text-white rounded-full flex items-center justify-center font-bold text-[7px] shrink-0">1</span>
+                          <span>Scan QR code or open link</span>
+                        </div>
+                        <div className="flex gap-1.5 items-center">
+                          <span className="w-3.5 h-3.5 bg-[#5277f7] text-white rounded-full flex items-center justify-center font-bold text-[7px] shrink-0">2</span>
+                          <span>Enter Registration Number</span>
+                        </div>
+                        <div className="flex gap-1.5 items-center">
+                          <span className="w-3.5 h-3.5 bg-[#5277f7] text-white rounded-full flex items-center justify-center font-bold text-[7px] shrink-0">3</span>
+                          <span>View results instantly</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Form Fields & Controls Column */}
+                  <div className="lg:col-span-7 space-y-4 flex flex-col justify-between">
+                    <div className="space-y-3">
+                      <div>
+                        <label className="text-[10px] uppercase font-bold text-slate-400 dark:text-gray-500 block mb-1">Card Logo Title</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. PW Vidyapeeth Pune"
+                          value={tempLogo}
+                          onChange={(e) => setTempLogo(e.target.value)}
+                          className="w-full bg-slate-50 dark:bg-gray-800/40 border border-slate-200 dark:border-gray-700/60 rounded-xl px-3 py-2 text-xs text-slate-800 dark:text-white font-semibold focus:outline-none focus:border-[#5277f7] placeholder-slate-400"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] uppercase font-bold text-slate-400 dark:text-gray-500 block mb-1">Card Subtitle / Description</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Student Result Portal"
+                          value={tempSubtitle}
+                          onChange={(e) => setTempSubtitle(e.target.value)}
+                          className="w-full bg-slate-50 dark:bg-gray-800/40 border border-slate-200 dark:border-gray-700/60 rounded-xl px-3 py-2 text-xs text-slate-800 dark:text-white font-semibold focus:outline-none focus:border-[#5277f7] placeholder-slate-400"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] uppercase font-bold text-slate-400 dark:text-gray-500 block mb-1">Card URL / Link text (Leave empty to use actual link)</label>
+                        <input
+                          type="text"
+                          placeholder={portalUrl}
+                          value={tempFooter}
+                          onChange={(e) => setTempFooter(e.target.value)}
+                          className="w-full bg-slate-50 dark:bg-gray-800/40 border border-slate-200 dark:border-gray-700/60 rounded-xl px-3 py-2 text-xs text-slate-800 dark:text-white font-mono focus:outline-none focus:border-[#5277f7] placeholder-slate-400"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 pt-4 border-t border-slate-100 dark:border-gray-800/50">
+                      <div className="flex gap-2">
+                        <button
+                          disabled={tempLogo === qrLogoText && tempSubtitle === qrSubtitleText && tempFooter === qrFooterText}
+                          onClick={() => savePortalSettings({
+                            qrLogoText: tempLogo,
+                            qrSubtitleText: tempSubtitle,
+                            qrFooterText: tempFooter,
+                          })}
+                          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:hover:bg-emerald-600 text-white border border-emerald-500/25 rounded-xl text-[11px] font-extrabold uppercase tracking-wide transition-all cursor-pointer shadow-sm shadow-emerald-600/10"
+                        >
+                          <Save className="w-3.5 h-3.5" />
+                          Save Card Details
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2">
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(portalUrl);
+                            setPortalCopied(true);
+                            setTimeout(() => setPortalCopied(false), 2000);
+                          }}
+                          className="flex items-center justify-center gap-1.5 py-2 bg-slate-100 dark:bg-gray-800 hover:bg-slate-200 dark:hover:bg-gray-700 border border-slate-200 dark:border-gray-700 rounded-xl text-[10px] font-bold text-slate-650 dark:text-slate-355 transition-all cursor-pointer"
+                        >
+                          {portalCopied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                          {portalCopied ? "Copied!" : "Copy Link"}
+                        </button>
+                        <button
+                          onClick={() => {
+                            const w = window.open('', '_blank');
+                            if (!w || !portalQr) return;
+                            w.document.write(`<!DOCTYPE html><html><head><title>${tempLogo} - Result QR</title>
+                              <style>body{font-family:'Inter',system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#fff;color:#0f172a}.card{border:3px solid #0f172a;border-radius:24px;padding:40px;text-align:center;max-width:400px}.logo{font-size:32px;font-weight:900;color:#5277f7;margin-bottom:8px}.subtitle{font-size:14px;color:#64748b;margin-bottom:24px}.qr{width:280px;height:280px;margin:0 auto 20px}.url{font-family:monospace;font-size:13px;color:#5277f7;background:#f1f5f9;padding:10px 16px;border-radius:12px;word-break:break-all}.instructions{margin-top:20px;font-size:13px;color:#475569;line-height:1.6}.step{display:flex;align-items:flex-start;gap:8px;text-align:left;margin-top:8px}.step-num{background:#5277f7;color:white;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style></head>
+                              <body><div class="card"><div class="logo">${tempLogo}</div><div class="subtitle">${tempSubtitle}</div>
+                              <img src="${portalQr}" class="qr" alt="QR"/><div class="url">${tempFooter || portalUrl}</div>
+                              <div class="instructions">
+                                <strong>How to check your result:</strong>
+                                <div class="step"><span class="step-num">1</span><span>Scan QR code or open the link above</span></div>
+                                <div class="step"><span class="step-num">2</span><span>Enter your Registration Number</span></div>
+                                <div class="step"><span class="step-num">3</span><span>View your exam results instantly</span></div>
+                              </div>
+                              </div></body></html>`);
+                            w.document.close();
+                            setTimeout(() => w.print(), 500);
+                          }}
+                          className="flex items-center justify-center gap-1.5 py-2 bg-[#5277f7]/10 dark:bg-[#5277f7]/20 hover:bg-[#5277f7]/20 border border-[#5277f7]/25 rounded-xl text-[10px] font-bold text-[#5277f7] transition-all cursor-pointer"
+                        >
+                          <Printer className="w-3.5 h-3.5" />
+                          Print QR
+                        </button>
+                        <button
+                          onClick={async () => {
+                            const element = document.getElementById("qr-card-print-target-modal");
+                            if (!element) return;
+                            try {
+                              const getHtml2Pdf = async () => {
+                                // @ts-ignore
+                                return (await import("html2pdf.js")).default || window.html2pdf;
+                              };
+                              const html2pdf = await getHtml2Pdf();
+                              const opt = {
+                                margin: [10, 10, 10, 10],
+                                filename: `${tempLogo.replace(/[^a-z0-9]/gi, '_')}_Result_QR.pdf`,
+                                image: { type: "jpeg", quality: 0.98 },
+                                html2canvas: { scale: 3, useCORS: true, backgroundColor: "#ffffff" },
+                                jsPDF: { unit: "mm", format: "a4", orientation: "portrait" }
+                              };
+                              html2pdf().set(opt).from(element).save();
+                            } catch (err) {
+                              console.error(err);
+                              alert("Failed to download PDF.");
+                            }
+                          }}
+                          className="flex items-center justify-center gap-1.5 py-2 bg-slate-100 dark:bg-gray-800 hover:bg-slate-200 dark:hover:bg-gray-700 border border-slate-200 dark:border-gray-700 rounded-xl text-[10px] font-bold text-slate-655 dark:text-slate-355 transition-all cursor-pointer"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          Download PDF
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
 
             {/* Device Bindings Management — Enhanced */}
             <div className="bg-white dark:bg-[#111827] border border-slate-200/60 dark:border-gray-800/80 rounded-2xl overflow-hidden">
@@ -1089,7 +1240,8 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({
                         {deviceBindings.map((b: any, i: number) => {
                           const remainH = Math.floor(b.remainingMin / 60);
                           const remainM = b.remainingMin % 60;
-                          const pct = Math.min(100, (b.remainingMin / 180) * 100);
+                          const maxMinutes = (cooldownHours || 3) * 60;
+                          const pct = Math.min(100, (b.remainingMin / maxMinutes) * 100);
                           return (
                             <tr key={i} className="hover:bg-slate-50/60 dark:hover:bg-gray-800/20 transition-colors">
                               <td className="px-4 py-2.5">
@@ -1144,7 +1296,8 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({
                     {deviceBindings.map((b: any, i: number) => {
                       const remainH = Math.floor(b.remainingMin / 60);
                       const remainM = b.remainingMin % 60;
-                      const pct = Math.min(100, (b.remainingMin / 180) * 100);
+                      const maxMinutes = (cooldownHours || 3) * 60;
+                      const pct = Math.min(100, (b.remainingMin / maxMinutes) * 100);
                       return (
                         <div key={i} className="px-4 py-3">
                           <div className="flex items-center justify-between mb-2">
@@ -1196,7 +1349,8 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({
               )}
             </div>
           </div>
-        )}
+        );
+      })()}
 
         {/* ---- BULK EMAIL IMPORT ---- */}
         {tab === "import" && (

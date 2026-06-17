@@ -221,6 +221,39 @@ export default function PublicResult() {
   const [qrDataUrl, setQrDataUrl] = useState<string>("");
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const [portalSettings, setPortalSettings] = useState<{
+    portalEnabled: boolean;
+    qrEnabled: boolean;
+    portalMessage: string;
+    qrLogoText: string;
+    qrSubtitleText: string;
+    qrFooterText: string;
+  }>({
+    portalEnabled: true,
+    qrEnabled: true,
+    portalMessage: "Result portal is currently disabled. Please check back later.",
+    qrLogoText: "PW Vidyapeeth Pune",
+    qrSubtitleText: "Student Result Portal",
+    qrFooterText: "",
+  });
+
+  /* Fetch portal settings on mount */
+  useEffect(() => {
+    fetch("/api/portal-settings")
+      .then((r) => r.json())
+      .then((data) => {
+        setPortalSettings({
+          portalEnabled: data.portalEnabled ?? true,
+          qrEnabled: data.qrEnabled ?? true,
+          portalMessage: data.portalMessage || "Result portal is currently disabled. Please check back later.",
+          qrLogoText: data.qrLogoText || "PW Vidyapeeth Pune",
+          qrSubtitleText: data.qrSubtitleText || "Student Result Portal",
+          qrFooterText: data.qrFooterText || "",
+        });
+      })
+      .catch(() => {});
+  }, []);
+
   /* Focus input on mount */
   useEffect(() => {
     inputRef.current?.focus();
@@ -725,7 +758,7 @@ export default function PublicResult() {
         </main>
 
         {/* QR Code Section — for staff to print/share */}
-        {state.kind === "idle" && qrDataUrl && (
+        {state.kind === "idle" && qrDataUrl && portalSettings.qrEnabled && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -754,7 +787,7 @@ export default function PublicResult() {
                   <div className="bg-white/5 border border-white/10 rounded-xl px-3 py-2.5">
                     <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1">Page Link</p>
                     <p className="text-xs text-[#5277f7] font-mono break-all select-all">
-                      {window.location.origin}/result
+                      {portalSettings.qrFooterText || `${window.location.origin}/result`}
                     </p>
                   </div>
 
@@ -762,7 +795,7 @@ export default function PublicResult() {
                   <div className="flex gap-2">
                     <button
                       onClick={() => {
-                        navigator.clipboard.writeText(`${window.location.origin}/result`);
+                        navigator.clipboard.writeText(portalSettings.qrFooterText || `${window.location.origin}/result`);
                       }}
                       className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-[11px] font-bold text-slate-300 transition-all cursor-pointer"
                     >
@@ -776,7 +809,7 @@ export default function PublicResult() {
                           printWin.document.write(`
                             <!DOCTYPE html>
                             <html>
-                            <head><title>PW Vidyapeeth - Result QR</title>
+                            <head><title>${portalSettings.qrLogoText} - Result QR</title>
                             <style>
                               body { font-family: 'Inter', system-ui, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: #fff; color: #0f172a; }
                               .card { border: 3px solid #0f172a; border-radius: 24px; padding: 40px; text-align: center; max-width: 400px; }
@@ -791,10 +824,10 @@ export default function PublicResult() {
                             </style></head>
                             <body>
                               <div class="card">
-                                <div class="logo">PW Vidyapeeth Pune</div>
-                                <div class="subtitle">Student Result Portal</div>
+                                <div class="logo">${portalSettings.qrLogoText}</div>
+                                <div class="subtitle">${portalSettings.qrSubtitleText}</div>
                                 <img src="${qrDataUrl}" class="qr" alt="QR Code" />
-                                <div class="url">${window.location.origin}/result</div>
+                                <div class="url">${portalSettings.qrFooterText || `${window.location.origin}/result`}</div>
                                 <div class="instructions">
                                   <strong>How to check your result:</strong>
                                   <div class="step"><span class="step-num">1</span><span>Scan QR code or open the link above</span></div>
@@ -823,7 +856,7 @@ export default function PublicResult() {
         {/* Footer */}
         <footer className="py-5 text-center">
           <p className="text-[10px] text-slate-600 font-medium tracking-wide">
-            Powered by <span className="text-slate-400">PW Vidyapeeth Pune</span>
+            Powered by <span className="text-slate-400">{portalSettings.qrLogoText}</span>
           </p>
         </footer>
       </div>
