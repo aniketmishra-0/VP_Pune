@@ -452,7 +452,7 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
               <ChevronDown className="w-3 h-3 text-slate-450" />
             </button>
             {openFilterDropdown === "category" && (
-              <div className="absolute left-0 mt-1.5 w-52 bg-white dark:bg-[#1f2937] rounded-xl shadow-xl border border-slate-200/50 dark:border-gray-700 z-50 py-1 max-h-60 overflow-y-auto">
+              <div className="absolute right-0 md:left-0 md:right-auto mt-1.5 w-52 bg-white dark:bg-[#1f2937] rounded-xl shadow-xl border border-slate-200/50 dark:border-gray-700 z-50 py-1 max-h-60 overflow-y-auto">
                 <button
                   onClick={() => {
                     setSelectedTab("all");
@@ -550,7 +550,7 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
               <ChevronDown className="w-3 h-3 text-slate-450" />
             </button>
             {openFilterDropdown === "stream" && (
-              <div className="absolute left-0 mt-1.5 w-44 bg-white dark:bg-[#1f2937] rounded-xl shadow-xl border border-slate-200/50 dark:border-gray-700 z-50 py-1 max-h-60 overflow-y-auto">
+              <div className="absolute right-0 md:left-0 md:right-auto mt-1.5 w-44 bg-white dark:bg-[#1f2937] rounded-xl shadow-xl border border-slate-200/50 dark:border-gray-700 z-50 py-1 max-h-60 overflow-y-auto">
                 <button
                   onClick={() => {
                     setSelectedStream("all");
@@ -599,7 +599,7 @@ export default function PapersViewer({ adminHeaders }: PapersViewerProps) {
               <ChevronDown className="w-3 h-3 text-slate-455" />
             </button>
             {openFilterDropdown === "phase" && (
-              <div className="absolute left-0 mt-1.5 w-44 bg-white dark:bg-[#1f2937] rounded-xl shadow-xl border border-slate-200/50 dark:border-gray-700 z-50 py-1 max-h-60 overflow-y-auto">
+              <div className="absolute right-0 mt-1.5 w-44 bg-white dark:bg-[#1f2937] rounded-xl shadow-xl border border-slate-200/50 dark:border-gray-700 z-50 py-1 max-h-60 overflow-y-auto">
                 <button
                   onClick={() => {
                     setSelectedPhase("all");
